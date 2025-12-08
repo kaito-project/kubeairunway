@@ -57,3 +57,16 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Provider-specific theme accents */
+[data-provider="dynamo"] {
+  --primary: 79 100% 36%;
+  /* NVIDIA Green */
+  --ring: 79 100% 36%;
+}
+
+[data-provider="kuberay"] {
+  --primary: 217 91% 60%;
+  /* Ray Blue */
+  --ring: 217 91% 60%;
+}

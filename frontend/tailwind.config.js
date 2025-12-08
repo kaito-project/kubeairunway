@@ -52,6 +52,10 @@ export default {
           DEFAULT: "#76B900",
           dark: "#5A8F00",
         },
+        ray: {
+          DEFAULT: "#3B82F6",
+          dark: "#2563EB",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

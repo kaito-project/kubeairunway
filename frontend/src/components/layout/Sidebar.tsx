@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Box, Layers, Settings, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useSettings } from '@/hooks/useSettings'
 
 const navigation = [
   { name: 'Models', href: '/', icon: Box },
@@ -11,6 +12,8 @@ const navigation = [
 
 export function Sidebar() {
   const location = useLocation()
+  const { data: settings } = useSettings()
+  const providerId = settings?.activeProvider?.id || 'dynamo'
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-card">
@@ -35,7 +38,7 @@ export function Sidebar() {
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-nvidia text-white'
+                  ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               )}
             >
@@ -45,6 +48,20 @@ export function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Provider indicator */}
+      <div className="border-t p-4">
+        <div className={cn(
+          'flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium',
+          providerId === 'kuberay' ? 'bg-ray/10 text-ray' : 'bg-nvidia/10 text-nvidia'
+        )}>
+          <div className={cn(
+            'h-2 w-2 rounded-full',
+            providerId === 'kuberay' ? 'bg-ray' : 'bg-nvidia'
+          )} />
+          {providerId === 'kuberay' ? 'KubeRay' : 'NVIDIA Dynamo'}
+        </div>
+      </div>
     </div>
   )
 }

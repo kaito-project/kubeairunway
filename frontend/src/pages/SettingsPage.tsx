@@ -24,7 +24,7 @@ export function SettingsPage() {
 
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const activeProviderId = selectedProviderId || settings?.config.activeProviderId || 'dynamo'
-  
+
   const { data: providerDetails } = useProviderDetails(activeProviderId)
 
   const handleProviderChange = async (newProviderId: string) => {

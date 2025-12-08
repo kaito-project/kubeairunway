@@ -31,7 +31,7 @@ export class KubeRayProvider implements Provider {
   generateManifest(config: DeploymentConfig): Record<string, unknown> {
     // Cast to KubeRay-specific config type
     const kuberayConfig = config as unknown as KubeRayDeploymentConfig;
-    
+
     if (kuberayConfig.mode === 'disaggregated') {
       return this.generateDisaggregatedManifest(kuberayConfig);
     }
@@ -113,7 +113,7 @@ export class KubeRayProvider implements Provider {
    */
   private generateDisaggregatedManifest(config: KubeRayDeploymentConfig): Record<string, unknown> {
     const kvConnector = config.kvConnector || 'NixlConnector';
-    
+
     const serveConfig = {
       applications: [
         {
@@ -316,24 +316,24 @@ export class KubeRayProvider implements Provider {
    */
   private yamlStringify(obj: unknown, indent: number = 0): string {
     const spaces = '  '.repeat(indent);
-    
+
     if (obj === null || obj === undefined) {
       return 'null';
     }
-    
+
     if (typeof obj === 'string') {
       return `"${obj}"`;
     }
-    
+
     if (typeof obj === 'number' || typeof obj === 'boolean') {
       return String(obj);
     }
-    
+
     if (Array.isArray(obj)) {
       if (obj.length === 0) return '[]';
       return obj.map(item => `${spaces}- ${this.yamlStringify(item, indent + 1).trimStart()}`).join('\n');
     }
-    
+
     if (typeof obj === 'object') {
       const entries = Object.entries(obj);
       if (entries.length === 0) return '{}';
@@ -348,7 +348,7 @@ export class KubeRayProvider implements Provider {
         return `${spaces}${key}: ${valueStr}`;
       }).join('\n');
     }
-    
+
     return String(obj);
   }
 
@@ -397,7 +397,7 @@ export class KubeRayProvider implements Provider {
     // Try to extract model info from serveConfigV2
     let modelId = '';
     let mode: 'aggregated' | 'disaggregated' = 'aggregated';
-    
+
     if (spec.serveConfigV2) {
       // Check for disaggregated mode
       if (spec.serveConfigV2.includes('build_pd_openai_app') || spec.serveConfigV2.includes('pd-disaggregation')) {
@@ -417,7 +417,7 @@ export class KubeRayProvider implements Provider {
     // Map RayService status to DeploymentPhase
     let phase: DeploymentPhase = 'Pending';
     const serviceStatus = status.serviceStatus?.toLowerCase() || '';
-    
+
     if (serviceStatus === 'running' || serviceStatus === 'ready') {
       phase = 'Running';
     } else if (serviceStatus === 'failed' || serviceStatus === 'unhealthy') {
@@ -453,7 +453,7 @@ export class KubeRayProvider implements Provider {
 
   validateConfig(config: unknown): { valid: boolean; errors: string[]; data?: DeploymentConfig } {
     const result = kuberayDeploymentConfigSchema.safeParse(config);
-    
+
     if (!result.success) {
       return {
         valid: false,
@@ -554,7 +554,7 @@ export class KubeRayProvider implements Provider {
         operatorRunning = pods.body.items.some(
           pod => pod.status?.phase === 'Running'
         );
-        
+
         // Also try alternative label selector
         if (!operatorRunning) {
           const altPods = await coreV1Api.listNamespacedPod(

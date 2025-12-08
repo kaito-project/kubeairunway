@@ -27,7 +27,7 @@ export function Header() {
           </Link>
         </div>
       )}
-      
+
       <div className="flex h-16 items-center justify-between px-6">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold">KubeFoundry - Model Deployment Platform</h1>

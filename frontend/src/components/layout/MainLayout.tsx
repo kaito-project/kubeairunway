@@ -1,12 +1,16 @@
 import { ReactNode } from 'react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import { useProviderTheme } from '@/hooks/useProviderTheme'
 
 interface MainLayoutProps {
   children: ReactNode
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
+  // Apply provider-specific theme colors
+  useProviderTheme()
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
