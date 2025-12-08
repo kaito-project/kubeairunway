@@ -4,12 +4,12 @@
   "description": "KubeFoundry Frontend Application",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "bunx --bun vite",
+    "build": "tsc && bunx --bun vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "test:e2e": "playwright test"
+    "preview": "bunx --bun vite preview",
+    "test": "bun test",
+    "test:e2e": "bunx playwright test"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",

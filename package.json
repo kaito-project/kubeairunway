@@ -9,16 +9,17 @@
     "shared"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=frontend & npm run dev --workspace=backend",
-    "dev:frontend": "npm run dev --workspace=frontend",
-    "dev:backend": "npm run dev --workspace=backend",
-    "build": "npm run build:shared && npm run build:frontend && npm run build:backend",
-    "build:shared": "npm run build --workspace=shared",
-    "build:frontend": "npm run build --workspace=frontend",
-    "build:backend": "npm run build --workspace=backend",
-    "lint": "npm run lint --workspace=frontend && npm run lint --workspace=backend",
-    "test": "npm run test --workspace=frontend && npm run test --workspace=backend",
-    "test:e2e": "npm run test:e2e --workspace=frontend"
+    "dev": "bun run --filter '@kubefoundry/frontend' dev & bun run --filter '@kubefoundry/backend' dev",
+    "dev:frontend": "bun run --filter '@kubefoundry/frontend' dev",
+    "dev:backend": "bun run --filter '@kubefoundry/backend' dev",
+    "build": "bun run build:shared && bun run build:frontend && bun run build:backend",
+    "build:shared": "bun run --filter '@kubefoundry/shared' build",
+    "build:frontend": "bun run --filter '@kubefoundry/frontend' build",
+    "build:backend": "bun run --filter '@kubefoundry/backend' build",
+    "compile": "bun run --filter '@kubefoundry/backend' compile",
+    "lint": "bun run --filter '@kubefoundry/frontend' lint && bun run --filter '@kubefoundry/backend' lint",
+    "test": "bun run --filter '@kubefoundry/frontend' test && bun run --filter '@kubefoundry/backend' test",
+    "test:e2e": "bun run --filter '@kubefoundry/frontend' test:e2e"
   },
   "keywords": [
     "nvidia",
@@ -28,8 +29,5 @@
     "deployment"
   ],
   "author": "",
-  "license": "MIT",
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "license": "MIT"
 }

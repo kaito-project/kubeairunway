@@ -2,8 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 18+
-- npm
+- [Bun](https://bun.sh) 1.0+
 - Access to a Kubernetes cluster
 - Helm CLI (for provider installation)
 - kubectl configured with cluster access
@@ -12,13 +11,25 @@
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Start development servers (frontend + backend)
-npm run dev
+bun run dev
 
 # Frontend: http://localhost:5173
 # Backend: http://localhost:3001
+```
+
+## Building a Single Binary
+
+The backend can be compiled to a standalone executable:
+
+```bash
+# Compile to single binary
+bun run compile
+
+# Run the binary (no runtime required)
+./backend/dist/kubefoundry
 ```
 
 ## Environment Variables
@@ -41,21 +52,23 @@ CORS_ORIGIN=http://localhost:5173
 
 ### Root
 ```bash
-npm run dev           # Start both frontend and backend
-npm run build         # Build all packages
-npm run lint          # Lint all packages
+bun run dev           # Start both frontend and backend
+bun run build         # Build all packages
+bun run compile       # Build single binary for backend
+bun run lint          # Lint all packages
 ```
 
 ### Frontend
 ```bash
-npm run dev:frontend    # Start Vite dev server
-npm run build:frontend  # Build for production
+bun run dev:frontend    # Start Vite dev server
+bun run build:frontend  # Build for production
 ```
 
 ### Backend
 ```bash
-npm run dev:backend     # Start with tsx watch
-npm run build:backend   # Compile TypeScript
+bun run dev:backend     # Start with watch mode
+bun run build:backend   # Compile TypeScript
+bun run compile         # Build single binary executable
 ```
 
 ## Kubernetes Setup
@@ -87,12 +100,12 @@ helm install dynamo-operator nvidia-dynamo/dynamo \
 2. **Implement the Provider interface:**
    ```typescript
    import { Provider, CRDConfig, ... } from '../types';
-   
+
    export class MyProvider implements Provider {
      id = 'my-provider';
      name = 'My Provider';
      description = '...';
-     
+
      getCRDConfig(): CRDConfig { ... }
      generateManifest(config: DeploymentConfig): object { ... }
      parseStatus(resource: object): DeploymentStatus { ... }
@@ -104,7 +117,7 @@ helm install dynamo-operator nvidia-dynamo/dynamo \
    ```typescript
    // backend/src/providers/index.ts
    import { MyProvider } from './my-provider';
-   
+
    providerRegistry.register(new MyProvider());
    ```
 
