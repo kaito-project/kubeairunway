@@ -8,7 +8,9 @@
     "build": "tsc && bunx --bun vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "bunx --bun vite preview",
-    "test": "bun test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "bunx playwright test"
   },
   "dependencies": {
@@ -33,6 +35,8 @@
     "@playwright/test": "^1.40.1",
     "@testing-library/jest-dom": "^6.2.0",
     "@testing-library/react": "^14.1.2",
+    "@testing-library/user-event": "^14.5.2",
+    "@vitest/coverage-v8": "^1.1.3",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.47",
     "@types/react-dom": "^18.2.18",
@@ -48,6 +52,7 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.3",
     "vite": "^5.0.11",
-    "vitest": "^1.1.3"
+    "vitest": "^1.1.3",
+    "msw": "^2.0.0"
   }
 }
