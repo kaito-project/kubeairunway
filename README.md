@@ -31,10 +31,10 @@ A web-based platform for deploying and managing large language models on Kuberne
 ### 1. Create HuggingFace Token Secret
 
 ```bash
-kubectl create namespace kubefoundry
+kubectl create namespace dynamo-system
 kubectl create secret generic hf-token-secret \
   --from-literal=HF_TOKEN="your-token" \
-  -n kubefoundry
+  -n dynamo-system
 ```
 
 ### 2. Install a Provider
@@ -48,7 +48,7 @@ helm repo update
 
 # Install Dynamo operator
 helm install dynamo-operator nvidia-dynamo/dynamo \
-  --namespace kubefoundry --create-namespace
+  --namespace dynamo-system --create-namespace
 ```
 
 ### 3. Deploy a Model
@@ -64,7 +64,7 @@ Once the deployment is running:
 
 ```bash
 # Port-forward to the service
-kubectl port-forward svc/<deployment-name>-frontend 8000:8000 -n kubefoundry
+kubectl port-forward svc/<deployment-name>-frontend 8000:8000 -n dynamo-system
 
 # Test the model
 curl http://localhost:8000/v1/chat/completions \
@@ -100,17 +100,17 @@ Settings are managed through the **Settings** page in the UI:
 
 ### Provider not detected as installed
 - Check CRD exists: `kubectl get crd dynamographdeployments.dynamo.nvidia.com`
-- Check operator deployment: `kubectl get deployments -n kubefoundry`
+- Check operator deployment: `kubectl get deployments -n dynamo-system`
 
 ### Deployment stuck in pending
-- Check pod status: `kubectl get pods -n kubefoundry`
-- Check events: `kubectl describe pod <pod-name> -n kubefoundry`
+- Check pod status: `kubectl get pods -n dynamo-system`
+- Check events: `kubectl describe pod <pod-name> -n dynamo-system`
 - Verify GPU resources are available
 
 ### Can't access the model endpoint
 - Ensure the deployment status shows "Running"
 - Verify port-forward is active
-- Check service exists: `kubectl get svc -n kubefoundry`
+- Check service exists: `kubectl get svc -n dynamo-system`
 
 ## Documentation
 
