@@ -169,13 +169,17 @@ class HuggingFaceService {
       // Pagination
       limit: String(limit + offset + 10), // Fetch extra since we filter
     });
+    
+    // Request safetensors expansion for parameter count info
+    // URLSearchParams doesn't handle array params well, so we append manually
+    const urlWithExpand = `${HF_MODELS_URL}?${searchParams.toString()}&expand[]=safetensors`;
 
     const headers: Record<string, string> = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${HF_MODELS_URL}?${searchParams.toString()}`, {
+    const response = await fetch(urlWithExpand, {
       headers,
     });
 

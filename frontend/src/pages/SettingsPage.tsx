@@ -472,21 +472,34 @@ export function SettingsPage() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-sm">Checking HuggingFace connection...</span>
                 </div>
-              ) : hfStatus?.configured && hfStatus.user ? (
-                // Connected state
+              ) : hfStatus?.configured ? (
+                // Connected state - token exists in K8s secrets
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      {hfStatus.user.avatarUrl && (
+                      {hfStatus.user?.avatarUrl ? (
                         <img
                           src={hfStatus.user.avatarUrl}
                           alt={hfStatus.user.name}
                           className="h-10 w-10 rounded-full"
                         />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                          <Key className="h-5 w-5 text-muted-foreground" />
+                        </div>
                       )}
                       <div>
-                        <div className="font-medium">{hfStatus.user.fullname || hfStatus.user.name}</div>
-                        <div className="text-sm text-muted-foreground">@{hfStatus.user.name}</div>
+                        {hfStatus.user ? (
+                          <>
+                            <div className="font-medium">{hfStatus.user.fullname || hfStatus.user.name}</div>
+                            <div className="text-sm text-muted-foreground">@{hfStatus.user.name}</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="font-medium">HuggingFace Token</div>
+                            <div className="text-sm text-muted-foreground">Token configured</div>
+                          </>
+                        )}
                       </div>
                     </div>
                     <Badge variant="default" className="bg-green-500">

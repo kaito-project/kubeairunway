@@ -109,6 +109,53 @@ const SUPPORTED_PIPELINE_TAGS = [
 ];
 
 /**
+ * Patterns to infer architecture from model ID/name
+ * Used for gated models where config metadata is not available
+ * Order matters - more specific patterns should come first
+ */
+const ARCHITECTURE_INFERENCE_PATTERNS: Array<{ pattern: RegExp; architecture: string }> = [
+  // LLaMA family (case insensitive, can be part of word like "TinyLlama")
+  { pattern: /llama[-_]?3/i, architecture: 'LlamaForCausalLM' },
+  { pattern: /llama[-_]?2/i, architecture: 'LlamaForCausalLM' },
+  { pattern: /llama/i, architecture: 'LlamaForCausalLM' },
+  // Mistral family (mixtral must come before mistral)
+  { pattern: /\bmixtral/i, architecture: 'MixtralForCausalLM' },
+  { pattern: /\bmistral/i, architecture: 'MistralForCausalLM' },
+  // Qwen family (more specific versions first)
+  { pattern: /\bqwen[-_]?3/i, architecture: 'Qwen3ForCausalLM' },
+  { pattern: /\bqwen/i, architecture: 'Qwen2ForCausalLM' },
+  // Gemma family (gemma-2 or gemma2 for Gemma 2, otherwise Gemma 1)
+  { pattern: /\bgemma[-_]?2(?:-|$)/i, architecture: 'Gemma2ForCausalLM' },
+  { pattern: /\bgemma2\b/i, architecture: 'Gemma2ForCausalLM' },
+  { pattern: /\bgemma\b/i, architecture: 'GemmaForCausalLM' },
+  // Phi family
+  { pattern: /\bphi[-_]?3/i, architecture: 'Phi3ForCausalLM' },
+  { pattern: /\bphi/i, architecture: 'PhiForCausalLM' },
+  // Falcon
+  { pattern: /\bfalcon/i, architecture: 'FalconForCausalLM' },
+  // DeepSeek
+  { pattern: /\bdeepseek/i, architecture: 'DeepseekV2ForCausalLM' },
+  // Granite
+  { pattern: /\bgranite/i, architecture: 'GraniteForCausalLM' },
+  // OLMo
+  { pattern: /\bolmo[-_]?2/i, architecture: 'Olmo2ForCausalLM' },
+  { pattern: /\bolmo/i, architecture: 'OlmoForCausalLM' },
+];
+
+/**
+ * Infer architecture from model ID when config is not available
+ * This is used for gated models where the HuggingFace API doesn't return full metadata
+ */
+export function inferArchitectureFromModelId(modelId: string): string[] {
+  for (const { pattern, architecture } of ARCHITECTURE_INFERENCE_PATTERNS) {
+    if (pattern.test(modelId)) {
+      return [architecture];
+    }
+  }
+  return [];
+}
+
+/**
  * Check which engines support a given architecture
  */
 export function getSupportedEngines(architectures: string[]): Engine[] {
@@ -166,6 +213,40 @@ export function getIncompatibilityReason(
 }
 
 /**
+ * Parse parameter count from model name/ID
+ * Handles common naming conventions like "8B", "70B", "1.5B", "0.6B", "405B", "7b", etc.
+ * 
+ * @param modelId - Model ID or name (e.g., "meta-llama/Llama-3.1-8B-Instruct")
+ * @returns Parameter count or undefined if not parseable
+ */
+export function parseParameterCountFromName(modelId: string): number | undefined {
+  // Match patterns like "8B", "70B", "1.5B", "0.6B", "405b", "7B", "1B" etc.
+  // Must be preceded by a word boundary, hyphen, or underscore
+  // Case insensitive
+  const match = modelId.match(/(?:^|[-_./])(\d+(?:\.\d+)?)\s*[Bb](?:$|[-_./]|illion)?/);
+  
+  if (match) {
+    const billions = parseFloat(match[1]);
+    if (!isNaN(billions) && billions > 0 && billions < 10000) {
+      // Convert billions to actual parameter count
+      return billions * 1_000_000_000;
+    }
+  }
+  
+  // Also try matching "M" for millions (e.g., "125M", "350M")
+  const millionMatch = modelId.match(/(?:^|[-_./])(\d+(?:\.\d+)?)\s*[Mm](?:$|[-_./]|illion)?/);
+  
+  if (millionMatch) {
+    const millions = parseFloat(millionMatch[1]);
+    if (!isNaN(millions) && millions > 0 && millions < 10000) {
+      return millions * 1_000_000;
+    }
+  }
+  
+  return undefined;
+}
+
+/**
  * Extract parameter count from HuggingFace model metadata
  */
 export function extractParameterCount(model: HfApiModelResult): number | undefined {
@@ -182,22 +263,41 @@ export function extractParameterCount(model: HfApiModelResult): number | undefin
     if (total > 0) return total;
   }
   
-  return undefined;
+  // Fallback: parse parameter count from model name
+  // This handles gated models and cases where safetensors metadata is not available
+  return parseParameterCountFromName(model.id);
 }
 
 /**
  * Process a raw HuggingFace API result into our search result format
  */
 export function processHfModel(model: HfApiModelResult): HfModelSearchResult {
-  const architectures = model.config?.architectures || [];
+  // Get architectures from config, or infer from model ID for gated models
+  let architectures = model.config?.architectures || [];
+  const isGated = model.gated === true || model.gated === 'auto' || model.gated === 'manual';
+  
+  // For gated models without architecture info, try to infer it from the model ID
+  // The HuggingFace API doesn't return full metadata for gated models without auth
+  if (architectures.length === 0) {
+    architectures = inferArchitectureFromModelId(model.id);
+  }
+  
   const supportedEngines = getSupportedEngines(architectures);
   const pipelineTag = model.pipeline_tag || '';
   const libraryName = model.library_name || '';
   
-  const compatible = 
+  // For gated models without metadata, assume they're compatible if we could infer architecture
+  // This is because gated models (like meta-llama) are typically text-generation models
+  const hasInferredCompatibility = architectures.length > 0 && supportedEngines.length > 0;
+  const hasExplicitCompatibility = 
     isPipelineTagCompatible(pipelineTag) &&
     supportedEngines.length > 0 &&
     (libraryName === 'transformers' || libraryName === 'vllm' || libraryName === '');
+  
+  // A model is compatible if either:
+  // 1. It has explicit metadata confirming compatibility
+  // 2. It's missing metadata but we could infer a supported architecture (likely a gated model)
+  const compatible = hasExplicitCompatibility || hasInferredCompatibility;
   
   const incompatibilityReason = compatible 
     ? undefined 
@@ -219,7 +319,7 @@ export function processHfModel(model: HfApiModelResult): HfModelSearchResult {
     pipelineTag,
     libraryName,
     architectures,
-    gated: model.gated === true || model.gated === 'auto' || model.gated === 'manual',
+    gated: isGated,
     parameterCount,
     estimatedGpuMemory: gpuMemory ? formatGpuMemory(gpuMemory) : undefined,
     estimatedGpuMemoryGb: gpuMemory,

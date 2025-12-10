@@ -62,15 +62,20 @@ export function HuggingFaceCallbackPage() {
       try {
         // Exchange code for token
         const redirectUri = `${window.location.origin}/oauth/callback/huggingface`;
+        console.log('[HF OAuth] Exchanging code for token...');
         const tokenResponse = await exchangeToken.mutateAsync({ code, redirectUri });
+        console.log('[HF OAuth] Token exchange successful, user:', tokenResponse.user.name);
 
         setUsername(tokenResponse.user.name);
 
         // Save token to localStorage for frontend use (model searches, etc.)
         saveHfAccessToken(tokenResponse.accessToken);
+        console.log('[HF OAuth] Saved token to localStorage');
 
         // Save token to K8s secrets
-        await saveToken.mutateAsync(tokenResponse.accessToken);
+        console.log('[HF OAuth] Saving token to K8s secrets...');
+        const saveResult = await saveToken.mutateAsync(tokenResponse.accessToken);
+        console.log('[HF OAuth] Save result:', saveResult);
 
         setStatus('success');
 
@@ -83,6 +88,7 @@ export function HuggingFaceCallbackPage() {
           });
         }, 2000);
       } catch (err) {
+        console.error('[HF OAuth] Error:', err);
         setStatus('error');
         setErrorMessage(err instanceof Error ? err.message : 'Failed to complete OAuth flow');
         clearOAuthSession();

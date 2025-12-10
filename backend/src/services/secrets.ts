@@ -186,16 +186,19 @@ class SecretsService {
       // Ensure namespace exists
       const nsExists = await this.ensureNamespace(namespace);
       if (!nsExists) {
+        logger.warn({ namespace }, 'Namespace does not exist and could not be created');
         results.push({ namespace, success: false, error: 'Failed to create namespace' });
         continue;
       }
 
       // Create/update secret
       const result = await this.upsertSecretInNamespace(namespace, token);
+      logger.info({ namespace, success: result.success, error: result.error }, 'Secret upsert result');
       results.push({ namespace, ...result });
     }
 
     const allSuccess = results.every((r) => r.success);
+    logger.info({ allSuccess, results }, 'HuggingFace secret distribution complete');
     return { success: allSuccess, results };
   }
 

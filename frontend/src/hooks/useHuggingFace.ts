@@ -59,6 +59,7 @@ export function useHuggingFaceStatus() {
     queryKey: ['huggingface', 'status'],
     queryFn: () => huggingFaceApi.getSecretStatus(),
     staleTime: 30000, // 30 seconds
+    refetchOnMount: 'always', // Always refetch when component mounts
     retry: 1,
   });
 }
@@ -71,8 +72,9 @@ export function useSaveHuggingFaceToken() {
 
   return useMutation({
     mutationFn: (accessToken: string) => huggingFaceApi.saveSecret({ accessToken }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['huggingface', 'status'] });
+    onSuccess: async () => {
+      // Wait for the status query to be invalidated and refetched
+      await queryClient.invalidateQueries({ queryKey: ['huggingface', 'status'] });
     },
   });
 }
@@ -85,8 +87,11 @@ export function useDeleteHuggingFaceSecret() {
 
   return useMutation({
     mutationFn: () => huggingFaceApi.deleteSecret(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['huggingface', 'status'] });
+    onSuccess: async () => {
+      // Clear localStorage token when disconnecting
+      clearHfAccessToken();
+      // Wait for the status query to be invalidated and refetched
+      await queryClient.invalidateQueries({ queryKey: ['huggingface', 'status'] });
     },
   });
 }
