@@ -38,7 +38,7 @@ describe('Hono Routes', () => {
       // Should return 404 if model doesn't exist, but importantly it should NOT
       // be a route-level 404 (which would indicate the pattern didn't match)
       const data = await res.json();
-      
+
       // If model exists, should return it
       // If model doesn't exist, should return { error: { message: 'Model not found' } }
       // NOT { error: { message: 'Route not found...' } }
@@ -92,7 +92,7 @@ describe('Hono Routes', () => {
         // May fail if no k8s cluster, but should return valid response structure
         const status = res.status;
         expect([200, 500]).toContain(status);
-        
+
         if (status === 200) {
           const data = await res.json();
           expect(data.deployments).toBeDefined();
@@ -117,7 +117,7 @@ describe('Hono Routes', () => {
         // May succeed or fail depending on k8s availability
         const status = res.status;
         expect([200, 500]).toContain(status);
-        
+
         if (status === 200) {
           const data = await res.json();
           expect(data.runtimes).toBeDefined();
@@ -164,7 +164,7 @@ describe('Hono Routes', () => {
 
     test('public routes work without auth when AUTH_ENABLED=true', async () => {
       process.env.AUTH_ENABLED = 'true';
-      
+
       // Health endpoint should be public
       const healthRes = await app.request('/api/health');
       expect(healthRes.status).toBe(200);
@@ -191,7 +191,7 @@ describe('Hono Routes', () => {
 
     test('protected routes work without auth when AUTH_ENABLED=false', async () => {
       process.env.AUTH_ENABLED = 'false';
-      
+
       // Models endpoint should work without auth
       const res = await app.request('/api/models');
       expect(res.status).toBe(200);
@@ -199,7 +199,7 @@ describe('Hono Routes', () => {
 
     test('protected routes require auth when AUTH_ENABLED=true', async () => {
       process.env.AUTH_ENABLED = 'true';
-      
+
       // Models endpoint should require auth
       const res = await app.request('/api/models');
       expect(res.status).toBe(401);
@@ -209,7 +209,7 @@ describe('Hono Routes', () => {
 
     test('invalid bearer token returns 401', async () => {
       process.env.AUTH_ENABLED = 'true';
-      
+
       const res = await app.request('/api/models', {
         headers: {
           'Authorization': 'Bearer invalid-token',
@@ -294,7 +294,7 @@ describe('Hono Routes', () => {
         // May fail without k8s, but should return valid response structure or 500
         const status = res.status;
         expect([200, 500]).toContain(status);
-        
+
         if (status === 200) {
           const data = await res.json();
           expect(data.configured).toBeDefined();
@@ -330,20 +330,25 @@ describe('Hono Routes', () => {
     });
 
     test('DELETE /api/secrets/huggingface route exists', async () => {
+      // Mock the secretsService to avoid actually deleting secrets from a real cluster
+      const { secretsService } = await import('./services/secrets');
+      const originalDeleteHfSecrets = secretsService.deleteHfSecrets;
+
+      // Replace with mock that returns success without touching K8s
+      secretsService.deleteHfSecrets = async () => ({
+        success: true,
+        results: [{ namespace: 'test-ns', success: true }],
+      });
+
       try {
-        const res = await withTimeout(
-          app.request('/api/secrets/huggingface', { method: 'DELETE' }),
-          K8S_TEST_TIMEOUT
-        );
-        // May succeed or fail depending on k8s availability, but route should exist
-        expect([200, 500]).toContain(res.status);
-      } catch (error) {
-        // If K8s is not available, the request may timeout - that's acceptable
-        if (error instanceof Error && error.message.includes('timed out')) {
-          console.log('Skipping test: K8s API not available (timeout)');
-          return;
-        }
-        throw error;
+        const res = await app.request('/api/secrets/huggingface', { method: 'DELETE' });
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.success).toBe(true);
+        expect(data.message).toBe('HuggingFace secrets deleted successfully');
+      } finally {
+        // Restore original function
+        secretsService.deleteHfSecrets = originalDeleteHfSecrets;
       }
     });
   });
