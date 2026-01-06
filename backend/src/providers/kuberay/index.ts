@@ -68,7 +68,7 @@ function getKuberayVersion(): string {
  */
 export class KubeRayProvider implements Provider {
   id = 'kuberay';
-  name = 'KubeRay';
+  name = 'Ray Serve via KubeRay';
   description = 'KubeRay enables Ray Serve on Kubernetes for scalable LLM inference with vLLM backend, supporting both aggregated and disaggregated (P/D) serving modes.';
   defaultNamespace = 'kuberay-system';
 

@@ -180,10 +180,6 @@ This plan transforms KubeFoundry from a "single active provider" model to a "mul
 - Show CRD details for ALL runtimes, not just "active" one
 - Remove references to "active provider"
 
-### 3.3 Update Installation Page
-
-**File:** `frontend/src/pages/InstallationPage.tsx`
-
 **Restructure:**
 - Show both runtimes side-by-side or in tabs
 - Each runtime has its own installation status and actions

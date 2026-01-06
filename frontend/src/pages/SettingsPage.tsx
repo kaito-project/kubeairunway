@@ -447,7 +447,7 @@ export function SettingsPage() {
                         ? 'Kubernetes AI Toolchain Operator for simplified model deployment'
                         : runtime.id === 'dynamo'
                           ? 'NVIDIA Dynamo for high-performance GPU inference'
-                          : 'KubeRay for distributed Ray-based model serving with vLLM'}
+                          : 'Ray Serve via KubeRay for distributed Ray-based model serving with vLLM'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
