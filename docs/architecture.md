@@ -302,8 +302,11 @@ Handles KAITO/AIKit image operations:
 
 ### AIConfiguratorService
 Interfaces with NVIDIA AI Configurator for optimal inference configuration:
-- Check if AI Configurator CLI is available locally
-- Analyze model + GPU combinations to get optimal settings
-- Parse AI Configurator JSON output into deployment configuration
+- Check if AI Configurator CLI is available locally (with 5-minute caching)
+- Analyze model + GPU combinations to get optimal settings (tensor parallelism, batch size, etc.)
+- Parse AI Configurator CSV output into deployment configuration
+- Support aggregated and disaggregated serving modes
 - Normalize GPU product labels to AI Configurator format
 - Provide sensible defaults when AI Configurator is unavailable
+- Input validation to prevent command injection attacks
+- Automatic temp directory cleanup with try/finally pattern

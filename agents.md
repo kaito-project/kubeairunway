@@ -63,6 +63,7 @@ Read these files **only when relevant** to your task:
 - Metrics service: `backend/src/services/metrics.ts`
 - Autoscaler service: `backend/src/services/autoscaler.ts`
 - GPU validation: `backend/src/services/gpuValidation.ts`
-- AI Configurator: `backend/src/services/aiconfigurator.ts`
+- AI Configurator service: `backend/src/services/aiconfigurator.ts`
+- AI Configurator routes: `backend/src/routes/aiconfigurator.ts`
 - Prometheus parser: `backend/src/lib/prometheus-parser.ts`
 - K8s error handling: `backend/src/lib/k8s-errors.ts`

@@ -966,6 +966,159 @@ Set up build infrastructure (deploy registry and BuildKit if needed).
 }
 ```
 
+## AI Configurator
+
+Endpoints for NVIDIA AI Configurator integration to get optimal inference configurations.
+
+### GET /aiconfigurator/status
+Check if AI Configurator CLI is available on the system.
+
+**Response (available):**
+```json
+{
+  "available": true,
+  "version": "0.4.0"
+}
+```
+
+**Response (unavailable):**
+```json
+{
+  "available": false,
+  "error": "AI Configurator CLI not found"
+}
+```
+
+**Notes:**
+- Status is cached for 5 minutes to avoid repeated CLI calls
+- AI Configurator must be installed locally: https://github.com/ai-dynamo/aiconfigurator
+
+### POST /aiconfigurator/analyze
+Analyze a model + GPU combination and return optimal configuration.
+
+**Request Body:**
+```json
+{
+  "modelId": "Qwen/Qwen3-0.6B",
+  "gpuType": "H100-80GB",
+  "gpuCount": 2,
+  "optimizeFor": "throughput",
+  "maxLatencyMs": 100
+}
+```
+
+**Required Fields:**
+- `modelId` - HuggingFace model ID (validated format: `org/model-name` or `model-name`)
+- `gpuType` - GPU type (e.g., "A100-80GB", "H100", "L40S")
+- `gpuCount` - Number of GPUs available (minimum: 1)
+
+**Optional Fields:**
+- `optimizeFor` - Optimization target: `"throughput"` (default) or `"latency"`
+- `maxLatencyMs` - Target time-to-first-token latency constraint in milliseconds
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "config": {
+    "tensorParallelDegree": 1,
+    "pipelineParallelDegree": 1,
+    "maxBatchSize": 256,
+    "maxNumSeqs": 256,
+    "gpuMemoryUtilization": 0.8,
+    "maxModelLen": 5000
+  },
+  "mode": "aggregated",
+  "replicas": 1,
+  "warnings": [],
+  "estimatedPerformance": {
+    "throughputTokensPerSec": 8901.5,
+    "latencyP50Ms": 187.99,
+    "latencyP99Ms": 281.98,
+    "gpuUtilization": 0.8
+  },
+  "backend": "vllm",
+  "supportedBackends": ["vllm", "sglang", "trtllm"]
+}
+```
+
+**Response (disaggregated mode):**
+```json
+{
+  "success": true,
+  "config": {
+    "tensorParallelDegree": 1,
+    "pipelineParallelDegree": 1,
+    "maxBatchSize": 256,
+    "maxNumSeqs": 256,
+    "gpuMemoryUtilization": 0.8,
+    "maxModelLen": 5000,
+    "prefillTensorParallel": 1,
+    "decodeTensorParallel": 1,
+    "prefillReplicas": 1,
+    "decodeReplicas": 1
+  },
+  "mode": "disaggregated",
+  "replicas": 1,
+  "warnings": [],
+  "estimatedPerformance": {
+    "throughputTokensPerSec": 8405.12,
+    "latencyP50Ms": 25.42,
+    "latencyP99Ms": 38.13,
+    "gpuUtilization": 0.8
+  },
+  "backend": "vllm",
+  "supportedBackends": ["vllm", "sglang", "trtllm"]
+}
+```
+
+**Response (CLI unavailable - returns defaults):**
+```json
+{
+  "success": false,
+  "config": {
+    "tensorParallelDegree": 2,
+    "maxBatchSize": 256,
+    "gpuMemoryUtilization": 0.9,
+    "maxModelLen": 4096
+  },
+  "mode": "aggregated",
+  "replicas": 1,
+  "error": "AI Configurator CLI not found",
+  "warnings": ["AI Configurator not available, using default configuration"]
+}
+```
+
+**Modes:**
+- `aggregated` - Traditional serving where prefill and decode run on same GPUs
+- `disaggregated` - Prefill and decode separated for lower latency (NVIDIA Dynamo feature)
+
+**Supported Backends by GPU:**
+- H100: vLLM, SGLang, TensorRT-LLM
+- A100, H200, L40S, B200, GB200: TensorRT-LLM only (vLLM data not available in AI Configurator)
+
+### POST /aiconfigurator/normalize-gpu
+Normalize a GPU product string to AI Configurator format.
+
+**Request Body:**
+```json
+{
+  "gpuProduct": "nvidia-a100-sxm4-80gb"
+}
+```
+
+**Response:**
+```json
+{
+  "gpuProduct": "nvidia-a100-sxm4-80gb",
+  "normalized": "A100-80GB"
+}
+```
+
+**Notes:**
+- Useful for converting Kubernetes node GPU labels to AI Configurator expected format
+- Handles various formats: NVIDIA prefixes, SXM/PCIe variants, Tesla prefixes
+
 ## Error Responses
 
 All endpoints return errors in this format:

@@ -11,9 +11,10 @@ A web-based platform for deploying and managing large language models on Kuberne
 - 🔍 **Smart Filtering**: Automatically filters models by architecture compatibility
 - 📊 **GPU Capacity Warnings**: Visual indicators showing if models fit your cluster's GPU memory
 - ⚡ **Autoscaler Integration**: Detects cluster autoscaling and provides capacity guidance
+- 🧠 **AI Configurator**: NVIDIA AI Configurator integration for optimal inference settings
 - 🚀 **One-Click Deploy**: Configure and deploy models without writing YAML
 - 📈 **Live Dashboard**: Monitor deployments with auto-refresh and status tracking
-- � **Real-Time Logs**: Stream container logs directly from the UI
+- 📝 **Real-Time Logs**: Stream container logs directly from the UI
 - 📊 **Deployment Metrics**: View Prometheus metrics for running deployments (in-cluster)
 - 🔌 **Multi-Provider Support**: Extensible architecture supporting multiple inference runtimes
 - 🔧 **Multiple Engines**: vLLM, SGLang, and TensorRT-LLM (via NVIDIA Dynamo)
