@@ -293,12 +293,31 @@ class KubernetesService {
       ),
       { operationName: 'createDeployment' }
     );
+
+    // For KAITO vLLM deployments, create a separate service targeting port 8000
+    // KAITO controller creates its service with hardcoded targetPort 5000, which doesn't work for vLLM
+    const kaitoConfig = config as { modelSource?: string };
+    if (resolvedProviderId === 'kaito' && kaitoConfig.modelSource === 'vllm') {
+      try {
+        await this.createService(
+          config.name,
+          config.namespace,
+          8000,  // service port
+          8000,  // target port (vLLM listens on 8000)
+          { 'kaito.sh/workspace': config.name }  // KAITO pod selector
+        );
+      } catch (error) {
+        logger.warn({ error, name: config.name }, 'Failed to create vLLM service, deployment may not be accessible');
+      }
+    }
   }
 
   async deleteDeployment(name: string, namespace: string, providerId?: string): Promise<void> {
     // If provider is specified, delete from that provider
     if (providerId) {
       await this.deleteDeploymentFromProvider(name, namespace, providerId);
+      // Also try to delete vLLM service if it exists
+      await this.deleteService(`${name}-vllm`, namespace);
       return;
     }
 
@@ -310,6 +329,9 @@ class KubernetesService {
 
     // Use the provider from the deployment status
     await this.deleteDeploymentFromProvider(name, namespace, deployment.provider);
+    
+    // Also try to delete vLLM service if it exists (for KAITO vLLM deployments)
+    await this.deleteService(`${name}-vllm`, namespace);
   }
 
   /**
@@ -1019,6 +1041,82 @@ class KubernetesService {
       }
       logger.error({ error, podName, namespace }, 'Error getting pod logs');
       throw new Error(`Failed to get logs for pod '${podName}': ${error?.message || 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Create a Kubernetes Service for a deployment
+   * Used when the provider's controller doesn't create the correct service (e.g., KAITO vLLM)
+   */
+  async createService(
+    name: string,
+    namespace: string,
+    port: number,
+    targetPort: number,
+    selector: Record<string, string>
+  ): Promise<void> {
+    const service: k8s.V1Service = {
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: {
+        name: `${name}-vllm`,
+        namespace,
+        labels: {
+          'app.kubernetes.io/name': 'kubefoundry',
+          'app.kubernetes.io/instance': name,
+          'app.kubernetes.io/managed-by': 'kubefoundry',
+          'kubefoundry.io/service-type': 'vllm',
+        },
+      },
+      spec: {
+        type: 'ClusterIP',
+        ports: [
+          {
+            port,
+            targetPort: targetPort as unknown as k8s.IntOrString,
+            protocol: 'TCP',
+            name: 'http',
+          },
+        ],
+        selector,
+      },
+    };
+
+    try {
+      await withRetry(
+        () => this.coreV1Api.createNamespacedService(namespace, service),
+        { operationName: 'createService' }
+      );
+      logger.info({ name: `${name}-vllm`, namespace, port, targetPort }, 'Created vLLM service');
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.response?.statusCode;
+      if (statusCode === 409) {
+        // Service already exists, that's fine
+        logger.debug({ name: `${name}-vllm`, namespace }, 'Service already exists');
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a Kubernetes Service
+   */
+  async deleteService(name: string, namespace: string): Promise<void> {
+    try {
+      await withRetry(
+        () => this.coreV1Api.deleteNamespacedService(name, namespace),
+        { operationName: 'deleteService' }
+      );
+      logger.info({ name, namespace }, 'Deleted service');
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.response?.statusCode;
+      if (statusCode === 404) {
+        // Service doesn't exist, that's fine
+        logger.debug({ name, namespace }, 'Service not found (already deleted)');
+        return;
+      }
+      throw error;
     }
   }
 

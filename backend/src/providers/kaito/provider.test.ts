@@ -293,7 +293,7 @@ describe('KaitoProvider', () => {
       expect(status.replicas.desired).toBe(2);
       expect(status.replicas.ready).toBe(2);
       expect(status.engine).toBe('llamacpp');
-      expect(status.frontendService).toBe('test-deployment:5000');
+      expect(status.frontendService).toBe('test-deployment:80');  // KAITO service exposes port 80
     });
 
     test('parses vLLM deployment status', () => {
@@ -334,7 +334,7 @@ describe('KaitoProvider', () => {
       expect(status.name).toBe('vllm-deployment');
       expect(status.engine).toBe('vllm');
       expect(status.modelId).toBe('mistralai/Mistral-7B-v0.1');
-      expect(status.frontendService).toBe('vllm-deployment:8000');
+      expect(status.frontendService).toBe('vllm-deployment-vllm:8000');  // Uses separate vLLM service
     });
 
     test('parses pending deployment', () => {

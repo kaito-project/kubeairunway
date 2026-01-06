@@ -65,8 +65,9 @@ export function DeploymentDetailsPage() {
 
   const copyPortForwardCommand = () => {
     if (!deployment) return
-    const servicePort = deployment.provider === 'kaito' ? '80' : '8000'
-    const command = `kubectl port-forward svc/${deployment.frontendService || deployment.name + '-frontend'} 8000:${servicePort} -n ${deployment.namespace}`
+    // Parse frontendService which may include port (e.g., "name:8000" or "name-vllm:8000")
+    const [serviceName, servicePort] = (deployment.frontendService || `${deployment.name}-frontend:8000`).split(':')
+    const command = `kubectl port-forward svc/${serviceName} 8000:${servicePort || '8000'} -n ${deployment.namespace}`
     navigator.clipboard.writeText(command)
     toast({
       title: 'Copied to clipboard',
@@ -98,8 +99,9 @@ export function DeploymentDetailsPage() {
     )
   }
 
-  const servicePort = deployment.provider === 'kaito' ? '80' : '8000'
-  const portForwardCommand = `kubectl port-forward svc/${deployment.frontendService || deployment.name + '-frontend'} 8000:${servicePort} -n ${deployment.namespace}`
+  // Parse frontendService which may include port (e.g., "name:5000" or "name-vllm:8000")
+  const [serviceName, servicePort] = (deployment.frontendService || `${deployment.name}-frontend:8000`).split(':')
+  const portForwardCommand = `kubectl port-forward svc/${serviceName} 8000:${servicePort || '8000'} -n ${deployment.namespace}`
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">

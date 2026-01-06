@@ -428,8 +428,11 @@ export class KaitoProvider implements Provider {
     // readyReplicas should be min of workerNodes and desired, or 0 if not running
     const readyReplicas = phase === 'Running' ? Math.min(workerNodes.length || desiredReplicas, desiredReplicas) : 0;
 
-    // Determine the service port based on engine
-    const servicePort = engine === 'vllm' ? VLLM_PORT : LLAMACPP_PORT;
+    // Determine the service port and name based on engine
+    // KAITO's auto-created service uses port 80 (targeting container port 5000 for llama.cpp)
+    // For vLLM, we create a separate KubeFoundry-managed service on port 8000
+    const servicePort = engine === 'vllm' ? VLLM_PORT : 80;  // KAITO service exposes port 80
+    const serviceName = engine === 'vllm' ? `${metadata.name}-vllm` : metadata.name;
 
     return {
       name: metadata.name || 'unknown',
@@ -454,7 +457,7 @@ export class KaitoProvider implements Provider {
       })),
       pods: [], // Pods are managed by KAITO
       createdAt: metadata.creationTimestamp || new Date().toISOString(),
-      frontendService: `${metadata.name}:${servicePort}`, // Include port for vLLM vs llama.cpp
+      frontendService: `${serviceName}:${servicePort}`, // Use vLLM service name for vLLM deployments
     };
   }
 
