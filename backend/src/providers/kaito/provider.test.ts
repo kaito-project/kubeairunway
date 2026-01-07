@@ -664,6 +664,8 @@ describe('KaitoProvider', () => {
         computeType: 'cpu' as const,
         replicas: 1,
         enableGatewayRouting: true,
+        gatewayName: 'inference-gateway',
+        gatewayNamespace: 'gateway-system',
       };
 
       const httpRoute = provider.generateHTTPRoute!(config as any);
@@ -674,7 +676,7 @@ describe('KaitoProvider', () => {
       expect((httpRoute.metadata as any).namespace).toBe('test-ns');
     });
 
-    test('HTTPRoute uses port 80 for KAITO', () => {
+    test('HTTPRoute uses InferencePool backend with dynamic naming for KAITO', () => {
       const config = {
         name: 'test-deployment',
         namespace: 'test-ns',
@@ -690,12 +692,17 @@ describe('KaitoProvider', () => {
         enablePrefixCaching: false,
         trustRemoteCode: false,
         enableGatewayRouting: true,
+        gatewayName: 'inference-gateway',
+        gatewayNamespace: 'gateway-system',
       };
 
       const httpRoute = provider.generateHTTPRoute!(config as any);
       const backendRefs = (httpRoute.spec as any).rules[0].backendRefs;
 
-      expect(backendRefs[0].port).toBe(80);
+      expect(backendRefs[0].group).toBe('inference.networking.k8s.io');
+      expect(backendRefs[0].kind).toBe('InferencePool');
+      expect(backendRefs[0].name).toBe('test-deployment-pool'); // Dynamic naming: {name}-pool
+      expect(backendRefs[0].port).toBeUndefined(); // InferencePool doesn't use port
     });
 
     test('HTTPRoute has kubefoundry labels with kaito provider', () => {
@@ -709,6 +716,8 @@ describe('KaitoProvider', () => {
         computeType: 'cpu' as const,
         replicas: 1,
         enableGatewayRouting: true,
+        gatewayName: 'inference-gateway',
+        gatewayNamespace: 'gateway-system',
       };
 
       const httpRoute = provider.generateHTTPRoute!(config as any);

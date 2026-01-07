@@ -198,6 +198,8 @@ export const baseDeploymentConfigSchema = z.object({
   enablePrefixCaching: z.boolean().default(false),
   trustRemoteCode: z.boolean().default(false),
   enableGatewayRouting: z.boolean().default(false),
+  gatewayName: z.string().min(1).optional(),
+  gatewayNamespace: z.string().min(1).optional(),
   resources: z.object({
     gpu: z.number().int().min(1).default(1),
     memory: z.string().optional(),
@@ -209,4 +211,16 @@ export const baseDeploymentConfigSchema = z.object({
   decodeReplicas: z.number().int().min(1).max(10).default(1).describe('Number of decode worker replicas'),
   prefillGpus: z.number().int().min(1).default(1).describe('GPUs per prefill worker'),
   decodeGpus: z.number().int().min(1).default(1).describe('GPUs per decode worker'),
-});
+}).refine(
+  (data) => {
+    // If enableGatewayRouting is true, require gateway configuration
+    if (data.enableGatewayRouting) {
+      return data.gatewayName && data.gatewayNamespace;
+    }
+    return true;
+  },
+  {
+    message: 'gatewayName and gatewayNamespace are required when enableGatewayRouting is true',
+    path: ['enableGatewayRouting'],
+  }
+);

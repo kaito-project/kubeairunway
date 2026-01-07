@@ -88,7 +88,7 @@ describe('Hono Routes', () => {
   describe('Deployments Routes', () => {
     test('GET /api/deployments returns deployment list with pagination', async () => {
       try {
-        const res = await withTimeout(app.request('/api/deployments'), K8S_TEST_TIMEOUT);
+        const res = await withTimeout(Promise.resolve(app.request('/api/deployments')), K8S_TEST_TIMEOUT);
         // May fail if no k8s cluster, but should return valid response structure
         const status = res.status;
         expect([200, 500]).toContain(status);
@@ -113,7 +113,7 @@ describe('Hono Routes', () => {
   describe('Runtimes Routes', () => {
     test('GET /api/runtimes/status returns runtimes status', async () => {
       try {
-        const res = await withTimeout(app.request('/api/runtimes/status'), K8S_TEST_TIMEOUT);
+        const res = await withTimeout(Promise.resolve(app.request('/api/runtimes/status')), K8S_TEST_TIMEOUT);
         // May succeed or fail depending on k8s availability
         const status = res.status;
         expect([200, 500]).toContain(status);
@@ -172,7 +172,7 @@ describe('Hono Routes', () => {
       // Cluster status should be public (may timeout without k8s)
       try {
         const clusterRes = await withTimeout(
-          app.request('/api/cluster/status'),
+          Promise.resolve(app.request('/api/cluster/status')),
           K8S_TEST_TIMEOUT
         );
         expect([200, 500]).toContain(clusterRes.status); // May fail without k8s
@@ -288,7 +288,7 @@ describe('Hono Routes', () => {
     test('GET /api/secrets/huggingface/status returns status', async () => {
       try {
         const res = await withTimeout(
-          app.request('/api/secrets/huggingface/status'),
+          Promise.resolve(app.request('/api/secrets/huggingface/status')),
           K8S_TEST_TIMEOUT
         );
         // May fail without k8s, but should return valid response structure or 500

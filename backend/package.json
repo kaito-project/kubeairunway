@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "build": "node --max-old-space-size=4096 node_modules/.bin/tsc",
+    "build": "tsc",
     "start": "bun src/index.ts",
     "embed": "bun scripts/embed-assets.ts",
     "precompile": "bun run embed",
@@ -23,7 +23,6 @@
   "dependencies": {
     "@hono/zod-validator": "^0.7.5",
     "@kubernetes/client-node": "^0.21.0",
-    "@kubefoundry/shared": "workspace:*",
     "cors": "^2.8.5",
     "hono": "^4.10.7",
     "js-yaml": "^4.1.1",

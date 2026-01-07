@@ -869,7 +869,13 @@ export class DynamoProvider implements Provider {
 
   generateHTTPRoute(config: DeploymentConfig): Record<string, unknown> {
     const modelName = config.servedModelName || config.modelId;
-    const serviceName = config.name; // Service name matches deployment name
+    
+    if (!config.gatewayName || !config.gatewayNamespace) {
+      throw new Error('gatewayName and gatewayNamespace are required when enableGatewayRouting is true');
+    }
+    
+    // Dynamo convention: InferencePool name is based on deployment name with -pool suffix
+    const inferencePoolName = `${config.name}-pool`;
     
     return {
       apiVersion: 'gateway.networking.k8s.io/v1',
@@ -887,8 +893,8 @@ export class DynamoProvider implements Provider {
       spec: {
         parentRefs: [
           {
-            name: 'inference-gateway', // Default gateway name, can be configured
-            namespace: 'gateway-system',
+            name: config.gatewayName,
+            namespace: config.gatewayNamespace,
           },
         ],
         rules: [
@@ -906,8 +912,9 @@ export class DynamoProvider implements Provider {
             ],
             backendRefs: [
               {
-                name: serviceName,
-                port: 8000, // Standard inference API port
+                group: 'inference.networking.k8s.io',
+                kind: 'InferencePool',
+                name: inferencePoolName,
               },
             ],
           },

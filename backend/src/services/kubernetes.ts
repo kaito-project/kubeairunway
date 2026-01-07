@@ -301,7 +301,7 @@ class KubernetesService {
         await this.createHTTPRoute(config.namespace, httpRoute);
         logger.info({ name: config.name, namespace: config.namespace }, 'Created HTTPRoute for Gateway API routing');
       } catch (error) {
-        logger.warn({ error, name: config.name }, 'Failed to create HTTPRoute, deployment may not be accessible via Gateway API');
+        logger.warn({ error, name: config.name }, 'Failed to create HTTPRoute for Gateway API routing. The deployment will still function normally but will not be accessible through the configured Gateway. Ensure Gateway API CRDs are installed and the Gateway resource is configured.');
       }
     }
 

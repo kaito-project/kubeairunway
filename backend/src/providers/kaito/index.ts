@@ -758,8 +758,13 @@ export class KaitoProvider implements Provider {
 
   generateHTTPRoute(config: DeploymentConfig): Record<string, unknown> {
     const modelName = config.servedModelName || config.modelId;
-    // KAITO creates service name from workspace name
-    const serviceName = config.name;
+    
+    if (!config.gatewayName || !config.gatewayNamespace) {
+      throw new Error('gatewayName and gatewayNamespace are required when enableGatewayRouting is true');
+    }
+    
+    // KAITO convention: InferencePool name is based on workspace/deployment name with -pool suffix
+    const inferencePoolName = `${config.name}-pool`;
     
     return {
       apiVersion: 'gateway.networking.k8s.io/v1',
@@ -777,8 +782,8 @@ export class KaitoProvider implements Provider {
       spec: {
         parentRefs: [
           {
-            name: 'inference-gateway', // Default gateway name, can be configured
-            namespace: 'gateway-system',
+            name: config.gatewayName,
+            namespace: config.gatewayNamespace,
           },
         ],
         rules: [
@@ -796,8 +801,9 @@ export class KaitoProvider implements Provider {
             ],
             backendRefs: [
               {
-                name: serviceName,
-                port: 80, // KAITO uses port 80 for inference
+                group: 'inference.networking.k8s.io',
+                kind: 'InferencePool',
+                name: inferencePoolName,
               },
             ],
           },

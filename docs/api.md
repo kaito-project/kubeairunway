@@ -497,7 +497,10 @@ Create a new deployment.
   "hfTokenSecret": "hf-token-secret",
   "enforceEager": true,
   "enablePrefixCaching": false,
-  "trustRemoteCode": false
+  "trustRemoteCode": false,
+  "enableGatewayRouting": false,
+  "gatewayName": "inference-gateway",
+  "gatewayNamespace": "gateway-system"
 }
 ```
 
@@ -508,6 +511,17 @@ Create a new deployment.
 - `modelId` - HuggingFace model ID
 - `engine` - Inference engine (`vllm`, `sglang`, or `trtllm` for Dynamo; `vllm` for KubeRay; not used for KAITO)
 - `hfTokenSecret` - Name of the Kubernetes secret containing HuggingFace token
+
+**Optional Fields:**
+- `enableGatewayRouting` - Enable Gateway API Inference Extension (GAIE) routing (default: `false`)
+  - When enabled, creates an HTTPRoute that routes requests based on the `X-Gateway-Model-Name` header
+  - Requires Gateway API CRDs, a configured Gateway, and an InferencePool resource
+  - The Body-Based Router (BBR) extracts model names from request bodies and adds them as headers
+  - **Supported by**: Dynamo, KAITO (KubeRay does not support GAIE)
+  - **InferencePool naming**: Automatically generated as `{deployment-name}-pool` (e.g., `qwen-deployment-pool`)
+  - **Required when enableGatewayRouting is true:**
+    - `gatewayName` - Name of the Gateway resource to attach the HTTPRoute to
+    - `gatewayNamespace` - Namespace of the Gateway resource
 
 **Response:**
 ```json

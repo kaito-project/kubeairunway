@@ -21,6 +21,7 @@ A web-based platform for deploying and managing large language models on Kuberne
 - 📥 **Installation Wizard**: Install providers via Helm directly from the UI
 - 🛠️ **Complete Uninstall**: Clean uninstallation with optional CRD removal
 - 🎨 **Dark Theme**: Modern dark UI with provider-specific accents
+- 🌐 **Gateway API Support**: Optional intelligent routing via Gateway API Inference Extension (GAIE)
 
 ## Supported Providers
 
