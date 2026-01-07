@@ -26,6 +26,7 @@ export interface DeploymentConfig {
     memory?: string;             // Memory limit
   };
   engineArgs?: Record<string, unknown>;  // Engine-specific arguments
+  enableGatewayRouting?: boolean;        // Enable Gateway API Inference Extension routing
 
   // Disaggregated mode configuration (P/D separation)
   prefillReplicas?: number;      // Number of prefill worker replicas

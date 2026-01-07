@@ -152,6 +152,19 @@ export interface Provider {
    * This enables complete cleanup when uninstalling a provider
    */
   getUninstallResources(): UninstallResources;
+
+  /**
+   * Check if provider supports Gateway API Inference Extension (GAIE)
+   * When true, the provider can generate HTTPRoute resources for body-based routing
+   */
+  supportsGAIE(): boolean;
+
+  /**
+   * Generate HTTPRoute manifest for Gateway API Inference Extension
+   * Returns HTTPRoute resource for body-based model routing
+   * Only called if supportsGAIE() returns true and enableGatewayRouting is true
+   */
+  generateHTTPRoute?(config: DeploymentConfig): Record<string, unknown>;
 }
 
 /**
@@ -184,6 +197,7 @@ export const baseDeploymentConfigSchema = z.object({
   enforceEager: z.boolean().default(true),
   enablePrefixCaching: z.boolean().default(false),
   trustRemoteCode: z.boolean().default(false),
+  enableGatewayRouting: z.boolean().default(false),
   resources: z.object({
     gpu: z.number().int().min(1).default(1),
     memory: z.string().optional(),

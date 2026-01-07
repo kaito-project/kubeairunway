@@ -752,6 +752,60 @@ export class KaitoProvider implements Provider {
     ];
   }
 
+  supportsGAIE(): boolean {
+    return true; // KAITO supports Gateway API Inference Extension
+  }
+
+  generateHTTPRoute(config: DeploymentConfig): Record<string, unknown> {
+    const modelName = config.servedModelName || config.modelId;
+    // KAITO creates service name from workspace name
+    const serviceName = config.name;
+    
+    return {
+      apiVersion: 'gateway.networking.k8s.io/v1',
+      kind: 'HTTPRoute',
+      metadata: {
+        name: `${config.name}-route`,
+        namespace: config.namespace,
+        labels: {
+          'app.kubernetes.io/name': 'kubefoundry',
+          'app.kubernetes.io/instance': config.name,
+          'app.kubernetes.io/managed-by': 'kubefoundry',
+          'kubefoundry.io/provider': 'kaito',
+        },
+      },
+      spec: {
+        parentRefs: [
+          {
+            name: 'inference-gateway', // Default gateway name, can be configured
+            namespace: 'gateway-system',
+          },
+        ],
+        rules: [
+          {
+            matches: [
+              {
+                headers: [
+                  {
+                    type: 'Exact',
+                    name: 'X-Gateway-Model-Name',
+                    value: modelName,
+                  },
+                ],
+              },
+            ],
+            backendRefs: [
+              {
+                name: serviceName,
+                port: 80, // KAITO uses port 80 for inference
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
   getUninstallResources(): UninstallResources {
     return {
       // KAITO CRDs: workspaces.kaito.sh, ragengines.kaito.sh

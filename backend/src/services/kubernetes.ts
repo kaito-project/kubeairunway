@@ -294,6 +294,17 @@ class KubernetesService {
       { operationName: 'createDeployment' }
     );
 
+    // Create HTTPRoute if Gateway API routing is enabled and provider supports GAIE
+    if (config.enableGatewayRouting && provider.supportsGAIE() && provider.generateHTTPRoute) {
+      try {
+        const httpRoute = provider.generateHTTPRoute(config);
+        await this.createHTTPRoute(config.namespace, httpRoute);
+        logger.info({ name: config.name, namespace: config.namespace }, 'Created HTTPRoute for Gateway API routing');
+      } catch (error) {
+        logger.warn({ error, name: config.name }, 'Failed to create HTTPRoute, deployment may not be accessible via Gateway API');
+      }
+    }
+
     // For KAITO vLLM deployments, create a separate service targeting port 8000
     // KAITO controller creates its service with hardcoded targetPort 5000, which doesn't work for vLLM
     const kaitoConfig = config as { modelSource?: string };
@@ -318,6 +329,8 @@ class KubernetesService {
       await this.deleteDeploymentFromProvider(name, namespace, providerId);
       // Also try to delete vLLM service if it exists
       await this.deleteService(`${name}-vllm`, namespace);
+      // Try to delete HTTPRoute if it exists
+      await this.deleteHTTPRoute(`${name}-route`, namespace);
       return;
     }
 
@@ -332,6 +345,8 @@ class KubernetesService {
     
     // Also try to delete vLLM service if it exists (for KAITO vLLM deployments)
     await this.deleteService(`${name}-vllm`, namespace);
+    // Try to delete HTTPRoute if it exists
+    await this.deleteHTTPRoute(`${name}-route`, namespace);
   }
 
   /**
@@ -1114,6 +1129,63 @@ class KubernetesService {
       if (statusCode === 404) {
         // Service doesn't exist, that's fine
         logger.debug({ name, namespace }, 'Service not found (already deleted)');
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Create a Gateway API HTTPRoute resource
+   */
+  async createHTTPRoute(namespace: string, httpRoute: Record<string, unknown>): Promise<void> {
+    try {
+      // Gateway API HTTPRoute uses gateway.networking.k8s.io/v1
+      await withRetry(
+        () => this.customObjectsApi.createNamespacedCustomObject(
+          'gateway.networking.k8s.io',
+          'v1',
+          namespace,
+          'httproutes',
+          httpRoute
+        ),
+        { operationName: 'createHTTPRoute' }
+      );
+      const metadata = httpRoute.metadata as Record<string, unknown>;
+      logger.info({ name: metadata.name, namespace }, 'Created HTTPRoute');
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.response?.statusCode;
+      if (statusCode === 409) {
+        // HTTPRoute already exists, that's fine
+        const metadata = httpRoute.metadata as Record<string, unknown>;
+        logger.debug({ name: metadata.name, namespace }, 'HTTPRoute already exists');
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a Gateway API HTTPRoute resource
+   */
+  async deleteHTTPRoute(name: string, namespace: string): Promise<void> {
+    try {
+      await withRetry(
+        () => this.customObjectsApi.deleteNamespacedCustomObject(
+          'gateway.networking.k8s.io',
+          'v1',
+          namespace,
+          'httproutes',
+          name
+        ),
+        { operationName: 'deleteHTTPRoute' }
+      );
+      logger.info({ name, namespace }, 'Deleted HTTPRoute');
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.response?.statusCode;
+      if (statusCode === 404) {
+        // HTTPRoute doesn't exist, that's fine
+        logger.debug({ name, namespace }, 'HTTPRoute not found (already deleted)');
         return;
       }
       throw error;
