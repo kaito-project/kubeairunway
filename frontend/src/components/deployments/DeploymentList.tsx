@@ -88,51 +88,141 @@ export function DeploymentList({ deployments, isLoading }: DeploymentListProps) 
 
   return (
     <>
-      <div className="rounded-lg border shadow-soft-sm overflow-hidden">
-        <table className="w-full">
+      {/* Mobile Card View */}
+      <div className="md:hidden space-y-3">
+        {deployments.map((deployment, index) => (
+          <div
+            key={deployment.name}
+            className="rounded-lg border shadow-soft-sm p-4 space-y-3 bg-card"
+            style={{ animationDelay: `${index * 50}ms` }}
+          >
+            {/* Header: Name and Status */}
+            <div className="flex items-start justify-between gap-2">
+              <Link
+                to={`/deployments/${deployment.name}?namespace=${deployment.namespace}`}
+                className="font-medium hover:text-primary transition-colors text-base break-all"
+              >
+                {deployment.name}
+              </Link>
+              <DeploymentStatusBadge phase={deployment.phase} />
+            </div>
+
+            {/* Model */}
+            <p className="text-sm text-muted-foreground break-all">
+              {deployment.modelId}
+            </p>
+
+            {/* Badges Row */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">
+                {deployment.engine === 'llamacpp' ? 'Llama.cpp' : deployment.engine.toUpperCase()}
+              </Badge>
+              <Badge
+                variant="secondary"
+                className={
+                  deployment.provider === 'kuberay'
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                    : deployment.provider === 'kaito'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                    : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+                }
+              >
+                {deployment.provider === 'kuberay' ? 'KubeRay' : deployment.provider === 'kaito' ? 'KAITO' : 'Dynamo'}
+              </Badge>
+              {deployment.mode === 'disaggregated' && (
+                <Badge variant="secondary" className="text-xs">P/D</Badge>
+              )}
+            </div>
+
+            {/* Meta Row */}
+            <div className="flex items-center justify-between text-sm text-muted-foreground pt-1 border-t">
+              <span title={deployment.mode === 'disaggregated' ? 'Prefill / Decode replicas' : 'Worker replicas'}>
+                Replicas: {formatReplicaStatus(deployment)}
+              </span>
+              <span>{formatRelativeTime(deployment.createdAt)}</span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Link to={`/deployments/${deployment.name}?namespace=${deployment.namespace}`} className="flex-1">
+                <Button size="sm" variant="outline" className="w-full">
+                  <Eye className="h-4 w-4 mr-2" />
+                  View
+                </Button>
+              </Link>
+              <a
+                href={generateAynaUrl({
+                  model: deployment.modelId,
+                  provider: 'openai',
+                  endpoint: 'http://localhost:8000',
+                  type: 'chat',
+                })}
+                className="flex-1"
+              >
+                <Button size="sm" variant="outline" className="w-full">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Chat
+                </Button>
+              </a>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDeleteTarget(deployment)}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block rounded-lg border shadow-soft-sm overflow-x-auto">
+        <table className="w-full min-w-[600px]">
           <thead>
             <tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-sm font-medium">Name</th>
-              <th className="px-4 py-3 text-left text-sm font-medium hidden md:table-cell">Model</th>
-              <th className="px-4 py-3 text-left text-sm font-medium hidden sm:table-cell">Engine</th>
-              <th className="px-4 py-3 text-left text-sm font-medium hidden lg:table-cell">Runtime</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
-              <th className="px-4 py-3 text-left text-sm font-medium hidden xl:table-cell">Replicas</th>
-              <th className="px-4 py-3 text-left text-sm font-medium hidden md:table-cell">Age</th>
-              <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
+              <th className="px-4 py-3 text-left text-sm font-medium whitespace-nowrap">Name</th>
+              <th className="px-4 py-3 text-left text-sm font-medium whitespace-nowrap">Model</th>
+              <th className="px-4 py-3 text-left text-sm font-medium whitespace-nowrap hidden lg:table-cell">Engine</th>
+              <th className="px-4 py-3 text-left text-sm font-medium whitespace-nowrap hidden lg:table-cell">Runtime</th>
+              <th className="px-4 py-3 text-left text-sm font-medium whitespace-nowrap">Status</th>
+              <th className="px-4 py-3 text-left text-sm font-medium whitespace-nowrap hidden xl:table-cell">Replicas</th>
+              <th className="px-4 py-3 text-left text-sm font-medium whitespace-nowrap">Age</th>
+              <th className="px-4 py-3 text-right text-sm font-medium whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody>
             {deployments.map((deployment, index) => (
-              <tr 
-                key={deployment.name} 
+              <tr
+                key={deployment.name}
                 className="border-b last:border-0 hover:bg-muted/30 transition-colors duration-150"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
                 <td className="px-4 py-3">
-                  <Link 
+                  <Link
                     to={`/deployments/${deployment.name}?namespace=${deployment.namespace}`}
-                    className="font-medium hover:text-primary transition-colors"
+                    className="font-medium hover:text-primary transition-colors whitespace-nowrap"
                   >
                     {deployment.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 hidden md:table-cell">
+                <td className="px-4 py-3">
                   <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
                     {deployment.modelId}
                   </span>
                 </td>
-                <td className="px-4 py-3 hidden sm:table-cell">
+                <td className="px-4 py-3 hidden lg:table-cell">
                   <Badge variant="outline">
                     {deployment.engine === 'llamacpp' ? 'Llama.cpp' : deployment.engine.toUpperCase()}
                   </Badge>
                 </td>
                 <td className="px-4 py-3 hidden lg:table-cell">
-                  <Badge 
-                    variant="secondary" 
+                  <Badge
+                    variant="secondary"
                     className={
-                      deployment.provider === 'kuberay' 
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' 
+                      deployment.provider === 'kuberay'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
                         : deployment.provider === 'kaito'
                         ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
                         : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
@@ -145,15 +235,15 @@ export function DeploymentList({ deployments, isLoading }: DeploymentListProps) 
                   <DeploymentStatusBadge phase={deployment.phase} />
                 </td>
                 <td className="px-4 py-3 hidden xl:table-cell">
-                  <span className="text-sm" title={deployment.mode === 'disaggregated' ? 'Prefill / Decode replicas' : 'Worker replicas'}>
+                  <span className="text-sm whitespace-nowrap" title={deployment.mode === 'disaggregated' ? 'Prefill / Decode replicas' : 'Worker replicas'}>
                     {formatReplicaStatus(deployment)}
                   </span>
                   {deployment.mode === 'disaggregated' && (
                     <Badge variant="secondary" className="ml-2 text-xs">P/D</Badge>
                   )}
                 </td>
-                <td className="px-4 py-3 hidden md:table-cell">
-                  <span className="text-sm text-muted-foreground">
+                <td className="px-4 py-3">
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">
                     {formatRelativeTime(deployment.createdAt)}
                   </span>
                 </td>

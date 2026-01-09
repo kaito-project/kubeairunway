@@ -6,7 +6,7 @@ import { aikitService, GGUF_RUNNER_IMAGE } from '../../services/aikit';
 import logger from '../../lib/logger';
 
 // Hardcoded KAITO version
-const KAITO_VERSION = '0.6.0';
+const KAITO_VERSION = '0.8.0';
 
 // KAITO base image for vLLM mode
 const KAITO_BASE_IMAGE = 'mcr.microsoft.com/aks/kaito/kaito-base:0.1.1';
@@ -275,32 +275,43 @@ export class KaitoProvider implements Provider {
 
   /**
    * Build the resource spec for node targeting and scaling
-   * Uses preferredNodes approach to use existing nodes instead of auto-provisioning
+   * Uses labelSelector for BYO node scenarios (KAITO 0.8.0+)
    */
   private buildResourceSpec(config: KaitoDeploymentConfig): Record<string, unknown> {
     const resourceSpec: Record<string, unknown> = {
       count: config.replicas || 1,
     };
 
-    // labelSelector is required by KAITO API
+    // If user provided a custom labelSelector, use it
     if (config.labelSelector && Object.keys(config.labelSelector).length > 0) {
       resourceSpec.labelSelector = {
         matchLabels: config.labelSelector,
       };
     } else {
-      // Use a common label that exists on all Linux nodes to allow scheduling anywhere
-      // This avoids node affinity issues that occur with empty matchLabels
-      resourceSpec.labelSelector = {
-        matchLabels: {
-          'kubernetes.io/os': 'linux',
-        },
-      };
+      // Determine default labelSelector based on compute requirements
+      // vLLM always requires GPU
+      const requiresGPU = config.computeType === 'gpu' || config.modelSource === 'vllm';
+
+      if (requiresGPU) {
+        // GPU workloads: use NVIDIA GPU Feature Discovery label
+        // This label is published by NVIDIA GFD on nodes with NVIDIA GPUs
+        resourceSpec.labelSelector = {
+          matchLabels: {
+            'nvidia.com/gpu.present': 'true',
+          },
+        };
+      } else {
+        // CPU-only workloads: use basic Linux node selector
+        resourceSpec.labelSelector = {
+          matchLabels: {
+            'kubernetes.io/os': 'linux',
+          },
+        };
+      }
     }
 
-    // Use preferredNodes to specify existing nodes instead of auto-provisioning
-    if (config.preferredNodes && config.preferredNodes.length > 0) {
-      resourceSpec.preferredNodes = config.preferredNodes;
-    }
+    // NOTE: preferredNodes removed - deprecated in KAITO 0.8.0
+    // BYO nodes should use labelSelector instead
 
     return resourceSpec;
   }
@@ -538,8 +549,8 @@ export class KaitoProvider implements Provider {
       },
       {
         title: 'Install KAITO Workspace Operator',
-        command: `helm upgrade --install kaito-workspace kaito/workspace --version ${KAITO_VERSION} -n kaito-workspace --create-namespace --wait`,
-        description: `Install the KAITO workspace operator v${KAITO_VERSION} which manages AI workloads.`,
+        command: `helm upgrade --install kaito-workspace kaito/workspace --version ${KAITO_VERSION} -n kaito-workspace --create-namespace --set featureGates.disableNodeAutoProvisioning=true --set localCSIDriver.useLocalCSIDriver=false --set gpu-feature-discovery.enabled=false --wait`,
+        description: `Install the KAITO workspace operator v${KAITO_VERSION} with Node Auto-Provisioning disabled (BYO nodes mode). Local CSI Driver and GPU Feature Discovery are disabled as they're provided by the NVIDIA GPU Operator.`,
       },
     ];
   }
@@ -561,6 +572,17 @@ export class KaitoProvider implements Provider {
         version: KAITO_VERSION,
         namespace: 'kaito-workspace',
         createNamespace: true,
+        values: {
+          featureGates: {
+            disableNodeAutoProvisioning: true,
+          },
+          localCSIDriver: {
+            useLocalCSIDriver: false,
+          },
+          'gpu-feature-discovery': {
+            enabled: false,
+          },
+        },
       },
     ];
   }

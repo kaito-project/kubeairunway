@@ -70,8 +70,10 @@ class HelmService {
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      const startTime = Date.now();
+      const fullCommand = `${this.helmPath} ${args.join(' ')}`;
 
-      logger.debug({ command: this.helmPath, args }, `Executing: ${this.helmPath} ${args.join(' ')}`);
+      logger.info({ command: fullCommand, timeoutMs }, `Executing helm command`);
 
       const proc = spawn(this.helmPath, args, {
         env: { ...process.env },
@@ -102,17 +104,29 @@ class HelmService {
 
       proc.on('close', (code) => {
         clearTimeout(timeout);
+        const durationMs = Date.now() - startTime;
+        const durationSec = (durationMs / 1000).toFixed(1);
         
         if (timedOut) {
+          logger.error({ command: fullCommand, durationSec, stdout: stdout.slice(-500), stderr: stderr.slice(-500) }, `Helm command timed out after ${durationSec}s`);
           resolve({
             success: false,
             stdout,
-            stderr: stderr + '\nCommand timed out',
+            stderr: stderr + `\nCommand timed out after ${timeoutMs / 1000} seconds`,
             exitCode: null,
           });
-        } else {
+        } else if (code === 0) {
+          logger.info({ command: fullCommand, durationSec }, `Helm command completed successfully in ${durationSec}s`);
           resolve({
-            success: code === 0,
+            success: true,
+            stdout,
+            stderr,
+            exitCode: code,
+          });
+        } else {
+          logger.error({ command: fullCommand, exitCode: code, durationSec, stdout: stdout.slice(-500), stderr: stderr.slice(-500) }, `Helm command failed with exit code ${code} after ${durationSec}s`);
+          resolve({
+            success: false,
             stdout,
             stderr,
             exitCode: code,
@@ -264,6 +278,8 @@ class HelmService {
     // Don't use --wait - return immediately after submitting the install
     // The caller should poll for installation status updates
     // Timeout still applies to the install command itself
+    
+    logger.info({ chart: chart.name, namespace: chart.namespace, version: chart.version, values: chart.values }, `Installing helm chart: ${chart.name}`);
 
     return this.execute(args, onStream);
   }

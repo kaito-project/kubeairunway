@@ -40,7 +40,6 @@ export interface DeploymentConfig {
   ggufRunMode?: GgufRunMode;     // 'direct' uses runner image, 'build' builds custom image
   imageRef?: string;             // Built/resolved image reference
   computeType?: 'cpu' | 'gpu';   // Compute type for KAITO
-  preferredNodes?: string[];     // Preferred node names for scheduling
   maxModelLen?: number;          // Max model length for vLLM mode
 }
 

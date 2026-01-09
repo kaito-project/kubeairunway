@@ -890,12 +890,7 @@ export class KubeRayProvider implements Provider {
 
   getUninstallResources(): UninstallResources {
     return {
-      // KubeRay CRDs
-      crds: [
-        `${KubeRayProvider.CRD_PLURAL}.${KubeRayProvider.API_GROUP}`,
-        `rayclusters.${KubeRayProvider.API_GROUP}`,
-        `rayjobs.${KubeRayProvider.API_GROUP}`,
-      ],
+      crds: [],
       // KubeRay operator namespace - can be deleted on uninstall
       namespaces: ['kuberay-system'],
     };

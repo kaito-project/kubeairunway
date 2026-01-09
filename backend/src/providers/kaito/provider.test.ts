@@ -215,6 +215,45 @@ describe('KaitoProvider', () => {
       expect((manifest.resource as any).labelSelector.matchLabels['node-type']).toBe('ml');
     });
 
+    test('CPU workload generates kubernetes.io/os: linux labelSelector by default', () => {
+      const config = {
+        ...basePremadeConfig,
+        computeType: 'cpu' as const,
+      };
+      const manifest = provider.generateManifest(config);
+      expect((manifest.resource as any).labelSelector.matchLabels['kubernetes.io/os']).toBe('linux');
+    });
+
+    test('GPU workload generates nvidia.com/gpu.present: true labelSelector by default', () => {
+      const config = {
+        ...basePremadeConfig,
+        computeType: 'gpu' as const,
+        resources: { gpu: 1 },
+      };
+      const manifest = provider.generateManifest(config);
+      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
+    });
+
+    test('vLLM workload always generates nvidia.com/gpu.present: true labelSelector', () => {
+      const manifest = provider.generateManifest(baseVllmConfig);
+      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
+    });
+
+    test('user-provided labelSelector overrides default GPU/CPU labels', () => {
+      const config = {
+        ...basePremadeConfig,
+        computeType: 'gpu' as const,
+        resources: { gpu: 1 },
+        labelSelector: {
+          'custom-label': 'custom-value',
+        },
+      };
+      const manifest = provider.generateManifest(config);
+      // Should use custom label, not nvidia.com/gpu.present
+      expect((manifest.resource as any).labelSelector.matchLabels['custom-label']).toBe('custom-value');
+      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBeUndefined();
+    });
+
     test('includes resource requests when specified', () => {
       const config = {
         ...basePremadeConfig,
@@ -586,6 +625,28 @@ describe('KaitoProvider', () => {
       expect(helmRepoStep?.command).toContain('kaito');
     });
 
+    test('installation command includes version 0.8.0', () => {
+      const steps = provider.getInstallationSteps();
+      const installStep = steps.find(s => s.command?.includes('helm upgrade --install'));
+      expect(installStep).toBeDefined();
+      expect(installStep?.command).toContain('--version 0.8.0');
+    });
+
+    test('installation command includes disableNodeAutoProvisioning flag', () => {
+      const steps = provider.getInstallationSteps();
+      const installStep = steps.find(s => s.command?.includes('helm upgrade --install'));
+      expect(installStep).toBeDefined();
+      expect(installStep?.command).toContain('--set featureGates.disableNodeAutoProvisioning=true');
+    });
+
+    test('installation command disables gpu-feature-discovery and local-csi-driver', () => {
+      const steps = provider.getInstallationSteps();
+      const installStep = steps.find(s => s.command?.includes('helm upgrade --install'));
+      expect(installStep).toBeDefined();
+      expect(installStep?.command).toContain('--set gpu-feature-discovery.enabled=false');
+      expect(installStep?.command).toContain('--set localCSIDriver.useLocalCSIDriver=false');
+    });
+
     test('getHelmRepos returns kaito repo', () => {
       const repos = provider.getHelmRepos();
       expect(repos.length).toBe(1);
@@ -599,6 +660,31 @@ describe('KaitoProvider', () => {
       expect(charts[0].name).toBe('kaito-workspace');
       expect(charts[0].namespace).toBe('kaito-workspace');
       expect(charts[0].createNamespace).toBe(true);
+    });
+
+    test('getHelmCharts includes version 0.8.0', () => {
+      const charts = provider.getHelmCharts();
+      expect(charts[0].version).toBe('0.8.0');
+    });
+
+    test('getHelmCharts includes disableNodeAutoProvisioning in values', () => {
+      const charts = provider.getHelmCharts();
+      expect(charts[0].values).toBeDefined();
+      expect(charts[0].values?.featureGates).toBeDefined();
+      expect((charts[0].values?.featureGates as Record<string, unknown>)?.disableNodeAutoProvisioning).toBe(true);
+    });
+
+    test('getHelmCharts disables gpu-feature-discovery and local-csi-driver', () => {
+      const charts = provider.getHelmCharts();
+      expect(charts[0].values).toBeDefined();
+      // GPU Feature Discovery disabled entirely
+      expect(charts[0].values?.['gpu-feature-discovery']).toBeDefined();
+      const gfdConfig = charts[0].values?.['gpu-feature-discovery'] as Record<string, unknown>;
+      expect(gfdConfig?.enabled).toBe(false);
+      // Local CSI Driver disabled
+      expect(charts[0].values?.localCSIDriver).toBeDefined();
+      const csiConfig = charts[0].values?.localCSIDriver as Record<string, unknown>;
+      expect(csiConfig?.useLocalCSIDriver).toBe(false);
     });
   });
 
