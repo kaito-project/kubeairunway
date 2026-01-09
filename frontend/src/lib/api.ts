@@ -1,3 +1,10 @@
+/**
+ * KubeFoundry Frontend API Client
+ *
+ * This module provides a configured API client for the browser environment.
+ * It wraps the shared API client with browser-specific configuration.
+ */
+
 // API Base URL - when not specified, use relative URL (same origin)
 // This allows the frontend to work both in development (with VITE_API_URL=http://localhost:3001)
 // and in production (served from the same container as the backend)
@@ -105,475 +112,7 @@ export type {
   PodLogsResponse,
 } from '@kubefoundry/shared';
 
-// Import types for internal use
-import type {
-  Model,
-  DeploymentConfig,
-  DeploymentStatus,
-  PodStatus,
-  Settings,
-  ProviderInfo,
-  ProviderDetails,
-  HelmStatus,
-  InstallationStatus,
-  InstallResult,
-  GPUOperatorStatus,
-  GPUOperatorInstallResult,
-  ClusterGpuCapacity,
-  DeploymentsListResponse,
-  ClusterStatusResponse,
-  MetricsResponse,
-  HfTokenExchangeRequest,
-  HfTokenExchangeResponse,
-  HfSaveSecretRequest,
-  HfSecretStatus,
-  HfUserInfo,
-  HfModelSearchResponse,
-  AutoscalerDetectionResult,
-  AutoscalerStatusInfo,
-  DetailedClusterCapacity,
-  PodFailureReason,
-  RuntimesStatusResponse,
-  PodLogsResponse,
-} from '@kubefoundry/shared';
-
-// ============================================================================
-// Error Handling
-// ============================================================================
-
-class ApiError extends Error {
-  constructor(public statusCode: number, message: string) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE}/api${endpoint}`;
-  console.log('[API] Fetching:', url);
-
-  // Build headers with auth token if available
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(options?.headers || {}),
-  };
-
-  const token = getAuthToken();
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  console.log('[API] Response status:', response.status, 'for', url);
-
-  if (!response.ok) {
-    // Handle 401 Unauthorized - dispatch event to trigger logout
-    if (response.status === 401) {
-      console.warn('[API] Unauthorized - dispatching auth:unauthorized event');
-      dispatchUnauthorized();
-    }
-
-    // Try to parse error response body
-    let errorMessage: string;
-    try {
-      const error = await response.json();
-      errorMessage = error.error?.message || error.message || `Request failed with status ${response.status}`;
-    } catch {
-      // Response body is empty or not valid JSON
-      errorMessage = `Request failed with status ${response.status}: ${response.statusText || 'No response body'}`;
-    }
-
-    console.error('[API] Error response:', errorMessage);
-    throw new ApiError(response.status, errorMessage);
-  }
-
-  return response.json();
-}
-
-// ============================================================================
-// Models API
-// ============================================================================
-
-export const modelsApi = {
-  list: () => request<{ models: Model[] }>('/models'),
-  get: (id: string) => request<Model>(`/models/${encodeURIComponent(id)}`),
-};
-
-// ============================================================================
-// Deployments API
-// ============================================================================
-
-export const deploymentsApi = {
-  list: (namespace?: string, options?: { limit?: number; offset?: number }) => {
-    const params = new URLSearchParams();
-    if (namespace) params.set('namespace', namespace);
-    if (options?.limit) params.set('limit', options.limit.toString());
-    if (options?.offset) params.set('offset', options.offset.toString());
-    const query = params.toString();
-    return request<DeploymentsListResponse>(`/deployments${query ? `?${query}` : ''}`);
-  },
-
-  get: (name: string, namespace?: string) =>
-    request<DeploymentStatus>(
-      `/deployments/${encodeURIComponent(name)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
-    ),
-
-  create: (config: DeploymentConfig) =>
-    request<{ message: string; name: string; namespace: string; warnings?: string[] }>('/deployments', {
-      method: 'POST',
-      body: JSON.stringify(config),
-    }),
-
-  delete: (name: string, namespace?: string) =>
-    request<{ message: string }>(
-      `/deployments/${encodeURIComponent(name)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`,
-      { method: 'DELETE' }
-    ),
-
-  getPods: (name: string, namespace?: string) =>
-    request<{ pods: PodStatus[] }>(
-      `/deployments/${encodeURIComponent(name)}/pods${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
-    ),
-
-  getMetrics: (name: string, namespace?: string) =>
-    request<MetricsResponse>(
-      `/deployments/${encodeURIComponent(name)}/metrics${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
-    ),
-
-  getLogs: (name: string, namespace?: string, options?: { podName?: string; container?: string; tailLines?: number; timestamps?: boolean }) => {
-    const params = new URLSearchParams();
-    if (namespace) params.set('namespace', namespace);
-    if (options?.podName) params.set('podName', options.podName);
-    if (options?.container) params.set('container', options.container);
-    if (options?.tailLines) params.set('tailLines', options.tailLines.toString());
-    if (options?.timestamps) params.set('timestamps', 'true');
-    const query = params.toString();
-    return request<PodLogsResponse>(
-      `/deployments/${encodeURIComponent(name)}/logs${query ? `?${query}` : ''}`
-    );
-  },
-};
-
-// ============================================================================
-// Metrics API
-// ============================================================================
-
-export const metricsApi = {
-  get: (deploymentName: string, namespace?: string) =>
-    request<MetricsResponse>(
-      `/deployments/${encodeURIComponent(deploymentName)}/metrics${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
-    ),
-};
-
-// ============================================================================
-// Health API
-// ============================================================================
-
-export interface ClusterNode {
-  name: string;
-  ready: boolean;
-  gpuCount: number;
-}
-
-export const healthApi = {
-  check: () => request<{ status: string; timestamp: string }>('/health'),
-  clusterStatus: () => request<ClusterStatusResponse>('/cluster/status'),
-  getClusterNodes: () => request<{ nodes: ClusterNode[] }>('/cluster/nodes'),
-};
-
-// ============================================================================
-// Settings API
-// ============================================================================
-
-export const settingsApi = {
-  get: () => request<Settings>('/settings'),
-  update: (settings: { defaultNamespace?: string }) =>
-    request<{ message: string; config: Settings['config'] }>('/settings', {
-      method: 'PUT',
-      body: JSON.stringify(settings),
-    }),
-  listProviders: () => request<{ providers: ProviderInfo[] }>('/settings/providers'),
-  getProvider: (id: string) => request<ProviderDetails>(`/settings/providers/${encodeURIComponent(id)}`),
-};
-
-// ============================================================================
-// Runtimes API
-// ============================================================================
-
-export const runtimesApi = {
-  /** Get status of all runtimes (installation and health) */
-  getStatus: () => request<RuntimesStatusResponse>('/runtimes/status'),
-};
-
-// ============================================================================
-// Installation API
-// ============================================================================
-
-export const installationApi = {
-  getHelmStatus: () => request<HelmStatus>('/installation/helm/status'),
-
-  getProviderStatus: (providerId: string) =>
-    request<InstallationStatus>(`/installation/providers/${encodeURIComponent(providerId)}/status`),
-
-  getProviderCommands: (providerId: string) =>
-    request<{
-      providerId: string;
-      providerName: string;
-      commands: string[];
-      steps: Array<{ title: string; command?: string; description: string }>;
-    }>(`/installation/providers/${encodeURIComponent(providerId)}/commands`),
-
-  installProvider: (providerId: string) =>
-    request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/install`, {
-      method: 'POST',
-    }),
-
-  upgradeProvider: (providerId: string) =>
-    request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/upgrade`, {
-      method: 'POST',
-    }),
-
-  uninstallProvider: (providerId: string) =>
-    request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/uninstall`, {
-      method: 'POST',
-    }),
-
-  uninstallProviderCRDs: (providerId: string) =>
-    request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/uninstall-crds`, {
-      method: 'POST',
-    }),
-};
-
-// ============================================================================
-// GPU Operator API
-// ============================================================================
-
-export const gpuOperatorApi = {
-  getStatus: () => request<GPUOperatorStatus>('/installation/gpu-operator/status'),
-
-  install: () =>
-    request<GPUOperatorInstallResult>('/installation/gpu-operator/install', {
-      method: 'POST',
-    }),
-
-  getCapacity: () => request<ClusterGpuCapacity>('/installation/gpu-capacity'),
-
-  getDetailedCapacity: () => request<DetailedClusterCapacity>('/installation/gpu-capacity/detailed'),
-};
-
-// ============================================================================
-// Autoscaler API
-// ============================================================================
-
-export const autoscalerApi = {
-  /** Detect autoscaler type and health status */
-  detect: () => request<AutoscalerDetectionResult>('/autoscaler/detection'),
-
-  /** Get detailed autoscaler status from ConfigMap */
-  getStatus: () => request<AutoscalerStatusInfo>('/autoscaler/status'),
-
-  /** Get reasons why a deployment's pods are pending */
-  getPendingReasons: (deploymentName: string, namespace?: string) =>
-    request<{ reasons: PodFailureReason[] }>(
-      `/deployments/${encodeURIComponent(deploymentName)}/pending-reasons${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`
-    ),
-};
-
-// ============================================================================
-// HuggingFace OAuth API
-// ============================================================================
-
-export const huggingFaceApi = {
-  /** Get OAuth configuration (client ID, scopes) */
-  getOAuthConfig: () =>
-    request<{
-      clientId: string;
-      authorizeUrl: string;
-      scopes: string[];
-    }>('/oauth/huggingface/config'),
-
-  /** Exchange authorization code for access token */
-  exchangeToken: (data: HfTokenExchangeRequest) =>
-    request<HfTokenExchangeResponse>('/oauth/huggingface/token', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  /** Get status of HuggingFace secret across namespaces */
-  getSecretStatus: () => request<HfSecretStatus>('/secrets/huggingface/status'),
-
-  /** Save HuggingFace token as K8s secrets */
-  saveSecret: (data: HfSaveSecretRequest) =>
-    request<{
-      success: boolean;
-      message: string;
-      user?: HfUserInfo;
-      results: { namespace: string; success: boolean; error?: string }[];
-    }>('/secrets/huggingface', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
-  /** Delete HuggingFace secrets from all namespaces */
-  deleteSecret: () =>
-    request<{
-      success: boolean;
-      message: string;
-      results: { namespace: string; success: boolean; error?: string }[];
-    }>('/secrets/huggingface', {
-      method: 'DELETE',
-    }),
-
-  /** Search HuggingFace models with compatibility filtering */
-  searchModels: (query: string, options?: { limit?: number; offset?: number; hfToken?: string }) => {
-    const params = new URLSearchParams({
-      q: query,
-    });
-    if (options?.limit) params.set('limit', options.limit.toString());
-    if (options?.offset) params.set('offset', options.offset.toString());
-
-    // Build headers - include HF token if provided for gated model access
-    const headers: Record<string, string> = {};
-    if (options?.hfToken) {
-      headers['Authorization'] = `Bearer ${options.hfToken}`;
-    }
-
-    return request<HfModelSearchResponse>(`/models/search?${params.toString()}`, {
-      headers,
-    });
-  },
-
-  /** Get GGUF files available in a HuggingFace repository */
-  getGgufFiles: (modelId: string, hfToken?: string) => {
-    const headers: Record<string, string> = {};
-    if (hfToken) {
-      headers['Authorization'] = `Bearer ${hfToken}`;
-    }
-    return request<{ files: string[] }>(`/models/${encodeURIComponent(modelId)}/gguf-files`, {
-      headers,
-    });
-  },
-};
-
-// ============================================================================
-// AIKit API (KAITO/GGUF Models)
-// ============================================================================
-
-/**
- * Premade AIKit model from the curated catalog
- */
-export interface PremadeModel {
-  id: string;           // Unique identifier (e.g., 'llama3.2:1b')
-  name: string;         // Display name (e.g., 'Llama 3.2')
-  size: string;         // Model size (e.g., '1B', '8B')
-  image: string;        // Full container image reference
-  modelName: string;    // Model name for API
-  license: string;      // License type
-  description?: string; // Optional description
-  computeType: 'cpu' | 'gpu'; // Compute type supported by this model
-}
-
-/**
- * AIKit build request for building custom GGUF images
- */
-export interface AikitBuildRequest {
-  modelSource: 'premade' | 'huggingface';
-  premadeModel?: string;
-  modelId?: string;
-  ggufFile?: string;
-  imageName?: string;
-  imageTag?: string;
-}
-
-/**
- * AIKit build result
- */
-export interface AikitBuildResult {
-  success: boolean;
-  imageRef: string;
-  buildTime: number;
-  wasPremade: boolean;
-  message: string;
-  error?: string;
-}
-
-/**
- * AIKit build preview result
- */
-export interface AikitPreviewResult {
-  imageRef: string;
-  wasPremade: boolean;
-  requiresBuild: boolean;
-  registryUrl: string;
-}
-
-/**
- * AIKit infrastructure status
- */
-export interface AikitInfrastructureStatus {
-  ready: boolean;
-  registry: {
-    ready: boolean;
-    url?: string;
-    message?: string;
-  };
-  builder: {
-    exists: boolean;
-    running: boolean;
-    name?: string;
-    message?: string;
-  };
-  error?: string;
-}
-
-export const aikitApi = {
-  /** List available premade KAITO models */
-  listModels: () =>
-    request<{ models: PremadeModel[]; total: number }>('/aikit/models'),
-
-  /** Get a specific premade model by ID */
-  getModel: (id: string) =>
-    request<PremadeModel>(`/aikit/models/${encodeURIComponent(id)}`),
-
-  /** Build an AIKit image (premade returns immediately, HuggingFace triggers build) */
-  build: (req: AikitBuildRequest) =>
-    request<AikitBuildResult>('/aikit/build', {
-      method: 'POST',
-      body: JSON.stringify(req),
-    }),
-
-  /** Preview what image would be built without actually building */
-  preview: (req: AikitBuildRequest) =>
-    request<AikitPreviewResult>('/aikit/build/preview', {
-      method: 'POST',
-      body: JSON.stringify(req),
-    }),
-
-  /** Get build infrastructure status (registry + BuildKit) */
-  getInfrastructureStatus: () =>
-    request<AikitInfrastructureStatus>('/aikit/infrastructure/status'),
-
-  /** Set up build infrastructure (registry + BuildKit) */
-  setupInfrastructure: () =>
-    request<{
-      success: boolean;
-      message: string;
-      registry: { url: string; ready: boolean };
-      builder: { name: string; ready: boolean };
-    }>('/aikit/infrastructure/setup', {
-      method: 'POST',
-    }),
-};
-
-// ============================================================================
-// AI Configurator API
-// ============================================================================
-
-// Re-export AI Configurator types from shared
+// AI Configurator types
 export type {
   AIConfiguratorInput,
   AIConfiguratorResult,
@@ -582,28 +121,48 @@ export type {
   AIConfiguratorPerformance,
 } from '@kubefoundry/shared';
 
-// Import types for internal use
-import type {
-  AIConfiguratorInput,
-  AIConfiguratorResult,
-  AIConfiguratorStatus,
-} from '@kubefoundry/shared';
+// ============================================================================
+// Re-export API types from shared
+// ============================================================================
 
-export const aiConfiguratorApi = {
-  /** Check if AI Configurator is available */
-  getStatus: () => request<AIConfiguratorStatus>('/aiconfigurator/status'),
+export type { ClusterNode } from '@kubefoundry/shared/api';
+export type {
+  PremadeModel,
+  AikitBuildRequest,
+  AikitBuildResult,
+  AikitPreviewResult,
+  AikitInfrastructureStatus,
+} from '@kubefoundry/shared/api';
 
-  /** Analyze model + GPU and get optimal configuration */
-  analyze: (input: AIConfiguratorInput) =>
-    request<AIConfiguratorResult>('/aiconfigurator/analyze', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
+// ============================================================================
+// Create and export the configured API client
+// ============================================================================
 
-  /** Normalize GPU product string to AI Configurator format */
-  normalizeGpu: (gpuProduct: string) =>
-    request<{ gpuProduct: string; normalized: string }>('/aiconfigurator/normalize-gpu', {
-      method: 'POST',
-      body: JSON.stringify({ gpuProduct }),
-    }),
-};
+import { createApiClient, ApiError } from '@kubefoundry/shared/api';
+
+// Re-export ApiError for backwards compatibility
+export { ApiError };
+
+// Create the browser-configured API client
+const apiClient = createApiClient({
+  baseUrl: API_BASE,
+  getToken: getAuthToken,
+  onUnauthorized: dispatchUnauthorized,
+});
+
+// ============================================================================
+// Export API modules (backwards compatible)
+// ============================================================================
+
+export const modelsApi = apiClient.models;
+export const deploymentsApi = apiClient.deployments;
+export const metricsApi = apiClient.metrics;
+export const healthApi = apiClient.health;
+export const settingsApi = apiClient.settings;
+export const runtimesApi = apiClient.runtimes;
+export const installationApi = apiClient.installation;
+export const gpuOperatorApi = apiClient.gpuOperator;
+export const autoscalerApi = apiClient.autoscaler;
+export const huggingFaceApi = apiClient.huggingFace;
+export const aikitApi = apiClient.aikit;
+export const aiConfiguratorApi = apiClient.aiConfigurator;
