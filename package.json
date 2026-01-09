@@ -6,7 +6,8 @@
   "workspaces": [
     "frontend",
     "backend",
-    "shared"
+    "shared",
+    "plugins/headlamp"
   ],
   "scripts": {
     "dev": "bun run --filter '@kubefoundry/frontend' dev & bun run --filter '@kubefoundry/backend' dev",

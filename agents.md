@@ -6,15 +6,18 @@
 
 ## WHAT: Tech Stack & Structure
 
-**Stack**: React 18 + TypeScript + Vite (frontend) | Bun + Hono + Zod (backend) | Monorepo with shared types
+**Stack**: React 18 + TypeScript + Vite (frontend) | Bun + Hono + Zod (backend) | Headlamp Plugin SDK (plugin) | Monorepo with shared types
 
 **Key directories**:
 - `frontend/src/` - React components, hooks, pages
 - `backend/src/` - Hono app, providers, services
 - `shared/types/` - Shared TypeScript definitions
+- `plugins/headlamp/` - Headlamp dashboard plugin
 - `docs/` - Detailed documentation (read as needed)
 
 **Core pattern**: Provider abstraction - all inference runtime logic lives in `backend/src/providers/`. Each provider implements the `Provider` interface in `backend/src/providers/types.ts`.
+
+**Headlamp plugin**: When working on `plugins/headlamp/`, read [plugins/headlamp/README.md](plugins/headlamp/README.md) for patterns and best practices. Key rules: use Headlamp's built-in components (`SectionBox`, `SimpleTable`, etc.), never bundle React, use `@kubefoundry/shared` for types/API.
 
 ## HOW: Development Commands
 
@@ -24,6 +27,18 @@ bun run dev              # Start dev servers (frontend + backend)
 bun run test             # Run all tests (frontend + backend)
 make compile             # Build single binary to dist/
 make compile-all         # Cross-compile for all platforms
+```
+
+### Headlamp Plugin Commands
+
+```bash
+cd plugins/headlamp
+bun install              # Install plugin dependencies
+bun run build            # Build plugin
+bun run start            # Development mode with auto-rebuild
+bun run test             # Run plugin tests
+make setup               # Install deps, build, and deploy to Headlamp
+make dev                 # Build and deploy for development
 ```
 
 **Always run `bun run test` after implementing functionality to verify both frontend and backend changes.**
@@ -48,14 +63,15 @@ Read these files **only when relevant** to your task:
 | [docs/api.md](docs/api.md) | Working on REST endpoints or API client |
 | [docs/development.md](docs/development.md) | Setup issues, build process, testing |
 | [docs/standards.md](docs/standards.md) | Code style questions (prefer running linters instead) |
+| [plugins/headlamp/README.md](plugins/headlamp/README.md) | Headlamp plugin development, patterns, components |
 
 ## Key Files Reference
 
+### Backend
 - Hono app (all routes): `backend/src/hono-app.ts`
 - Provider interface: `backend/src/providers/types.ts`
 - Provider registry: `backend/src/providers/index.ts`
 - Kubernetes client: `backend/src/services/kubernetes.ts`
-- Frontend API client: `frontend/src/lib/api.ts`
 - Build-time constants: `backend/src/build-info.ts`
 - Compile script: `backend/scripts/compile.ts`
 - Asset embedding: `backend/scripts/embed-assets.ts`
@@ -69,3 +85,17 @@ Read these files **only when relevant** to your task:
 - AI Configurator routes: `backend/src/routes/aiconfigurator.ts`
 - Prometheus parser: `backend/src/lib/prometheus-parser.ts`
 - K8s error handling: `backend/src/lib/k8s-errors.ts`
+
+### Frontend
+- Frontend API client: `frontend/src/lib/api.ts`
+
+### Headlamp Plugin
+- Plugin entry point: `plugins/headlamp/src/index.tsx`
+- Route definitions: `plugins/headlamp/src/routes.ts`
+- API client wrapper: `plugins/headlamp/src/lib/api-client.ts`
+- Backend discovery: `plugins/headlamp/src/lib/backend-discovery.ts`
+- Plugin storage: `plugins/headlamp/src/lib/plugin-storage.ts`
+- Theme utilities: `plugins/headlamp/src/lib/theme.ts`
+- Settings page: `plugins/headlamp/src/settings.tsx`
+- Pages: `plugins/headlamp/src/pages/*.tsx`
+- Components: `plugins/headlamp/src/components/*.tsx`

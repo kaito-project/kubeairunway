@@ -1,0 +1,5 @@
+# KubeFoundry Headlamp Plugin - ArtifactHub Repository Metadata
+# This file identifies this repository as containing ArtifactHub packages
+repositoryID: kubefoundry-headlamp-plugin
+name: KubeFoundry Headlamp Plugin
+kind: headlamp

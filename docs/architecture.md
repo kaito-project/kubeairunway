@@ -2,10 +2,11 @@
 
 ## System Overview
 
-KubeFoundry is a monorepo with three packages:
+KubeFoundry is a monorepo with four packages:
 - **frontend** - React SPA for user interaction
 - **backend** - Hono API for Kubernetes operations (runs on Bun)
-- **shared** - Common TypeScript types (imported directly by frontend and backend)
+- **shared** - Common TypeScript types (imported directly by frontend, backend, and plugins)
+- **plugins/headlamp** - Headlamp dashboard plugin for Kubernetes-native UI
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
@@ -23,6 +24,31 @@ KubeFoundry is a monorepo with three packages:
        └───────────▶│ Auth        │───▶ TokenReview API
                     │ Middleware  │
                     └─────────────┘
+```
+
+### Alternative: Headlamp Plugin
+
+KubeFoundry can also be used as a Headlamp plugin, integrating directly into the Headlamp Kubernetes dashboard:
+
+```
+┌──────────────────┐     ┌─────────────────────┐
+│    Headlamp      │     │  KubeFoundry        │
+│   (Browser)      │────▶│    Backend          │
+│                  │     │                     │
+│  ┌────────────┐  │     │  ┌───────────────┐  │
+│  │ KubeFoundry│  │     │  │ REST API      │  │
+│  │  Plugin    │──┼────▶│  │ /api/*        │  │
+│  └────────────┘  │     │  └───────────────┘  │
+└──────────────────┘     └─────────────────────┘
+         │                         │
+         │ K8s Token               │ K8s API
+         ▼                         ▼
+┌──────────────────────────────────────────────┐
+│              Kubernetes Cluster              │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐      │
+│  │  KAITO  │  │ KubeRay │  │ Dynamo  │      │
+│  └─────────┘  └─────────┘  └─────────┘      │
+└──────────────────────────────────────────────┘
 ```
 
 ## Authentication Flow
@@ -224,6 +250,89 @@ App
 - **Server State**: TanStack Query for API data with caching
 - **Local State**: React useState for UI state
 - **Persistent State**: Browser localStorage for user preferences
+
+## Headlamp Plugin Architecture
+
+The Headlamp plugin provides KubeFoundry functionality within the Headlamp Kubernetes dashboard, offering an alternative to the standalone React frontend.
+
+### Plugin Structure
+```
+plugins/headlamp/src/
+├── index.tsx           # Plugin entry, route and sidebar registration
+├── routes.ts           # Route path constants
+├── settings.tsx        # Plugin settings component
+├── lib/
+│   ├── api-client.ts   # API client wrapper with Headlamp auth
+│   ├── backend-discovery.ts  # Backend URL discovery logic
+│   ├── plugin-storage.ts     # Headlamp plugin config storage
+│   └── theme.ts        # Theme utilities for Headlamp compatibility
+├── pages/
+│   ├── DeploymentsList.tsx   # List deployments
+│   ├── DeploymentDetails.tsx # Deployment details with logs/metrics
+│   ├── CreateDeployment.tsx  # Create new deployment
+│   ├── ModelsCatalog.tsx     # Browse models catalog
+│   └── RuntimesStatus.tsx    # Runtime installation status
+└── components/
+    ├── ConnectionBanner.tsx  # Backend connection status
+    ├── StatusBadge.tsx       # Deployment status indicators
+    ├── MetricsPanel.tsx      # Real-time metrics display
+    ├── LogsViewer.tsx        # Pod logs viewer
+    ├── GPUCapacityDashboard.tsx  # GPU capacity visualization
+    └── DeleteDialog.tsx      # Confirmation dialogs
+```
+
+### Key Patterns
+
+#### Using Headlamp Components
+Always use Headlamp's built-in components instead of custom implementations:
+
+```typescript
+import {
+  SectionBox,
+  SimpleTable,
+  Loader,
+  Link,
+  StatusLabel,
+} from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+```
+
+#### API Client with Authentication
+The plugin uses Headlamp's Kubernetes token for authentication:
+
+```typescript
+import { useApiClient } from '@/lib/api-client';
+
+function MyComponent() {
+  const api = useApiClient();
+  
+  useEffect(() => {
+    api.deployments.list().then(setDeployments);
+  }, []);
+}
+```
+
+#### Backend Discovery
+The plugin discovers the KubeFoundry backend in this order:
+1. **Plugin Settings**: User-configured URL in Headlamp Plugin Settings
+2. **In-Cluster Discovery**: Automatically discovers `kubefoundry.<namespace>.svc`
+3. **Default**: Falls back to `http://localhost:3001` (development)
+
+### Sidebar Structure
+```
+KubeFoundry
+├── Deployments      # List and manage deployments
+├── Models           # Browse model catalog
+├── Runtimes         # View runtime installation status
+└── Settings         # Configure plugin settings
+```
+
+### Best Practices
+
+1. **No React Bundling**: Headlamp provides React at runtime; never bundle React or ReactDOM
+2. **Use Material-UI**: Use Headlamp's bundled MUI components for consistent styling
+3. **Authentication**: Plugin uses Headlamp's Kubernetes token automatically
+4. **Backend Proxy**: All API calls go through KubeFoundry backend, not direct K8s API calls
+5. **Storage**: Use Headlamp's storage APIs instead of localStorage for plugin settings
 
 ## Backend Services
 
