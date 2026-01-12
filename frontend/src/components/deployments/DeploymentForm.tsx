@@ -19,6 +19,7 @@ import { ChevronDown, AlertCircle, Rocket, CheckCircle2, Sparkles, AlertTriangle
 import { CapacityWarning } from './CapacityWarning'
 import { AIConfiguratorPanel } from './AIConfiguratorPanel'
 import { ManifestViewer } from './ManifestViewer'
+import { CostEstimate } from './CostEstimate'
 import { calculateGpuRecommendation, type GpuRecommendation } from '@/lib/gpu-recommendations'
 
 // Reusable GPU per Replica field component
@@ -1396,6 +1397,19 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             />
           );
         })()}
+        {/* Cost Estimate - show for GPU deployments */}
+        {detailedCapacity && detailedCapacity.nodePools.length > 0 && 
+         (selectedRuntime !== 'kaito' || kaitoComputeType === 'gpu' || isVllmModel) && (
+          <CostEstimate
+            nodePools={detailedCapacity.nodePools}
+            gpuCount={config.mode === 'disaggregated' 
+              ? Math.max(config.prefillGpus || 1, config.decodeGpus || 1)
+              : (config.resources?.gpu || gpuRecommendation.recommendedGpus || 1)}
+            replicas={config.mode === 'disaggregated'
+              ? (config.prefillReplicas || 1) + (config.decodeReplicas || 1)
+              : config.replicas}
+          />
+        )}
 
       {/* Submit Button */}
       <div className="flex gap-4">

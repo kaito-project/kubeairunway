@@ -837,9 +837,10 @@ class KubernetesService {
               node.metadata?.labels?.['eks.amazonaws.com/nodegroup'] ||
               'default';
 
-            // Get GPU model from labels
+            // Get GPU model from labels - try multiple sources
             const gpuModel =
               node.metadata?.labels?.['nvidia.com/gpu.product'] ||
+              this.extractGpuModelFromInstanceType(node.metadata?.labels) ||
               node.metadata?.labels?.['accelerator'];
 
             // Find available GPUs for this node
@@ -982,6 +983,70 @@ class KubernetesService {
       logger.error({ error, podName, namespace }, 'Error getting pod failure reasons');
       return [];
     }
+  }
+
+  /**
+   * Extract GPU model from cloud provider instance type labels
+   * Supports Azure, AWS, and GCP instance type naming conventions
+   */
+  private extractGpuModelFromInstanceType(
+    labels: Record<string, string> | undefined
+  ): string | undefined {
+    if (!labels) return undefined;
+
+    // Get instance type from standard Kubernetes labels
+    const instanceType =
+      labels['node.kubernetes.io/instance-type'] ||
+      labels['beta.kubernetes.io/instance-type'];
+
+    if (!instanceType) return undefined;
+
+    const instanceLower = instanceType.toLowerCase();
+
+    // Azure NV-series GPU mapping
+    // Standard_NV36ads_A10_v5 -> A10
+    // Standard_NC24ads_A100_v4 -> A100
+    // Standard_ND96asr_A100_v4 -> A100
+    // Standard_NC6s_v3 (V100), Standard_NC24s_v3, etc.
+    // Standard_NV6 (M60 - older)
+    if (instanceLower.includes('_a10')) return 'A10';
+    if (instanceLower.includes('_a100')) return 'A100-80GB';
+    if (instanceLower.includes('_h100')) return 'H100';
+    if (instanceLower.includes('nc') && instanceLower.includes('_v3'))
+      return 'V100';
+    if (instanceLower.includes('nc') && instanceLower.includes('t4'))
+      return 'T4';
+
+    // AWS instance type mapping
+    // p4d.24xlarge -> A100
+    // p5.48xlarge -> H100
+    // g4dn.xlarge -> T4
+    // g5.xlarge -> A10G
+    // g6.xlarge -> L4
+    // g6e.xlarge -> L40S
+    if (instanceLower.startsWith('p5')) return 'H100';
+    if (instanceLower.startsWith('p4d') || instanceLower.startsWith('p4de'))
+      return 'A100-40GB';
+    if (instanceLower.startsWith('p3')) return 'V100';
+    if (instanceLower.startsWith('g4dn') || instanceLower.startsWith('g4ad'))
+      return 'T4';
+    if (instanceLower.startsWith('g5g') || instanceLower.startsWith('g5.'))
+      return 'A10G';
+    if (instanceLower.startsWith('g6e')) return 'L40S';
+    if (instanceLower.startsWith('g6.')) return 'L4';
+
+    // GCP machine type mapping
+    // a2-highgpu-1g (A100 40GB)
+    // a2-ultragpu-1g (A100 80GB)
+    // a3-highgpu-8g (H100)
+    // n1-standard-4 with nvidia-tesla-t4
+    // g2-standard-4 (L4)
+    if (instanceLower.startsWith('a3')) return 'H100';
+    if (instanceLower.startsWith('a2-ultra')) return 'A100-80GB';
+    if (instanceLower.startsWith('a2')) return 'A100-40GB';
+    if (instanceLower.startsWith('g2')) return 'L4';
+
+    return undefined;
   }
 
   /**

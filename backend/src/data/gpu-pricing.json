@@ -1,0 +1,205 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-12-01",
+  "currency": "USD",
+  "notes": [
+    "Prices are approximate on-demand rates per GPU",
+    "Actual rates vary by region, commitment level, and spot availability",
+    "Spot instances can be 60-80% cheaper",
+    "Reserved instances (1-3 year) can save 30-60%"
+  ],
+  "gpuModels": {
+    "H100-80GB": {
+      "aliases": [
+        "NVIDIA-H100-80GB-HBM3",
+        "NVIDIA-H100-SXM5-80GB",
+        "NVIDIA-H100-PCIe",
+        "H100",
+        "h100"
+      ],
+      "memoryGb": 80,
+      "hourlyRate": {
+        "aws": 5.50,
+        "azure": 5.20,
+        "gcp": 5.35
+      },
+      "generation": "hopper",
+      "notes": "Latest generation, best for large models"
+    },
+    "A100-80GB": {
+      "aliases": [
+        "NVIDIA-A100-SXM4-80GB",
+        "NVIDIA-A100-80GB-PCIe",
+        "NVIDIA-A100-SXM-80GB",
+        "A100-80GB",
+        "a100-80gb"
+      ],
+      "memoryGb": 80,
+      "hourlyRate": {
+        "aws": 4.10,
+        "azure": 3.67,
+        "gcp": 3.93
+      },
+      "generation": "ampere",
+      "notes": "High-end training and inference"
+    },
+    "A100-40GB": {
+      "aliases": [
+        "NVIDIA-A100-SXM4-40GB",
+        "NVIDIA-A100-40GB-PCIe",
+        "NVIDIA-A100-SXM-40GB",
+        "NVIDIA-A100-PCIE-40GB",
+        "A100-40GB",
+        "A100",
+        "a100",
+        "a100-40gb"
+      ],
+      "memoryGb": 40,
+      "hourlyRate": {
+        "aws": 3.40,
+        "azure": 3.06,
+        "gcp": 3.22
+      },
+      "generation": "ampere",
+      "notes": "Popular for medium-large models"
+    },
+    "L40S": {
+      "aliases": [
+        "NVIDIA-L40S",
+        "NVIDIA-L40S-48GB",
+        "L40S",
+        "l40s"
+      ],
+      "memoryGb": 48,
+      "hourlyRate": {
+        "aws": 1.85,
+        "azure": 1.70,
+        "gcp": 1.75
+      },
+      "generation": "ada",
+      "notes": "Cost-effective for inference workloads"
+    },
+    "L4": {
+      "aliases": [
+        "NVIDIA-L4",
+        "NVIDIA-L4-24GB",
+        "L4",
+        "l4"
+      ],
+      "memoryGb": 24,
+      "hourlyRate": {
+        "aws": 0.81,
+        "azure": 0.75,
+        "gcp": 0.70
+      },
+      "generation": "ada",
+      "notes": "Entry-level for small models, excellent value"
+    },
+    "A10G": {
+      "aliases": [
+        "NVIDIA-A10G",
+        "NVIDIA-A10G-24GB",
+        "A10G",
+        "a10g",
+        "A10"
+      ],
+      "memoryGb": 24,
+      "hourlyRate": {
+        "aws": 1.01,
+        "azure": 0.90,
+        "gcp": 0.95
+      },
+      "generation": "ampere",
+      "notes": "Popular AWS GPU for inference"
+    },
+    "T4": {
+      "aliases": [
+        "Tesla-T4",
+        "NVIDIA-Tesla-T4",
+        "NVIDIA-T4",
+        "T4",
+        "t4"
+      ],
+      "memoryGb": 16,
+      "hourlyRate": {
+        "aws": 0.53,
+        "azure": 0.45,
+        "gcp": 0.35
+      },
+      "generation": "turing",
+      "notes": "Budget option for small models"
+    },
+    "V100": {
+      "aliases": [
+        "Tesla-V100-SXM2-16GB",
+        "Tesla-V100-SXM2-32GB",
+        "NVIDIA-Tesla-V100",
+        "NVIDIA-V100",
+        "V100-16GB",
+        "V100-32GB",
+        "V100",
+        "v100"
+      ],
+      "memoryGb": 32,
+      "hourlyRate": {
+        "aws": 3.06,
+        "azure": 2.75,
+        "gcp": 2.48
+      },
+      "generation": "volta",
+      "notes": "Previous generation, still widely available"
+    },
+    "A10": {
+      "aliases": [
+        "NVIDIA-A10",
+        "NVIDIA-A10-24GB",
+        "A10",
+        "a10"
+      ],
+      "memoryGb": 24,
+      "hourlyRate": {
+        "aws": 1.10,
+        "azure": 1.00,
+        "gcp": 1.05
+      },
+      "generation": "ampere",
+      "notes": "Good balance of performance and cost"
+    },
+    "RTX-4090": {
+      "aliases": [
+        "NVIDIA-GeForce-RTX-4090",
+        "GeForce-RTX-4090",
+        "RTX4090",
+        "RTX-4090",
+        "rtx4090"
+      ],
+      "memoryGb": 24,
+      "hourlyRate": {
+        "aws": 0.00,
+        "azure": 0.00,
+        "gcp": 0.00
+      },
+      "generation": "ada",
+      "notes": "Consumer GPU, pricing varies by provider"
+    },
+    "MI300X": {
+      "aliases": [
+        "AMD-Instinct-MI300X",
+        "MI300X",
+        "mi300x"
+      ],
+      "memoryGb": 192,
+      "hourlyRate": {
+        "aws": 0.00,
+        "azure": 4.50,
+        "gcp": 0.00
+      },
+      "generation": "cdna3",
+      "notes": "AMD GPU, limited cloud availability"
+    }
+  },
+  "defaultGpu": {
+    "model": "A100-40GB",
+    "reason": "Most common GPU in cloud ML environments"
+  }
+}
