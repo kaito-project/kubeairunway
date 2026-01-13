@@ -1,0 +1,111 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in KubeFoundry
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us investigate.
+
+  - type: checkboxes
+    id: existing-issue
+    attributes:
+      label: Is there an existing issue for this?
+      description: Please search to see if an issue already exists for the bug you encountered.
+      options:
+        - label: I have searched the existing issues
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment-type
+    attributes:
+      label: Deployment Type
+      description: How are you running KubeFoundry?
+      options:
+        - Local binary
+        - Kubernetes deployment
+        - Development mode (bun run dev)
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: KubeFoundry Version
+      description: What version of KubeFoundry are you using?
+      placeholder: e.g., 1.0.0 or commit hash
+    validations:
+      required: true
+
+  - type: input
+    id: k8s-version
+    attributes:
+      label: Kubernetes Version
+      description: What version of Kubernetes are you running?
+      placeholder: e.g., 1.29.0
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of the application is affected?
+      options:
+        - Deployments / Model Management
+        - Installation / Setup
+        - Provider (KAITO)
+        - Provider (NVIDIA Dynamo)
+        - Provider (KubeRay)
+        - Metrics / Monitoring
+        - HuggingFace Integration
+        - GPU Detection / Capacity
+        - Authentication
+        - UI / Frontend
+        - API / Backend
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Error Messages
+      description: If applicable, add console logs, error messages, or stack traces.
+      placeholder: Paste log output here
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem (e.g., cloud provider, GPU type, cluster configuration).
