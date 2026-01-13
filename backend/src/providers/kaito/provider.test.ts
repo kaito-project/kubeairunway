@@ -650,10 +650,18 @@ describe('KaitoProvider', () => {
 
     test('installation steps include kubectl apply for KAITO CRDs', () => {
       const steps = provider.getInstallationSteps();
-      const crdStep = steps.find(s => s.command?.includes('kubectl apply'));
-      expect(crdStep).toBeDefined();
-      expect(crdStep?.command).toContain('kaito.sh_workspaces.yaml');
-      expect(crdStep?.command).toContain('kaito.sh_inferencesets.yaml');
+      const crdSteps = steps.filter(s => s.command?.includes('kubectl apply'));
+      expect(crdSteps.length).toBe(2); // Karpenter CRDs and KAITO CRDs
+      
+      // Karpenter CRDs (required by KAITO even with disableNodeAutoProvisioning)
+      const karpenterCrdStep = crdSteps.find(s => s.command?.includes('karpenter.sh_nodeclaims.yaml'));
+      expect(karpenterCrdStep).toBeDefined();
+      expect(karpenterCrdStep?.command).toContain('karpenter.sh_nodepools.yaml');
+      
+      // KAITO CRDs
+      const kaitoCrdStep = crdSteps.find(s => s.command?.includes('kaito.sh_workspaces.yaml'));
+      expect(kaitoCrdStep).toBeDefined();
+      expect(kaitoCrdStep?.command).toContain('kaito.sh_inferencesets.yaml');
     });
 
     test('getHelmRepos returns kaito repo', () => {
@@ -696,13 +704,17 @@ describe('KaitoProvider', () => {
       expect(csiConfig?.useLocalCSIDriver).toBe(false);
     });
 
-    test('getHelmCharts uses skipCrds and preCrdUrls to avoid NFD conflicts', () => {
+    test('getHelmCharts uses skipCrds and preCrdUrls to avoid NFD and Karpenter conflicts', () => {
       const charts = provider.getHelmCharts();
       expect(charts[0].skipCrds).toBe(true);
       expect(charts[0].preCrdUrls).toBeDefined();
-      expect(charts[0].preCrdUrls?.length).toBe(2);
-      expect(charts[0].preCrdUrls?.[0]).toContain('kaito.sh_workspaces.yaml');
-      expect(charts[0].preCrdUrls?.[1]).toContain('kaito.sh_inferencesets.yaml');
+      expect(charts[0].preCrdUrls?.length).toBe(4);
+      // Karpenter CRDs first (required by KAITO even with disableNodeAutoProvisioning)
+      expect(charts[0].preCrdUrls?.[0]).toContain('karpenter.sh_nodeclaims.yaml');
+      expect(charts[0].preCrdUrls?.[1]).toContain('karpenter.sh_nodepools.yaml');
+      // KAITO CRDs
+      expect(charts[0].preCrdUrls?.[2]).toContain('kaito.sh_workspaces.yaml');
+      expect(charts[0].preCrdUrls?.[3]).toContain('kaito.sh_inferencesets.yaml');
     });
   });
 

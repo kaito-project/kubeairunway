@@ -537,6 +537,7 @@ export class KaitoProvider implements Provider {
 
   getInstallationSteps(): InstallationStep[] {
     const kaitoCrdBaseUrl = `https://raw.githubusercontent.com/kaito-project/kaito/v${KAITO_VERSION}/charts/kaito/workspace/crds`;
+    const karpenterCrdBaseUrl = 'https://raw.githubusercontent.com/kubernetes-sigs/karpenter/main/pkg/apis/crds';
     
     return [
       {
@@ -548,6 +549,11 @@ export class KaitoProvider implements Provider {
         title: 'Update Helm Repositories',
         command: 'helm repo update',
         description: 'Update local Helm repository cache.',
+      },
+      {
+        title: 'Apply Karpenter CRDs',
+        command: `kubectl apply -f ${karpenterCrdBaseUrl}/karpenter.sh_nodeclaims.yaml -f ${karpenterCrdBaseUrl}/karpenter.sh_nodepools.yaml`,
+        description: 'Apply Karpenter CRDs (NodeClaim, NodePool). KAITO requires these CRDs even when Node Auto-Provisioning is disabled.',
       },
       {
         title: 'Apply KAITO CRDs',
@@ -575,6 +581,9 @@ export class KaitoProvider implements Provider {
     // KAITO CRD URLs - we apply only the KAITO-specific CRDs and skip the bundled CRDs
     // which include NFD CRDs that conflict with NVIDIA GPU Operator
     const kaitoCrdBaseUrl = `https://raw.githubusercontent.com/kaito-project/kaito/v${KAITO_VERSION}/charts/kaito/workspace/crds`;
+    // Karpenter CRD URLs - KAITO requires these even when Node Auto-Provisioning is disabled
+    // This is a workaround for a KAITO bug where informers are registered unconditionally
+    const karpenterCrdBaseUrl = 'https://raw.githubusercontent.com/kubernetes-sigs/karpenter/main/pkg/apis/crds';
     
     return [
       {
@@ -585,8 +594,11 @@ export class KaitoProvider implements Provider {
         createNamespace: true,
         // Skip bundled CRDs (includes NFD CRDs that conflict with GPU Operator)
         skipCrds: true,
-        // Apply only KAITO-specific CRDs before helm install
+        // Apply Karpenter CRDs first (KAITO requires them even with disableNodeAutoProvisioning=true)
+        // Then apply KAITO-specific CRDs
         preCrdUrls: [
+          `${karpenterCrdBaseUrl}/karpenter.sh_nodeclaims.yaml`,
+          `${karpenterCrdBaseUrl}/karpenter.sh_nodepools.yaml`,
           `${kaitoCrdBaseUrl}/kaito.sh_workspaces.yaml`,
           `${kaitoCrdBaseUrl}/kaito.sh_inferencesets.yaml`,
         ],
