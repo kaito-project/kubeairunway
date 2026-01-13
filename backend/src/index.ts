@@ -101,6 +101,9 @@ async function startServer(): Promise<void> {
   const server = Bun.serve({
     port: Number(PORT),
     fetch: app.fetch,
+    // Increase idle timeout for long-running operations like Helm installs
+    // Max value is 255 seconds (~4 minutes)
+    idleTimeout: 255,
   });
 
   const authEnabled = authService.isAuthEnabled();

@@ -148,7 +148,24 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+// Extended options that include timeout
+interface RequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+// Default timeout for most requests (30 seconds)
+const DEFAULT_TIMEOUT_MS = 30000;
+
+// Longer timeout for installation operations (10 minutes - Helm can be slow)
+const INSTALLATION_TIMEOUT_MS = 600000;
+
+// Detect test environment - disable timeout for tests as it can interfere with MSW
+// Check for common test environment indicators
+const isTestEnv = typeof import.meta !== 'undefined' && 
+  ((import.meta as { env?: { MODE?: string } }).env?.MODE === 'test' ||
+   (import.meta as { env?: { VITEST?: string } }).env?.VITEST === 'true');
+
+async function request<T>(endpoint: string, options?: RequestOptions): Promise<T> {
   const url = `${API_BASE}/api${endpoint}`;
   console.log('[API] Fetching:', url);
 
@@ -163,10 +180,27 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  // Use AbortController for timeout (disabled in test environment)
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutId = isTestEnv ? null : setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      signal: isTestEnv ? undefined : controller.signal,
+    });
+  } catch (error) {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(408, `Request timeout after ${timeoutMs / 1000} seconds`);
+    }
+    throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 
   console.log('[API] Response status:', response.status, 'for', url);
 
@@ -330,21 +364,25 @@ export const installationApi = {
   installProvider: (providerId: string) =>
     request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/install`, {
       method: 'POST',
+      timeoutMs: INSTALLATION_TIMEOUT_MS,
     }),
 
   upgradeProvider: (providerId: string) =>
     request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/upgrade`, {
       method: 'POST',
+      timeoutMs: INSTALLATION_TIMEOUT_MS,
     }),
 
   uninstallProvider: (providerId: string) =>
     request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/uninstall`, {
       method: 'POST',
+      timeoutMs: INSTALLATION_TIMEOUT_MS,
     }),
 
   uninstallProviderCRDs: (providerId: string) =>
     request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/uninstall-crds`, {
       method: 'POST',
+      timeoutMs: INSTALLATION_TIMEOUT_MS,
     }),
 };
 
@@ -358,6 +396,7 @@ export const gpuOperatorApi = {
   install: () =>
     request<GPUOperatorInstallResult>('/installation/gpu-operator/install', {
       method: 'POST',
+      timeoutMs: INSTALLATION_TIMEOUT_MS,
     }),
 
   getCapacity: () => request<ClusterGpuCapacity>('/installation/gpu-capacity'),
@@ -566,6 +605,7 @@ export const aikitApi = {
       builder: { name: string; ready: boolean };
     }>('/aikit/infrastructure/setup', {
       method: 'POST',
+      timeoutMs: INSTALLATION_TIMEOUT_MS,
     }),
 };
 

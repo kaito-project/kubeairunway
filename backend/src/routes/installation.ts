@@ -244,7 +244,7 @@ const installation = new Hono()
       }
 
       logger.info(
-        { providerId: id, providerName: provider.name },
+        { providerId: id, providerName: provider.name, charts: provider.getHelmCharts().map(c => ({ name: c.name, version: c.version, namespace: c.namespace })) },
         `Starting installation of ${provider.name}`
       );
       
@@ -254,12 +254,18 @@ const installation = new Hono()
           provider.getHelmRepos(),
           provider.getHelmCharts(),
           (data, stream) => {
-            logger.debug({ stream }, data.trim());
+            // Log all helm output for debugging
+            if (stream === 'stderr') {
+              logger.warn({ stream, data: data.trim() }, 'Helm stderr output');
+            } else {
+              logger.info({ stream, data: data.trim() }, 'Helm stdout output');
+            }
           }
         );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error during Helm installation';
-        logger.error({ error, providerId: id }, 'Helm installation threw an exception');
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        logger.error({ error: errorMessage, stack: errorStack, providerId: id }, 'Helm installation threw an exception');
         throw new HTTPException(500, {
           message: `Helm installation failed: ${errorMessage}`,
         });
@@ -304,13 +310,31 @@ const installation = new Hono()
         const stderr = (failedStep?.result.stderr || 'Unknown error')
           .replace(/[\x00-\x1F\x7F]/g, ' ')  // Replace control characters
           .trim()
-          .slice(0, 500);  // Limit length
+          .slice(0, 1000);  // Increased limit for more context
+        
+        const stdout = (failedStep?.result.stdout || '')
+          .replace(/[\x00-\x1F\x7F]/g, ' ')
+          .trim()
+          .slice(0, 500);
+        
+        logger.error({ 
+          providerId: id, 
+          failedStep: failedStep?.step, 
+          stderr, 
+          stdout,
+          exitCode: failedStep?.result.exitCode 
+        }, `Installation failed at step: ${failedStep?.step}`);
         
         // Check if this is a timeout issue (could indicate pending-install)
         const isTimeout = stderr.includes('timed out') || stderr.includes('timeout');
-        const suggestion = isTimeout 
-          ? ' The installation may still be in progress. Check with "helm list -A" and wait for the release to complete, or run "helm uninstall <release-name> -n <namespace>" to clean up.'
-          : '';
+        const isCRDConflict = stderr.includes('conflict') && stderr.includes('CRD');
+        
+        let suggestion = '';
+        if (isTimeout) {
+          suggestion = ' The installation may still be in progress. Check with "helm list -A" and wait for the release to complete, or run "helm uninstall <release-name> -n <namespace>" to clean up.';
+        } else if (isCRDConflict) {
+          suggestion = ' A CRD conflict occurred. This typically happens when CRDs already exist from another installation. Check if NVIDIA GPU Operator or another operator already installed these CRDs.';
+        }
         
         throw new HTTPException(500, {
           message: `Installation failed at step "${failedStep?.step}": ${stderr}${suggestion}`,

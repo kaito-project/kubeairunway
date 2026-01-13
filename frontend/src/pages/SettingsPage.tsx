@@ -449,7 +449,7 @@ export function SettingsPage() {
                         {runtime.installed ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-gray-400" />
+                          <XCircle className="h-4 w-4 text-red-500" />
                         )}
                       </div>
                       <div className="flex items-center justify-between">

@@ -31,6 +31,10 @@ export interface HelmChart {
   createNamespace?: boolean;
   /** Optional: Direct URL to fetch the chart tarball (for charts not in repos) */
   fetchUrl?: string;
+  /** Optional: Skip installing CRDs bundled with the chart (use when CRDs conflict with existing ones) */
+  skipCrds?: boolean;
+  /** Optional: URLs to CRD manifests to apply before installing the chart (used with skipCrds) */
+  preCrdUrls?: string[];
 }
 
 /**

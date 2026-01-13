@@ -35,9 +35,6 @@ export const kaitoDeploymentConfigSchema = z.object({
 
   // Node targeting
   labelSelector: z.record(z.string()).optional(),
-  
-  // Preferred nodes - use existing nodes instead of auto-provisioning
-  preferredNodes: z.array(z.string()).optional(),
 
   // Resources
   resources: z.object({

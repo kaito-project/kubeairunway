@@ -42,16 +42,16 @@ const toastVariants = cva(
           "dark:border-destructive dark:bg-destructive dark:text-destructive-foreground",
         ],
         success: [
-          "border-green-500/50 bg-green-500/10 text-green-600",
-          "dark:border-green-500/30 dark:bg-green-500/20 dark:text-green-400",
+          "border-green-600 bg-green-600 text-white",
+          "dark:border-green-700 dark:bg-green-700 dark:text-white",
         ],
         warning: [
-          "border-yellow-500/50 bg-yellow-500/10 text-yellow-600",
-          "dark:border-yellow-500/30 dark:bg-yellow-500/20 dark:text-yellow-400",
+          "border-yellow-600 bg-yellow-600 text-white",
+          "dark:border-yellow-700 dark:bg-yellow-700 dark:text-white",
         ],
         info: [
-          "border-blue-500/50 bg-blue-500/10 text-blue-600",
-          "dark:border-blue-500/30 dark:bg-blue-500/20 dark:text-blue-400",
+          "border-blue-600 bg-blue-600 text-white",
+          "dark:border-blue-700 dark:bg-blue-700 dark:text-white",
         ],
       },
     },
