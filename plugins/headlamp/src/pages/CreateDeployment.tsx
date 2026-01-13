@@ -92,6 +92,7 @@ export function CreateDeployment() {
   const [contextLength, setContextLength] = useState<number | undefined>(undefined);
   const [enforceEager, setEnforceEager] = useState(true);
   const [trustRemoteCode, setTrustRemoteCode] = useState(false);
+  const [hasSetInitialRuntime, setHasSetInitialRuntime] = useState(false);
 
   // Load model and runtime data
   useEffect(() => {
@@ -145,31 +146,12 @@ export function CreateDeployment() {
     loadData();
   }, [api, modelIdFromUrl, isHfSource]);
 
-  // Set defaults when model loads
+  // Set defaults when model loads (runs only once when model data arrives)
   useEffect(() => {
-    if (model) {
-      // Generate deployment name
+    if (model && runtimes.length > 0) {
+      // Generate deployment name (only if not already set)
       if (!name) {
         setName(generateDeploymentName(model.id));
-      }
-
-      // Select best runtime
-      const compatibleRuntimes: RuntimeId[] = ['dynamo', 'kuberay', 'kaito'];
-      for (const rtId of compatibleRuntimes) {
-        const rt = runtimes.find((r) => r.id === rtId);
-        if (rt?.installed && isRuntimeCompatible(rtId, model.supportedEngines)) {
-          setSelectedRuntime(rtId);
-          setNamespace(RUNTIME_INFO[rtId].defaultNamespace);
-          break;
-        }
-      }
-
-      // Select best engine
-      const availableEngines = model.supportedEngines.filter(
-        (e) => RUNTIME_ENGINES[selectedRuntime]?.includes(e)
-      );
-      if (availableEngines.length > 0 && !availableEngines.includes(engine)) {
-        setEngine(availableEngines[0]);
       }
 
       // Set GPU recommendation based on model
@@ -178,7 +160,31 @@ export function CreateDeployment() {
         setGpuCount(Math.max(1, recommendedGpus));
       }
     }
-  }, [model, runtimes, name, selectedRuntime, engine]);
+  }, [model, runtimes.length, name]);
+
+  // Set initial runtime selection only once when data first loads
+  useEffect(() => {
+    if (model && runtimes.length > 0 && !hasSetInitialRuntime) {
+      // Select best runtime (prefer installed ones)
+      const compatibleRuntimes: RuntimeId[] = ['dynamo', 'kuberay', 'kaito'];
+      for (const rtId of compatibleRuntimes) {
+        const rt = runtimes.find((r) => r.id === rtId);
+        if (rt?.installed && isRuntimeCompatible(rtId, model.supportedEngines)) {
+          setSelectedRuntime(rtId);
+          setNamespace(RUNTIME_INFO[rtId].defaultNamespace);
+          // Select best engine for this runtime
+          const availableEngines = model.supportedEngines.filter(
+            (e) => RUNTIME_ENGINES[rtId]?.includes(e)
+          );
+          if (availableEngines.length > 0) {
+            setEngine(availableEngines[0]);
+          }
+          break;
+        }
+      }
+      setHasSetInitialRuntime(true);
+    }
+  }, [model, runtimes, hasSetInitialRuntime]);
 
   // Update namespace when runtime changes
   useEffect(() => {
@@ -379,14 +385,15 @@ export function CreateDeployment() {
         <h3 style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           🖥️ Runtime
         </h3>
-        <div style={{ display: 'grid', gap: '12px', maxWidth: '600px' }}>
-          {(['kaito', 'kuberay', 'dynamo'] as const).map((rtId) => {
+        <div style={{ display: 'grid', gap: '12px' }}>
+          {(['dynamo', 'kuberay', 'kaito'] as const).map((rtId) => {
             const info = RUNTIME_INFO[rtId];
             const rtStatus = runtimes.find((r) => r.id === rtId);
             const isInstalled = rtStatus?.installed ?? false;
             const isCompatible = isRuntimeCompatible(rtId, model.supportedEngines);
             const isSelected = selectedRuntime === rtId;
-            const isDisabled = !isInstalled || !isCompatible;
+            // Only disable if not compatible - allow clicking uninstalled runtimes
+            const isDisabled = !isCompatible;
 
             return (
               <div
@@ -429,11 +436,36 @@ export function CreateDeployment() {
                       borderRadius: '4px',
                       fontSize: '12px',
                     }}>
-                      {isInstalled ? '✓ Installed' : 'Not Installed'}
+                      {isInstalled ? '✓ Installed' : '⊘ Not Installed'}
                     </span>
                   </div>
                 </div>
                 <p style={{ margin: 0, marginLeft: '32px', fontSize: '13px', opacity: 0.7 }}>{info.description}</p>
+                {/* Show install message with link when selected but not installed */}
+                {isSelected && !isInstalled && (
+                  <p style={{
+                    margin: '8px 0 0 32px',
+                    fontSize: '13px',
+                    color: '#f57c00',
+                  }}>
+                    <a
+                      href={Router.createRouteURL('KubeFoundry Runtimes')}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        history.push(Router.createRouteURL('KubeFoundry Runtimes'));
+                      }}
+                      style={{
+                        color: '#f57c00',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Install {info.name}
+                    </a>
+                    {' '}before deploying.
+                  </p>
+                )}
               </div>
             );
           })}
