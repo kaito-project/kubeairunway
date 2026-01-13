@@ -17,13 +17,13 @@ import { ConnectionError } from '../components/ConnectionBanner';
 
 function getStatusColor(runtime: RuntimeStatus): StatusLabelProps['status'] {
   if (runtime.healthy) return 'success';
-  if (runtime.installed && !runtime.healthy) return 'warning';
+  if (runtime.installed) return 'warning'; // CRD exists but operator not running
   return 'error';
 }
 
 function getStatusText(runtime: RuntimeStatus): string {
   if (runtime.healthy) return 'Healthy';
-  if (runtime.installed && !runtime.healthy) return 'Degraded';
+  if (runtime.installed) return 'Unhealthy'; // CRD exists but operator not running
   return 'Not Installed';
 }
 
@@ -47,6 +47,7 @@ export function RuntimesStatus() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [uninstalling, setUninstalling] = useState<string | null>(null);
 
   // Fetch runtimes status
   const fetchStatus = useCallback(async () => {
@@ -76,6 +77,28 @@ export function RuntimesStatus() {
         alert(`Failed to install ${runtimeId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
       } finally {
         setInstalling(null);
+      }
+    },
+    [api, fetchStatus]
+  );
+
+  // Uninstall runtime
+  const handleUninstall = useCallback(
+    async (runtimeId: string) => {
+      setUninstalling(runtimeId);
+
+      try {
+        const result = await api.installation.uninstallProvider(runtimeId);
+        if (result.success) {
+          // Refresh status after uninstall
+          await fetchStatus();
+        } else {
+          alert(`Uninstall failed: ${result.message}`);
+        }
+      } catch (err) {
+        alert(`Failed to uninstall ${runtimeId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      } finally {
+        setUninstalling(null);
       }
     },
     [api, fetchStatus]
@@ -153,23 +176,32 @@ export function RuntimesStatus() {
               </StatusLabel>
             </div>
 
-            {/* Status details */}
+            {/* Status details - CRD and Operator */}
             <div style={{ fontSize: '14px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ opacity: 0.7 }}>CRD</span>
+                <StatusLabel status={runtime.installed ? 'success' : 'error'}>
+                  {runtime.installed ? 'Installed' : 'Not Installed'}
+                </StatusLabel>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ opacity: 0.7 }}>Operator</span>
+                <StatusLabel status={runtime.healthy ? 'success' : 'error'}>
+                  {runtime.healthy ? 'Running' : 'Not Running'}
+                </StatusLabel>
+              </div>
               {runtime.version && (
-                <div style={{ opacity: 0.7 }}>
-                  Version: <strong>{runtime.version}</strong>
-                </div>
-              )}
-              {runtime.message && (
-                <div style={{ color: !runtime.healthy ? '#f44336' : 'inherit', opacity: runtime.healthy ? 0.7 : 1, marginTop: '4px' }}>
-                  {runtime.message}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.7 }}>
+                  <span>Version</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{runtime.version}</span>
                 </div>
               )}
             </div>
 
             {/* Actions */}
             <div style={{ display: 'flex', gap: '8px' }}>
-              {!runtime.installed && (
+              {/* Show Install button if not fully installed (CRD missing or operator not running) */}
+              {!runtime.healthy && (
                 <button
                   onClick={() => handleInstall(runtime.id)}
                   disabled={installing === runtime.id}
@@ -183,24 +215,42 @@ export function RuntimesStatus() {
                     opacity: installing === runtime.id ? 0.7 : 1,
                   }}
                 >
-                  {installing === runtime.id ? 'Installing...' : 'Install'}
+                  {installing === runtime.id ? 'Installing...' : `Install ${runtime.name}`}
                 </button>
               )}
-              {runtime.installed && (
-                <button
-                  onClick={() => handleInstall(runtime.id)}
-                  disabled={installing === runtime.id}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: 'transparent',
-                    color: 'inherit',
-                    border: '1px solid rgba(128, 128, 128, 0.3)',
-                    borderRadius: '4px',
-                    cursor: installing === runtime.id ? 'wait' : 'pointer',
-                  }}
-                >
-                  Upgrade
-                </button>
+              {/* Show Upgrade and Uninstall only when fully healthy */}
+              {runtime.healthy && (
+                <>
+                  <button
+                    onClick={() => handleInstall(runtime.id)}
+                    disabled={installing === runtime.id || uninstalling === runtime.id}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: 'transparent',
+                      color: 'inherit',
+                      border: '1px solid rgba(128, 128, 128, 0.3)',
+                      borderRadius: '4px',
+                      cursor: installing === runtime.id ? 'wait' : 'pointer',
+                    }}
+                  >
+                    Upgrade
+                  </button>
+                  <button
+                    onClick={() => handleUninstall(runtime.id)}
+                    disabled={uninstalling === runtime.id || installing === runtime.id}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: uninstalling === runtime.id ? '#d32f2f' : 'transparent',
+                      color: uninstalling === runtime.id ? 'white' : '#d32f2f',
+                      border: '1px solid #d32f2f',
+                      borderRadius: '4px',
+                      cursor: uninstalling === runtime.id ? 'wait' : 'pointer',
+                      opacity: uninstalling === runtime.id ? 0.7 : 1,
+                    }}
+                  >
+                    {uninstalling === runtime.id ? 'Uninstalling...' : 'Uninstall'}
+                  </button>
+                </>
               )}
             </div>
           </div>
