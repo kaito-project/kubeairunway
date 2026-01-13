@@ -34,6 +34,8 @@ make compile-all         # Cross-compile for all platforms
 - If errors are found: Fix them before proceeding or informing the user
 - Never hand back to the user with syntax or compile errors
 
+**Document your prompts:** When completing a task, summarize the key prompt(s) used so the human can include them in the PR. This supports the project's "prompt request" workflow where prompts are reviewed alongside (or instead of) code. See [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-contributions--prompt-requests).
+
 **Always update relevant documentation** (this file, `docs/`, `README.md`, `CONTRIBUTING.md`) after making architectural or stack changes.
 
 ## Documentation (Progressive Disclosure)

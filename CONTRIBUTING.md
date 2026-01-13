@@ -325,6 +325,56 @@ Please refer to [docs/standards.md](docs/standards.md) for coding standards and 
 6. Commit your changes (`git commit -m 'Add amazing feature'`)
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
+9. **Share AI Prompts** — If you used AI assistance, include the prompt in your PR (see below)
+
+## AI-Assisted Contributions & Prompt Requests
+
+We embrace AI-assisted development! Whether you use GitHub Copilot, Claude, Cursor, or other AI tools, we welcome contributions that leverage these capabilities.
+
+### What is a Prompt Request?
+
+A **prompt request** is a contribution where you share the AI prompt that generates code, rather than (or in addition to) the code itself. This approach:
+
+- **Captures intent** — The prompt often explains *why* better than a code diff
+- **Enables review before implementation** — Maintainers can validate the approach
+- **Supports iteration** — Prompts can be refined before code is generated
+- **Improves reproducibility** — Anyone can run the prompt to verify results
+
+### Contributing with AI Assistance
+
+#### Option 1: Traditional PR with AI Prompt Disclosure
+
+Submit code as usual, but include the AI prompt in the PR template's "AI Prompt" section. This helps reviewers understand your approach and intent.
+
+#### Option 2: Prompt Request (Prompt-Only)
+
+Create an issue using the **Prompt Request** template if you:
+- Have a well-crafted prompt but haven't run it yet
+- Want feedback on your approach before implementation
+- Prefer maintainers to run and merge the prompt themselves
+
+### Best Practices for AI Prompts
+
+1. **Be specific** — Include file paths, function names, and concrete requirements
+2. **Reference project conventions** — Mention agents.md and relevant patterns
+3. **Define acceptance criteria** — How will we know it worked?
+4. **Include context** — Link to issues, docs, or examples
+5. **Test locally when possible** — Verify the prompt produces working code
+
+### Example Prompt
+
+```
+Add GPU memory utilization to the deployment metrics page.
+
+Requirements:
+- Fetch GPU memory from Prometheus metrics via backend/src/services/metrics.ts
+- Display as a progress bar in frontend/src/components/DeploymentMetrics.tsx
+- Follow existing patterns for Prometheus metric parsing
+- Add unit tests in backend/src/services/metrics.test.ts
+- Ensure TypeScript types are properly defined in shared/types/metrics.ts
+
+Reference: backend/src/lib/prometheus-parser.ts for existing metric parsing patterns
+```
 
 ## Questions?
 
