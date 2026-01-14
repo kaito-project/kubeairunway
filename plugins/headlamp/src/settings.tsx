@@ -5,6 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import Button from '@mui/material/Button';
+import { Icon } from '@iconify/react';
 import {
   getBackendUrlFromSettings,
   setBackendUrl,
@@ -139,46 +141,25 @@ export function PluginSettings() {
         </div>
 
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-          <button
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            startIcon={<Icon icon="mdi:content-save" />}
             onClick={handleSave}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#1976d2',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-            }}
           >
             Save Settings
-          </button>
-          <button
-            onClick={handleClear}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: 'transparent',
-              color: 'inherit',
-              border: '1px solid rgba(128, 128, 128, 0.3)',
-              borderRadius: '4px',
-              cursor: 'pointer',
-            }}
-          >
-            Clear URL
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            startIcon={<Icon icon="mdi:access-point-network" />}
             onClick={checkConnection}
             disabled={connectionStatus === 'checking'}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: 'transparent',
-              color: 'inherit',
-              border: '1px solid rgba(128, 128, 128, 0.3)',
-              borderRadius: '4px',
-              cursor: connectionStatus === 'checking' ? 'wait' : 'pointer',
-            }}
           >
-            {connectionStatus === 'checking' ? 'Checking...' : 'Test Connection'}
-          </button>
+            Test Connection
+          </Button>
         </div>
 
         {saved && (

@@ -724,6 +724,7 @@ export function CreateDeployment() {
         <Button
           variant="contained"
           onClick={handleSubmit}
+          color="primary"
           disabled={submitting || !isRuntimeInstalled || !name}
           startIcon={
             submitting ? (
@@ -734,20 +735,6 @@ export function CreateDeployment() {
               <Icon icon="mdi:rocket-launch" />
             )
           }
-          sx={{
-            flex: 1,
-            fontWeight: 600,
-            py: 1.5,
-            backgroundColor: '#2e7d32',
-            color: 'white',
-            '&:hover': {
-              backgroundColor: '#1b5e20',
-            },
-            '&.Mui-disabled': {
-              backgroundColor: '#999',
-              color: 'white',
-            },
-          }}
         >
           {submitting ? 'Creating...' : !isRuntimeInstalled ? 'Runtime Not Installed' : 'Deploy Model'}
         </Button>

@@ -4,19 +4,19 @@
  * Displays all deployments across namespaces with filtering and status.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   SectionBox,
+  SectionFilterHeader,
   SimpleTable,
   Link as HeadlampLink,
   Loader,
   StatusLabel,
   StatusLabelProps,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
-import Button from '@mui/material/Button';
+import { Utils } from '@kinvolk/headlamp-plugin/lib';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
-import Chip from '@mui/material/Chip';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
 import type { DeploymentStatus, DeploymentPhase } from '@kubefoundry/shared';
@@ -38,35 +38,23 @@ function getStatusColor(phase: DeploymentPhase): StatusLabelProps['status'] {
   }
 }
 
-// Runtime badge colors
-function getRuntimeColor(runtime: string): string {
-  switch (runtime?.toLowerCase()) {
-    case 'kaito':
-      return '#1976d2';
-    case 'kuberay':
-      return '#9c27b0';
-    case 'dynamo':
-      return '#2e7d32';
-    default:
-      return '#666';
-  }
-}
-
 export function DeploymentsList() {
   const api = useApiClient();
   const [deployments, setDeployments] = useState<DeploymentStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [namespace, setNamespace] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Fetch deployments
+  // Use Headlamp's filter function for namespace/search filtering
+  const filterFunc = Utils.useFilterFunc<DeploymentStatus>(['$.name', '$.namespace', '$.modelId', '$.provider', '$.engine']);
+
+  // Fetch all deployments (filtering happens on frontend using Headlamp's filter)
   const fetchDeployments = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const result = await api.deployments.list(namespace || undefined);
+      const result = await api.deployments.list();
       setDeployments(result.deployments);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch deployments');
@@ -74,7 +62,12 @@ export function DeploymentsList() {
     } finally {
       setLoading(false);
     }
-  }, [api, namespace]);
+  }, [api]);
+
+  // Filter deployments based on Headlamp's global filter state
+  const filteredDeployments = useMemo(() => {
+    return deployments.filter(filterFunc);
+  }, [deployments, filterFunc]);
 
   // Initial fetch and refresh
   useEffect(() => {
@@ -131,7 +124,7 @@ export function DeploymentsList() {
       label: 'Model',
       getter: (item: DeploymentStatus) => (
         <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-          {item.modelId || '-'}
+          {item.modelId ? <StatusLabel status="">{item.modelId}</StatusLabel> : '-'}
         </div>
       ),
     },
@@ -139,16 +132,7 @@ export function DeploymentsList() {
       label: 'Provider',
       getter: (item: DeploymentStatus) => (
         <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-          <Chip
-            label={item.provider}
-            size="small"
-            sx={{
-              backgroundColor: getRuntimeColor(item.provider),
-              color: 'white',
-              fontWeight: 500,
-              height: '24px',
-            }}
-          />
+          <StatusLabel status="">{item.provider}</StatusLabel>
         </div>
       ),
     },
@@ -174,7 +158,7 @@ export function DeploymentsList() {
       label: 'Engine',
       getter: (item: DeploymentStatus) => (
         <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-          {item.engine || '-'}
+          {item.engine ? <StatusLabel status="">{item.engine}</StatusLabel> : '-'}
         </div>
       ),
     },
@@ -227,59 +211,41 @@ export function DeploymentsList() {
 
   return (
     <SectionBox
-      title="Deployments"
-      headerProps={{
-        actions: [
-          <div key="filter" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input
-              type="text"
-              placeholder="Filter by namespace..."
-              value={namespace}
-              onChange={(e) => setNamespace(e.target.value)}
-              style={{
-                padding: '6px 12px',
-                border: '1px solid rgba(128, 128, 128, 0.3)',
-                borderRadius: '4px',
-                fontSize: '14px',
-                width: '200px',
-                backgroundColor: 'transparent',
-                color: 'inherit',
-              }}
-            />
-            <button
-              onClick={() => setRefreshKey((k) => k + 1)}
-              style={{
-                padding: '6px 12px',
-                backgroundColor: 'transparent',
-                border: '1px solid rgba(128, 128, 128, 0.3)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                color: 'inherit',
-              }}
-            >
-              Refresh
-            </button>
-            <HeadlampLink
-              routeName="Create Deployment"
-              style={{
-                padding: '6px 12px',
-                backgroundColor: '#1976d2',
-                color: 'white',
-                borderRadius: '4px',
-                textDecoration: 'none',
-              }}
-            >
-              + Create
-            </HeadlampLink>
-          </div>,
-        ],
-      }}
+      title={
+        <SectionFilterHeader
+          title={
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Deployments
+              <Tooltip title="Create Deployment">
+                <IconButton
+                  component={HeadlampLink}
+                  routeName="Create Deployment"
+                  size="small"
+                  color="primary"
+                >
+                  <Icon icon="mdi:plus-circle" />
+                </IconButton>
+              </Tooltip>
+            </span>
+          }
+          actions={[
+            <Tooltip key="refresh" title="Refresh">
+              <IconButton
+                onClick={() => setRefreshKey((k) => k + 1)}
+                size="small"
+              >
+                <Icon icon="mdi:refresh" />
+              </IconButton>
+            </Tooltip>,
+          ]}
+        />
+      }
     >
       {loading ? (
         <Loader title="Loading deployments..." />
       ) : error ? (
         <ConnectionError error={error} onRetry={fetchDeployments} />
-      ) : deployments.length === 0 ? (
+      ) : filteredDeployments.length === 0 ? (
         <div style={{ padding: '24px', textAlign: 'center', opacity: 0.7 }}>
           <p>No deployments found.</p>
           <HeadlampLink routeName="Create Deployment" style={{ color: '#1976d2' }}>
@@ -289,7 +255,7 @@ export function DeploymentsList() {
       ) : (
         <SimpleTable
           columns={columns}
-          data={deployments}
+          data={filteredDeployments}
           rowsPerPage={[10, 25, 50]}
         />
       )}

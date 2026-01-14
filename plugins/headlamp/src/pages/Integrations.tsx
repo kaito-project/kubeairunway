@@ -10,6 +10,9 @@ import {
   Loader,
   StatusLabel,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
 import { getHuggingFaceCallbackUrl } from '../routes';
 import type { GPUOperatorStatus, HfSecretStatus } from '@kubefoundry/shared';
@@ -148,14 +151,14 @@ export function Integrations() {
     fetchHfStatus();
   }, [fetchGpuStatus, fetchHfStatus]);
 
-  const loading = gpuLoading && hfLoading;
+  const loading = gpuLoading || hfLoading;
 
   if (loading) {
     return <Loader title="Loading integrations..." />;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', paddingBottom: '24px' }}>
       {/* NVIDIA GPU Operator */}
       <SectionBox title="NVIDIA GPU Operator">
         <div style={{ padding: '16px 0' }}>
@@ -208,21 +211,17 @@ export function Integrations() {
                         Automatically installs the NVIDIA GPU Operator via Helm
                       </div>
                     </div>
-                    <button
+
+                    <Button
+                      variant="contained"                    
+                      color="primary"
+                      size="small"
+                      startIcon={<Icon icon="mdi:download" />}
                       onClick={handleInstallGpu}
-                      disabled={installing}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: '#1976d2',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: installing ? 'wait' : 'pointer',
-                        opacity: installing ? 0.7 : 1,
-                      }}
+                      loading={installing}
                     >
-                      {installing ? 'Installing...' : 'Install'}
-                    </button>
+                      Install
+                    </Button>
                   </div>
 
                   {installing && (
@@ -261,20 +260,12 @@ export function Integrations() {
                         >
                           {cmd}
                         </code>
-                        <button
+                        <IconButton
+                          color="primary"
                           onClick={() => copyToClipboard(cmd)}
-                          style={{
-                            padding: '6px 12px',
-                            backgroundColor: 'transparent',
-                            border: '1px solid rgba(128, 128, 128, 0.3)',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            color: 'inherit',
-                            whiteSpace: 'nowrap',
-                          }}
                         >
-                          Copy
-                        </button>
+                          <Icon icon="mdi:content-copy"/>
+                        </IconButton>
                       </div>
                     ))}
                   </div>
@@ -359,29 +350,25 @@ export function Integrations() {
                   alignItems: 'center',
                   gap: '8px',
                   color: '#4caf50',
+                  alignSelf: 'flex-start',
                 }}
               >
-                <span>✓</span>
+                <Icon icon="mdi:check-circle" />
                 <span>
                   Token saved in {hfStatus.namespaces.filter((n) => n.exists).length} namespace(s)
                 </span>
               </div>
 
-              <button
+              <Button
                 onClick={handleDisconnectHf}
+                variant="outlined"
+                color="error"
+                startIcon={<Icon icon="mdi:link-off" />}
                 disabled={disconnectingHf}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: 'transparent',
-                  border: '1px solid rgba(128, 128, 128, 0.3)',
-                  borderRadius: '4px',
-                  cursor: disconnectingHf ? 'wait' : 'pointer',
-                  color: 'inherit',
-                  alignSelf: 'flex-start',
-                }}
+                style={{ alignSelf: 'flex-start' }}
               >
                 {disconnectingHf ? 'Disconnecting...' : 'Disconnect HuggingFace'}
-              </button>
+              </Button>
             </div>
           ) : (
             // Not connected state
@@ -391,32 +378,18 @@ export function Integrations() {
                 models. The token will be securely stored as a Kubernetes secret.
               </p>
 
-              <button
+              <Button
                 onClick={handleConnectHf}
                 disabled={connectingHf}
+                variant="contained"
                 style={{
-                  padding: '10px 20px',
                   backgroundColor: '#FFD21E',
                   color: 'black',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: connectingHf ? 'wait' : 'pointer',
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
                   alignSelf: 'flex-start',
                 }}
               >
-                {connectingHf ? (
-                  'Connecting...'
-                ) : (
-                  <>
-                    <span>🤗</span>
-                    Sign in with Hugging Face
-                  </>
-                )}
-              </button>
+                {connectingHf ? 'Connecting...' : <><span>🤗</span> Sign in with Hugging Face</>}
+              </Button>
             </div>
           )}
         </div>

@@ -5,6 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import Button from '@mui/material/Button';
+import { Icon } from '@iconify/react';
 import {
   SectionBox,
   Loader,
@@ -202,26 +204,48 @@ export function RuntimesStatus() {
             <div style={{ display: 'flex', gap: '8px' }}>
               {/* Show Install button if not fully installed (CRD missing or operator not running) */}
               {!runtime.healthy && (
-                <button
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="small"
+                  startIcon={<Icon icon="mdi:download" />}
                   onClick={() => handleInstall(runtime.id)}
-                  disabled={installing === runtime.id}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#1976d2',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: installing === runtime.id ? 'wait' : 'pointer',
-                    opacity: installing === runtime.id ? 0.7 : 1,
-                  }}
+                  loading={installing === runtime.id}
                 >
-                  {installing === runtime.id ? 'Installing...' : `Install ${runtime.name}`}
-                </button>
+                  Deploy
+                </Button>
+                // <button
+                //   onClick={() => handleInstall(runtime.id)}
+                //   disabled={installing === runtime.id}
+                //   style={{
+                //     padding: '8px 16px',
+                //     backgroundColor: '#1976d2',
+                //     color: 'white',
+                //     border: 'none',
+                //     borderRadius: '4px',
+                //     cursor: installing === runtime.id ? 'wait' : 'pointer',
+                //     opacity: installing === runtime.id ? 0.7 : 1,
+                //   }}
+                // >
+                //   {installing === runtime.id ? 'Installing...' : `Install ${runtime.name}`}
+                // </button>
               )}
               {/* Show Upgrade and Uninstall only when fully healthy */}
               {runtime.healthy && (
                 <>
-                  <button
+                  <Button
+                    variant="contained"
+                    color="success"
+                    size="small"
+                    startIcon={<Icon icon="mdi:arrow-up-circle" />}
+                    sx={{ fontWeight: 600, boxShadow: 3, alignSelf: 'flex-start', mt: 'auto', display: 'flex', alignItems: 'center' }}
+                    onClick={() => handleInstall(runtime.id)}
+                    loading={installing === runtime.id}
+                    disabled={installing === runtime.id || uninstalling === runtime.id}
+                  >
+                    Upgrade
+                  </Button>
+                  {/* <button
                     onClick={() => handleInstall(runtime.id)}
                     disabled={installing === runtime.id || uninstalling === runtime.id}
                     style={{
@@ -234,8 +258,19 @@ export function RuntimesStatus() {
                     }}
                   >
                     Upgrade
-                  </button>
-                  <button
+                  </button> */}
+                  <Button
+                    variant="contained"
+                    color="error"
+                    size="small"
+                    startIcon={<Icon icon="mdi:trash" />}
+                    onClick={() => handleUninstall(runtime.id)}
+                    loading={uninstalling === runtime.id}
+                    disabled={uninstalling === runtime.id || installing === runtime.id}
+                  >
+                    Uninstall
+                  </Button>
+                  {/* <button
                     onClick={() => handleUninstall(runtime.id)}
                     disabled={uninstalling === runtime.id || installing === runtime.id}
                     style={{
@@ -249,7 +284,7 @@ export function RuntimesStatus() {
                     }}
                   >
                     {uninstalling === runtime.id ? 'Uninstalling...' : 'Uninstall'}
-                  </button>
+                  </button> */}
                 </>
               )}
             </div>

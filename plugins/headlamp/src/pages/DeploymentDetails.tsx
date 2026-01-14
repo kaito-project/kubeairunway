@@ -15,6 +15,10 @@ import {
   StatusLabel,
   StatusLabelProps,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
+import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
+import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
 import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@kubefoundry/shared';
 import { MetricsPanel } from '../components/MetricsPanel';
@@ -208,27 +212,22 @@ export function DeploymentDetails() {
   ];
 
   return (
-    <div>
+    <div style={{ paddingTop: '16px', paddingBottom: '24px' }}>
       {/* Header with back button and actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <button
-            onClick={() => history.push(ROUTES.DEPLOYMENTS)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '40px',
-              height: '40px',
-              background: 'none',
-              border: '1px solid rgba(128, 128, 128, 0.3)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              color: 'inherit',
-            }}
-          >
-            ←
-          </button>
+          <Tooltip title="Back to Deployments">
+            <IconButton
+              onClick={() => history.push(ROUTES.DEPLOYMENTS)}
+              size="small"
+              sx={{
+                border: '1px solid rgba(128, 128, 128, 0.3)',
+                borderRadius: '8px',
+              }}
+            >
+              <Icon icon="mdi:arrow-left" />
+            </IconButton>
+          </Tooltip>
           <div>
             <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>{deployment.name}</h1>
             <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '4px' }}>
@@ -237,22 +236,14 @@ export function DeploymentDetails() {
           </div>
         </div>
 
-        <button
+        <Button
           onClick={() => setShowDeleteDialog(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '10px 16px',
-            backgroundColor: '#c62828',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
+          variant="contained"
+          color="error"
+          startIcon={<Icon icon="mdi:trash-can" />}
         >
-          🗑️ Delete
-        </button>
+          Delete
+        </Button>
       </div>
 
       {/* Status Card */}
@@ -327,7 +318,7 @@ export function DeploymentDetails() {
         marginBottom: '24px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <span style={{ fontSize: '18px' }}>🖥️</span>
+          <Icon icon="mdi:monitor" style={{ fontSize: '20px' }} />
           <h3 style={{ margin: 0 }}>Access Model</h3>
         </div>
         <div style={{ fontSize: '14px', opacity: 0.7, marginBottom: '16px' }}>
@@ -346,19 +337,14 @@ export function DeploymentDetails() {
           }}>
             {portForwardCommand}
           </code>
-          <button
-            onClick={copyPortForwardCommand}
-            style={{
-              padding: '10px 12px',
-              backgroundColor: 'transparent',
-              border: '1px solid rgba(128, 128, 128, 0.3)',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              color: 'inherit',
-            }}
-          >
-            {copied ? '✓' : '📋'}
-          </button>
+          <Tooltip title={copied ? 'Copied!' : 'Copy to clipboard'}>
+            <IconButton
+              onClick={copyPortForwardCommand}
+              color={copied ? 'success' : 'default'}
+            >
+              <Icon icon={copied ? 'mdi:check' : 'mdi:content-copy'} />
+            </IconButton>
+          </Tooltip>
         </div>
 
         <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '8px' }}>
