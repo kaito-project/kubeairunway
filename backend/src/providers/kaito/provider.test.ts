@@ -22,12 +22,28 @@ describe('KaitoProvider', () => {
   });
 
   describe('getCRDConfig', () => {
-    test('returns correct CRD configuration', () => {
+    test('returns Workspace CRD configuration by default', () => {
       const config = provider.getCRDConfig();
+      expect(config.apiGroup).toBe('kaito.sh');
+      expect(config.apiVersion).toBe('v1beta1');
+      expect(config.plural).toBe('workspaces');
+      expect(config.kind).toBe('Workspace');
+    });
+
+    test('returns InferenceSet CRD configuration for inferenceset resource type', () => {
+      const config = provider.getCRDConfigForResourceType('inferenceset');
       expect(config.apiGroup).toBe('kaito.sh');
       expect(config.apiVersion).toBe('v1alpha1');
       expect(config.plural).toBe('inferencesets');
       expect(config.kind).toBe('InferenceSet');
+    });
+
+    test('returns Workspace CRD configuration for workspace resource type', () => {
+      const config = provider.getCRDConfigForResourceType('workspace');
+      expect(config.apiGroup).toBe('kaito.sh');
+      expect(config.apiVersion).toBe('v1beta1');
+      expect(config.plural).toBe('workspaces');
+      expect(config.kind).toBe('Workspace');
     });
   });
 
@@ -67,41 +83,149 @@ describe('KaitoProvider', () => {
       },
     };
 
-    test('generates valid InferenceSet manifest for premade model', () => {
-      const manifest = provider.generateManifest(basePremadeConfig);
+    // Workspace-specific configs
+    const workspacePremadeConfig = {
+      ...basePremadeConfig,
+      kaitoResourceType: 'workspace' as const,
+    };
 
-      expect(manifest.apiVersion).toBe('kaito.sh/v1alpha1');
-      expect(manifest.kind).toBe('InferenceSet');
-      expect((manifest.metadata as any).name).toBe('test-deployment');
-      expect((manifest.metadata as any).namespace).toBe('test-ns');
+    const workspaceVllmConfig = {
+      ...baseVllmConfig,
+      kaitoResourceType: 'workspace' as const,
+    };
+
+    // InferenceSet-specific configs
+    const inferenceSetPremadeConfig = {
+      ...basePremadeConfig,
+      kaitoResourceType: 'inferenceset' as const,
+    };
+
+    const inferenceSetVllmConfig = {
+      ...baseVllmConfig,
+      kaitoResourceType: 'inferenceset' as const,
+    };
+
+    describe('Workspace manifests (default)', () => {
+      test('generates valid Workspace manifest for premade model by default', () => {
+        const manifest = provider.generateManifest(basePremadeConfig);
+
+        expect(manifest.apiVersion).toBe('kaito.sh/v1beta1');
+        expect(manifest.kind).toBe('Workspace');
+        expect((manifest.metadata as any).name).toBe('test-deployment');
+        expect((manifest.metadata as any).namespace).toBe('test-ns');
+      });
+
+      test('generates valid Workspace manifest with explicit workspace resource type', () => {
+        const manifest = provider.generateManifest(workspacePremadeConfig);
+
+        expect(manifest.apiVersion).toBe('kaito.sh/v1beta1');
+        expect(manifest.kind).toBe('Workspace');
+        expect((manifest.metadata as any).labels['kubefoundry.io/resource-type']).toBe('workspace');
+      });
+
+      test('Workspace manifest has resource at top level (not in spec)', () => {
+        const config = {
+          ...workspacePremadeConfig,
+          computeType: 'gpu' as const,
+          resources: { gpu: 1 },
+        };
+        const manifest = provider.generateManifest(config);
+
+        // Workspace uses resource at TOP level
+        expect((manifest as any).resource.count).toBe(1);
+        // Should NOT be in spec
+        expect((manifest.spec as any)?.resource).toBeUndefined();
+      });
+
+      test('Workspace manifest has inference at top level (not in spec)', () => {
+        const manifest = provider.generateManifest(workspacePremadeConfig);
+
+        // Workspace uses inference at TOP level
+        expect((manifest as any).inference).toBeDefined();
+        expect((manifest as any).inference.template).toBeDefined();
+        // Should NOT be in spec.template
+        expect((manifest.spec as any)?.template).toBeUndefined();
+      });
+
+      test('Workspace vLLM manifest has correct structure', () => {
+        const manifest = provider.generateManifest(workspaceVllmConfig);
+
+        expect(manifest.apiVersion).toBe('kaito.sh/v1beta1');
+        expect(manifest.kind).toBe('Workspace');
+        expect((manifest as any).resource.count).toBe(1);  // Workspace uses resource.count
+
+        const container = (manifest as any).inference.template.spec.containers[0];
+        expect(container.image).toBe('mcr.microsoft.com/aks/kaito/kaito-base:0.1.1');
+        expect(container.args).toContain('mistralai/Mistral-7B-v0.1');
+      });
+
+      test('Workspace manifest includes instanceType when provided', () => {
+        const config = {
+          ...workspacePremadeConfig,
+          computeType: 'gpu' as const,
+          resources: { gpu: 1 },
+          instanceType: 'Standard_NC6s_v3',
+        };
+        const manifest = provider.generateManifest(config);
+
+        expect((manifest as any).resource.instanceType).toBe('Standard_NC6s_v3');
+      });
     });
 
-    test('generates valid InferenceSet manifest for HuggingFace model', () => {
-      const manifest = provider.generateManifest(baseHuggingFaceConfig);
+    describe('InferenceSet manifests', () => {
+      test('generates valid InferenceSet manifest for premade model', () => {
+        const manifest = provider.generateManifest(inferenceSetPremadeConfig);
 
-      expect(manifest.apiVersion).toBe('kaito.sh/v1alpha1');
-      expect(manifest.kind).toBe('InferenceSet');
-      expect((manifest.metadata as any).name).toBe('hf-deployment');
+        expect(manifest.apiVersion).toBe('kaito.sh/v1alpha1');
+        expect(manifest.kind).toBe('InferenceSet');
+        expect((manifest.metadata as any).name).toBe('test-deployment');
+        expect((manifest.metadata as any).namespace).toBe('test-ns');
+        expect((manifest.metadata as any).labels['kubefoundry.io/resource-type']).toBe('inferenceset');
+      });
+
+      test('generates valid InferenceSet manifest for HuggingFace model', () => {
+        const manifest = provider.generateManifest({ ...baseHuggingFaceConfig, kaitoResourceType: 'inferenceset' as const });
+
+        expect(manifest.apiVersion).toBe('kaito.sh/v1alpha1');
+        expect(manifest.kind).toBe('InferenceSet');
+        expect((manifest.metadata as any).name).toBe('hf-deployment');
+      });
+
+      test('generates valid InferenceSet manifest for vLLM model', () => {
+        const manifest = provider.generateManifest(inferenceSetVllmConfig);
+
+        expect(manifest.apiVersion).toBe('kaito.sh/v1alpha1');
+        expect(manifest.kind).toBe('InferenceSet');
+        expect((manifest.metadata as any).name).toBe('vllm-deployment');
+        expect((manifest.metadata as any).labels['kubefoundry.io/model-source']).toBe('vllm');
+        expect((manifest.metadata as any).labels['kubefoundry.io/compute-type']).toBe('gpu');
+      });
+
+      test('InferenceSet has spec.replicas', () => {
+        const manifest = provider.generateManifest({ ...inferenceSetPremadeConfig, replicas: 3 });
+        expect((manifest.spec as any).replicas).toBe(3);
+      });
+
+      test('InferenceSet has spec.template.inference structure', () => {
+        const manifest = provider.generateManifest(inferenceSetPremadeConfig);
+        expect((manifest.spec as any).template.inference.template.spec.containers).toHaveLength(1);
+      });
+
+      test('InferenceSet has labelSelector', () => {
+        const manifest = provider.generateManifest(inferenceSetPremadeConfig);
+        expect((manifest.spec as any).labelSelector.matchLabels).toBeDefined();
+      });
     });
 
-    test('generates valid InferenceSet manifest for vLLM model', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
-
-      expect(manifest.apiVersion).toBe('kaito.sh/v1alpha1');
-      expect(manifest.kind).toBe('InferenceSet');
-      expect((manifest.metadata as any).name).toBe('vllm-deployment');
-      expect((manifest.metadata as any).labels['kubefoundry.io/model-source']).toBe('vllm');
-      expect((manifest.metadata as any).labels['kubefoundry.io/compute-type']).toBe('gpu');
-    });
-
+    // Keep existing general tests but update to be more explicit
     test('vLLM manifest uses kaito-base image', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
+      const manifest = provider.generateManifest(inferenceSetVllmConfig);
       const container = (manifest.spec as any).template.inference.template.spec.containers[0];
       expect(container.image).toBe('mcr.microsoft.com/aks/kaito/kaito-base:0.1.1');
     });
 
     test('vLLM manifest has correct command and args', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
+      const manifest = provider.generateManifest(inferenceSetVllmConfig);
       const container = (manifest.spec as any).template.inference.template.spec.containers[0];
       expect(container.command).toEqual(['python']);
       expect(container.args).toContain('-m');
@@ -114,20 +238,20 @@ describe('KaitoProvider', () => {
     });
 
     test('vLLM manifest uses port 8000', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
+      const manifest = provider.generateManifest(inferenceSetVllmConfig);
       const container = (manifest.spec as any).template.inference.template.spec.containers[0];
       expect(container.ports[0].containerPort).toBe(8000);
     });
 
     test('vLLM manifest includes GPU resources', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
+      const manifest = provider.generateManifest(inferenceSetVllmConfig);
       const container = (manifest.spec as any).template.inference.template.spec.containers[0];
       expect(container.resources.requests['nvidia.com/gpu']).toBe(2);
       expect(container.resources.limits['nvidia.com/gpu']).toBe(2);
     });
 
     test('vLLM manifest includes shared memory volume', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
+      const manifest = provider.generateManifest(inferenceSetVllmConfig);
       const templateSpec = (manifest.spec as any).template.inference.template.spec;
       expect(templateSpec.volumes).toHaveLength(1);
       expect(templateSpec.volumes[0].name).toBe('dshm');
@@ -138,7 +262,7 @@ describe('KaitoProvider', () => {
     });
 
     test('vLLM manifest includes maxModelLen when provided', () => {
-      const configWithMaxLen = { ...baseVllmConfig, maxModelLen: 4096 };
+      const configWithMaxLen = { ...inferenceSetVllmConfig, maxModelLen: 4096 };
       const manifest = provider.generateManifest(configWithMaxLen);
       const container = (manifest.spec as any).template.inference.template.spec.containers[0];
       expect(container.args).toContain('--max-model-len');
@@ -146,7 +270,7 @@ describe('KaitoProvider', () => {
     });
 
     test('vLLM manifest includes HF_TOKEN env when hfTokenSecret provided', () => {
-      const configWithToken = { ...baseVllmConfig, hfTokenSecret: 'my-hf-secret' };
+      const configWithToken = { ...inferenceSetVllmConfig, hfTokenSecret: 'my-hf-secret' };
       const manifest = provider.generateManifest(configWithToken);
       const container = (manifest.spec as any).template.inference.template.spec.containers[0];
       expect(container.env).toHaveLength(1);
@@ -156,7 +280,7 @@ describe('KaitoProvider', () => {
     });
 
     test('vLLM manifest includes probes', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
+      const manifest = provider.generateManifest(inferenceSetVllmConfig);
       const container = (manifest.spec as any).template.inference.template.spec.containers[0];
       expect(container.livenessProbe).toBeDefined();
       expect(container.livenessProbe.httpGet.port).toBe(8000);
@@ -175,313 +299,438 @@ describe('KaitoProvider', () => {
       expect(labels['kubefoundry.io/model-source']).toBe('premade');
     });
 
-    test('includes spec with replica count', () => {
-      const manifest = provider.generateManifest({ ...basePremadeConfig, replicas: 3 });
-      expect((manifest.spec as any).replicas).toBe(3);
-    });
+    describe('InferenceSet-specific structure tests', () => {
+      test('InferenceSet includes spec with replica count', () => {
+        const manifest = provider.generateManifest({ ...inferenceSetPremadeConfig, replicas: 3 });
+        expect((manifest.spec as any).replicas).toBe(3);
+      });
 
-    test('includes template with container', () => {
-      const manifest = provider.generateManifest(basePremadeConfig);
-      const containers = (manifest.spec as any).template.inference.template.spec.containers;
-      expect(containers).toHaveLength(1);
-      expect(containers[0].name).toBe('model');
-      expect(containers[0].image).toBeDefined();
-      expect(containers[0].ports[0].containerPort).toBe(5000);
-    });
+      test('InferenceSet includes template with container', () => {
+        const manifest = provider.generateManifest(inferenceSetPremadeConfig);
+        const containers = (manifest.spec as any).template.inference.template.spec.containers;
+        expect(containers).toHaveLength(1);
+        expect(containers[0].name).toBe('model');
+        expect(containers[0].image).toBeDefined();
+        expect(containers[0].ports[0].containerPort).toBe(5000);
+      });
 
-    test('uses premade model image from AIKit', () => {
-      const manifest = provider.generateManifest(basePremadeConfig);
-      const container = (manifest.spec as any).template.inference.template.spec.containers[0];
-      const premadeModel = aikitService.getPremadeModel('llama3.2:3b');
-      expect(container.image).toBe(premadeModel?.image);
-    });
+      test('uses premade model image from AIKit', () => {
+        const manifest = provider.generateManifest(inferenceSetPremadeConfig);
+        const container = (manifest.spec as any).template.inference.template.spec.containers[0];
+        const premadeModel = aikitService.getPremadeModel('llama3.2:3b');
+        expect(container.image).toBe(premadeModel?.image);
+      });
 
-    test('uses imageRef for HuggingFace models', () => {
-      const manifest = provider.generateManifest(baseHuggingFaceConfig);
-      const container = (manifest.spec as any).template.inference.template.spec.containers[0];
-      expect(container.image).toBe(baseHuggingFaceConfig.imageRef);
-    });
+      test('uses imageRef for HuggingFace models', () => {
+        const manifest = provider.generateManifest({ ...baseHuggingFaceConfig, kaitoResourceType: 'inferenceset' as const });
+        const container = (manifest.spec as any).template.inference.template.spec.containers[0];
+        expect(container.image).toBe(baseHuggingFaceConfig.imageRef);
+      });
 
-    test('includes labelSelector when provided', () => {
-      const config = {
-        ...basePremadeConfig,
-        labelSelector: {
-          'kubernetes.io/arch': 'amd64',
-          'node-type': 'ml',
-        },
-      };
-      const manifest = provider.generateManifest(config);
-      expect((manifest.spec as any).labelSelector.matchLabels['kubernetes.io/arch']).toBe('amd64');
-      expect((manifest.spec as any).labelSelector.matchLabels['node-type']).toBe('ml');
-    });
+      test('includes labelSelector when provided', () => {
+        const config = {
+          ...inferenceSetPremadeConfig,
+          labelSelector: {
+            'kubernetes.io/arch': 'amd64',
+            'node-type': 'ml',
+          },
+        };
+        const manifest = provider.generateManifest(config);
+        expect((manifest.spec as any).labelSelector.matchLabels['kubernetes.io/arch']).toBe('amd64');
+        expect((manifest.spec as any).labelSelector.matchLabels['node-type']).toBe('ml');
+      });
 
-    test('CPU workload generates kubernetes.io/os: linux labelSelector by default', () => {
-      const config = {
-        ...basePremadeConfig,
-        computeType: 'cpu' as const,
-      };
-      const manifest = provider.generateManifest(config);
-      expect((manifest.spec as any).labelSelector.matchLabels['kubernetes.io/os']).toBe('linux');
-    });
+      test('CPU workload generates kubernetes.io/os: linux labelSelector by default', () => {
+        const config = {
+          ...inferenceSetPremadeConfig,
+          computeType: 'cpu' as const,
+        };
+        const manifest = provider.generateManifest(config);
+        expect((manifest.spec as any).labelSelector.matchLabels['kubernetes.io/os']).toBe('linux');
+      });
 
-    test('GPU workload generates nvidia.com/gpu.present: true labelSelector by default', () => {
-      const config = {
-        ...basePremadeConfig,
-        computeType: 'gpu' as const,
-        resources: { gpu: 1 },
-      };
-      const manifest = provider.generateManifest(config);
-      expect((manifest.spec as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
-    });
+      test('GPU workload generates nvidia.com/gpu.present: true labelSelector by default', () => {
+        const config = {
+          ...inferenceSetPremadeConfig,
+          computeType: 'gpu' as const,
+          resources: { gpu: 1 },
+        };
+        const manifest = provider.generateManifest(config);
+        expect((manifest.spec as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
+      });
 
-    test('vLLM workload always generates nvidia.com/gpu.present: true labelSelector', () => {
-      const manifest = provider.generateManifest(baseVllmConfig);
-      expect((manifest.spec as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
-    });
+      test('vLLM workload always generates nvidia.com/gpu.present: true labelSelector', () => {
+        const manifest = provider.generateManifest(inferenceSetVllmConfig);
+        expect((manifest.spec as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
+      });
 
-    test('user-provided labelSelector overrides default GPU/CPU labels', () => {
-      const config = {
-        ...basePremadeConfig,
-        computeType: 'gpu' as const,
-        resources: { gpu: 1 },
-        labelSelector: {
-          'custom-label': 'custom-value',
-        },
-      };
-      const manifest = provider.generateManifest(config);
-      // Should use custom label, not nvidia.com/gpu.present
-      expect((manifest.spec as any).labelSelector.matchLabels['custom-label']).toBe('custom-value');
-      expect((manifest.spec as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBeUndefined();
-    });
+      test('user-provided labelSelector overrides default GPU/CPU labels', () => {
+        const config = {
+          ...inferenceSetPremadeConfig,
+          computeType: 'gpu' as const,
+          resources: { gpu: 1 },
+          labelSelector: {
+            'custom-label': 'custom-value',
+          },
+        };
+        const manifest = provider.generateManifest(config);
+        // Should use custom label, not nvidia.com/gpu.present
+        expect((manifest.spec as any).labelSelector.matchLabels['custom-label']).toBe('custom-value');
+        expect((manifest.spec as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBeUndefined();
+      });
 
-    test('includes resource requests when specified', () => {
-      const config = {
-        ...basePremadeConfig,
-        resources: {
-          memory: '16Gi',
-          cpu: '8',
-        },
-      };
-      const manifest = provider.generateManifest(config);
-      const resources = (manifest.spec as any).template.inference.template.spec.containers[0].resources;
-      expect(resources.requests.memory).toBe('16Gi');
-      expect(resources.requests.cpu).toBe('8');
-    });
+      test('includes resource requests when specified', () => {
+        const config = {
+          ...inferenceSetPremadeConfig,
+          resources: {
+            memory: '16Gi',
+            cpu: '8',
+          },
+        };
+        const manifest = provider.generateManifest(config);
+        const resources = (manifest.spec as any).template.inference.template.spec.containers[0].resources;
+        expect(resources.requests.memory).toBe('16Gi');
+        expect(resources.requests.cpu).toBe('8');
+      });
 
-    test('includes GPU resources for gpu computeType', () => {
-      const config = {
-        ...basePremadeConfig,
-        computeType: 'gpu' as const,
-        resources: {
-          gpu: 2,
-          memory: '32Gi',
-        },
-      };
-      const manifest = provider.generateManifest(config);
-      const resources = (manifest.spec as any).template.inference.template.spec.containers[0].resources;
-      expect(resources.limits['nvidia.com/gpu']).toBe(2);
-      expect(resources.requests.memory).toBe('32Gi');
-    });
+      test('includes GPU resources for gpu computeType', () => {
+        const config = {
+          ...inferenceSetPremadeConfig,
+          computeType: 'gpu' as const,
+          resources: {
+            gpu: 2,
+            memory: '32Gi',
+          },
+        };
+        const manifest = provider.generateManifest(config);
+        const resources = (manifest.spec as any).template.inference.template.spec.containers[0].resources;
+        expect(resources.limits['nvidia.com/gpu']).toBe(2);
+        expect(resources.requests.memory).toBe('32Gi');
+      });
 
-    test('includes container args for model server', () => {
-      const manifest = provider.generateManifest(basePremadeConfig);
-      const container = (manifest.spec as any).template.inference.template.spec.containers[0];
-      expect(container.args).toContain('run');
-      expect(container.args.some((arg: string) => arg.includes('5000'))).toBe(true);
+      test('includes container args for model server', () => {
+        const manifest = provider.generateManifest(inferenceSetPremadeConfig);
+        const container = (manifest.spec as any).template.inference.template.spec.containers[0];
+        expect(container.args).toContain('run');
+        expect(container.args.some((arg: string) => arg.includes('5000'))).toBe(true);
+      });
     });
   });
 
   describe('parseStatus', () => {
-    test('parses basic deployment status', () => {
-      const raw = {
-        metadata: {
-          name: 'test-deployment',
-          namespace: 'test-ns',
-          creationTimestamp: '2024-01-01T00:00:00Z',
-          labels: {
-            'kubefoundry.io/compute-type': 'cpu',
-            'kubefoundry.io/model-source': 'premade',
+    describe('Workspace status parsing', () => {
+      test('parses basic Workspace deployment status', () => {
+        const raw = {
+          kind: 'Workspace',
+          metadata: {
+            name: 'ws-deployment',
+            namespace: 'test-ns',
+            creationTimestamp: '2024-01-01T00:00:00Z',
+            labels: {
+              'kubefoundry.io/compute-type': 'cpu',
+              'kubefoundry.io/model-source': 'premade',
+              'kubefoundry.io/resource-type': 'workspace',
+            },
           },
-        },
-        spec: {
-          replicas: 2,
-          template: {
-            inference: {
-              template: {
-                spec: {
-                  containers: [
-                    {
-                      image: 'ghcr.io/kaito-project/aikit/llama-3.2:3b',
-                    },
-                  ],
+          resource: {
+            count: 2,
+          },
+          inference: {
+            template: {
+              spec: {
+                containers: [
+                  {
+                    image: 'ghcr.io/kaito-project/aikit/llama-3.2:3b',
+                  },
+                ],
+              },
+            },
+          },
+          status: {
+            workerNodes: ['node1', 'node2'],
+            conditions: [
+              { type: 'ResourceReady', status: 'True' },
+              { type: 'InferenceReady', status: 'True' },
+              { type: 'WorkspaceSucceeded', status: 'True' },
+            ],
+          },
+        };
+
+        const status = provider.parseStatus(raw);
+
+        expect(status.name).toBe('ws-deployment');
+        expect(status.namespace).toBe('test-ns');
+        expect(status.provider).toBe('kaito');
+        expect(status.phase).toBe('Running');
+        expect(status.replicas.desired).toBe(2);
+        expect(status.replicas.ready).toBe(2);  // Based on workerNodes length
+        expect(status.engine).toBe('llamacpp');
+        expect(status.frontendService).toBe('ws-deployment:80');
+      });
+
+      test('parses pending Workspace deployment', () => {
+        const raw = {
+          kind: 'Workspace',
+          metadata: {
+            name: 'pending-ws',
+            namespace: 'test-ns',
+            labels: { 'kubefoundry.io/resource-type': 'workspace' },
+          },
+          resource: { count: 1 },
+          inference: {
+            template: { spec: { containers: [{ image: 'test:latest' }] } },
+          },
+          status: {
+            workerNodes: [],
+            conditions: [
+              { type: 'WorkspaceReady', status: 'False' },
+            ],
+          },
+        };
+
+        const status = provider.parseStatus(raw);
+        expect(status.phase).toBe('Pending');
+        expect(status.replicas.ready).toBe(0);
+      });
+
+      test('parses Workspace vLLM deployment', () => {
+        const raw = {
+          kind: 'Workspace',
+          metadata: {
+            name: 'ws-vllm',
+            namespace: 'test-ns',
+            labels: {
+              'kubefoundry.io/model-source': 'vllm',
+              'kubefoundry.io/resource-type': 'workspace',
+            },
+          },
+          resource: { count: 1, instanceType: 'Standard_NC6s_v3' },
+          inference: {
+            template: {
+              spec: {
+                containers: [{
+                  image: 'mcr.microsoft.com/aks/kaito/kaito-base:0.1.1',
+                  command: ['python'],
+                  args: ['-m', 'vllm.entrypoints.openai.api_server', '--model', 'meta-llama/Llama-3-8B'],
+                }],
+              },
+            },
+          },
+          status: {
+            workerNodes: ['node1'],
+            conditions: [{ type: 'WorkspaceReady', status: 'True' }],
+          },
+        };
+
+        const status = provider.parseStatus(raw);
+        expect(status.engine).toBe('vllm');
+        expect(status.modelId).toBe('meta-llama/Llama-3-8B');
+        expect(status.frontendService).toBe('ws-vllm-vllm:8000');
+      });
+    });
+
+    describe('InferenceSet status parsing', () => {
+      test('parses basic InferenceSet deployment status', () => {
+        const raw = {
+          kind: 'InferenceSet',
+          metadata: {
+            name: 'test-deployment',
+            namespace: 'test-ns',
+            creationTimestamp: '2024-01-01T00:00:00Z',
+            labels: {
+              'kubefoundry.io/compute-type': 'cpu',
+              'kubefoundry.io/model-source': 'premade',
+              'kubefoundry.io/resource-type': 'inferenceset',
+            },
+          },
+          spec: {
+            replicas: 2,
+            template: {
+              inference: {
+                template: {
+                  spec: {
+                    containers: [
+                      {
+                        image: 'ghcr.io/kaito-project/aikit/llama-3.2:3b',
+                      },
+                    ],
+                  },
                 },
               },
             },
           },
-        },
-        status: {
-          readyReplicas: 2,
-          conditions: [
-            { type: 'Ready', status: 'True' },
-          ],
-        },
-      };
-
-      const status = provider.parseStatus(raw);
-
-      expect(status.name).toBe('test-deployment');
-      expect(status.namespace).toBe('test-ns');
-      expect(status.provider).toBe('kaito');
-      expect(status.phase).toBe('Running');
-      expect(status.replicas.desired).toBe(2);
-      expect(status.replicas.ready).toBe(2);
-      expect(status.engine).toBe('llamacpp');
-      expect(status.frontendService).toBe('test-deployment:80');  // KAITO service exposes port 80
-    });
-
-    test('parses vLLM deployment status', () => {
-      const raw = {
-        metadata: {
-          name: 'vllm-deployment',
-          namespace: 'test-ns',
-          creationTimestamp: '2024-01-01T00:00:00Z',
-          labels: {
-            'kubefoundry.io/compute-type': 'gpu',
-            'kubefoundry.io/model-source': 'vllm',
+          status: {
+            readyReplicas: 2,
+            conditions: [
+              { type: 'Ready', status: 'True' },
+            ],
           },
-        },
-        spec: {
-          replicas: 1,
-          template: {
-            inference: {
-              template: {
-                spec: {
-                  containers: [
-                    {
-                      image: 'mcr.microsoft.com/aks/kaito/kaito-base:0.1.1',
-                      command: ['python'],
-                      args: ['-m', 'vllm.entrypoints.openai.api_server', '--model', 'mistralai/Mistral-7B-v0.1', '--tensor-parallel-size', '2'],
-                    },
-                  ],
+        };
+
+        const status = provider.parseStatus(raw);
+
+        expect(status.name).toBe('test-deployment');
+        expect(status.namespace).toBe('test-ns');
+        expect(status.provider).toBe('kaito');
+        expect(status.phase).toBe('Running');
+        expect(status.replicas.desired).toBe(2);
+        expect(status.replicas.ready).toBe(2);
+        expect(status.engine).toBe('llamacpp');
+        expect(status.frontendService).toBe('test-deployment:80');
+      });
+
+      test('parses vLLM InferenceSet deployment status', () => {
+        const raw = {
+          kind: 'InferenceSet',
+          metadata: {
+            name: 'vllm-deployment',
+            namespace: 'test-ns',
+            creationTimestamp: '2024-01-01T00:00:00Z',
+            labels: {
+              'kubefoundry.io/compute-type': 'gpu',
+              'kubefoundry.io/model-source': 'vllm',
+              'kubefoundry.io/resource-type': 'inferenceset',
+            },
+          },
+          spec: {
+            replicas: 1,
+            template: {
+              inference: {
+                template: {
+                  spec: {
+                    containers: [
+                      {
+                        image: 'mcr.microsoft.com/aks/kaito/kaito-base:0.1.1',
+                        command: ['python'],
+                        args: ['-m', 'vllm.entrypoints.openai.api_server', '--model', 'mistralai/Mistral-7B-v0.1', '--tensor-parallel-size', '2'],
+                      },
+                    ],
+                  },
                 },
               },
             },
           },
-        },
-        status: {
-          readyReplicas: 1,
-          conditions: [
-            { type: 'Ready', status: 'True' },
-          ],
-        },
-      };
+          status: {
+            readyReplicas: 1,
+            conditions: [
+              { type: 'Ready', status: 'True' },
+            ],
+          },
+        };
 
-      const status = provider.parseStatus(raw);
+        const status = provider.parseStatus(raw);
 
-      expect(status.name).toBe('vllm-deployment');
-      expect(status.engine).toBe('vllm');
-      expect(status.modelId).toBe('mistralai/Mistral-7B-v0.1');
-      expect(status.frontendService).toBe('vllm-deployment-vllm:8000');  // Uses separate vLLM service
-    });
+        expect(status.name).toBe('vllm-deployment');
+        expect(status.engine).toBe('vllm');
+        expect(status.modelId).toBe('mistralai/Mistral-7B-v0.1');
+        expect(status.frontendService).toBe('vllm-deployment-vllm:8000');
+      });
 
-    test('parses pending deployment', () => {
-      const raw = {
-        metadata: { name: 'pending-deploy', namespace: 'test-ns' },
-        spec: {
-          replicas: 1,
-          template: {
-            inference: {
-              template: {
-                spec: { containers: [{ image: 'test:latest' }] },
+      test('parses pending InferenceSet deployment', () => {
+        const raw = {
+          kind: 'InferenceSet',
+          metadata: { name: 'pending-deploy', namespace: 'test-ns' },
+          spec: {
+            replicas: 1,
+            template: {
+              inference: {
+                template: {
+                  spec: { containers: [{ image: 'test:latest' }] },
+                },
               },
             },
           },
-        },
-        status: {
-          readyReplicas: 0,
-        },
-      };
+          status: {
+            readyReplicas: 0,
+          },
+        };
 
-      const status = provider.parseStatus(raw);
-      expect(status.phase).toBe('Pending');
-      expect(status.replicas.ready).toBe(0);
-    });
+        const status = provider.parseStatus(raw);
+        expect(status.phase).toBe('Pending');
+        expect(status.replicas.ready).toBe(0);
+      });
 
-    test('parses failed deployment', () => {
-      const raw = {
-        metadata: { name: 'failed-deploy' },
-        spec: {
-          template: {
-            inference: {
-              template: {
-                spec: { containers: [{ image: 'test:latest' }] },
+      test('parses failed InferenceSet deployment', () => {
+        const raw = {
+          kind: 'InferenceSet',
+          metadata: { name: 'failed-deploy' },
+          spec: {
+            template: {
+              inference: {
+                template: {
+                  spec: { containers: [{ image: 'test:latest' }] },
+                },
               },
             },
           },
-        },
-        status: {
-          conditions: [
-            {
-              type: 'Ready',
-              status: 'False',
-              reason: 'ImagePullError',
-              message: 'Failed to pull image',
-            },
-          ],
-        },
-      };
+          status: {
+            conditions: [
+              {
+                type: 'Ready',
+                status: 'False',
+                reason: 'ImagePullError',
+                message: 'Failed to pull image',
+              },
+            ],
+          },
+        };
 
-      const status = provider.parseStatus(raw);
-      expect(status.phase).toBe('Pending');  // No Ready=True condition
-      expect(status.conditions).toHaveLength(1);
-      expect(status.conditions[0].reason).toBe('ImagePullError');
-    });
+        const status = provider.parseStatus(raw);
+        expect(status.phase).toBe('Pending');
+        expect(status.conditions).toHaveLength(1);
+        expect(status.conditions[0].reason).toBe('ImagePullError');
+      });
 
-    test('handles missing status', () => {
-      const raw = {
-        metadata: { name: 'no-status' },
-        spec: {
-          replicas: 1,
-          template: {
-            inference: {
-              template: {
-                spec: { containers: [{ image: 'test:latest' }] },
+      test('handles missing status', () => {
+        const raw = {
+          kind: 'InferenceSet',
+          metadata: { name: 'no-status' },
+          spec: {
+            replicas: 1,
+            template: {
+              inference: {
+                template: {
+                  spec: { containers: [{ image: 'test:latest' }] },
+                },
               },
             },
           },
-        },
-      };
+        };
 
-      const status = provider.parseStatus(raw);
-      expect(status.phase).toBe('Pending');
-      expect(status.replicas.ready).toBe(0);
-      expect(status.replicas.desired).toBe(1);
-    });
+        const status = provider.parseStatus(raw);
+        expect(status.phase).toBe('Pending');
+        expect(status.replicas.ready).toBe(0);
+        expect(status.replicas.desired).toBe(1);
+      });
 
-    test('determines phase from Ready condition', () => {
-      // Ready=True means Running
-      const runningRaw = {
-        metadata: { name: 'test' },
-        spec: { template: { inference: { template: { spec: { containers: [{ image: 'test:latest' }] } } } } },
-        status: {
-          readyReplicas: 1,
-          conditions: [{ type: 'Ready', status: 'True' }],
-        },
-      };
-      expect(provider.parseStatus(runningRaw).phase).toBe('Running');
+      test('determines phase from Ready condition', () => {
+        // Ready=True means Running
+        const runningRaw = {
+          kind: 'InferenceSet',
+          metadata: { name: 'test' },
+          spec: { template: { inference: { template: { spec: { containers: [{ image: 'test:latest' }] } } } } },
+          status: {
+            readyReplicas: 1,
+            conditions: [{ type: 'Ready', status: 'True' }],
+          },
+        };
+        expect(provider.parseStatus(runningRaw).phase).toBe('Running');
 
-      // No Ready condition or Ready=False means Pending
-      const pendingRaw = {
-        metadata: { name: 'test' },
-        spec: { template: { inference: { template: { spec: { containers: [{ image: 'test:latest' }] } } } } },
-        status: { readyReplicas: 0 },
-      };
-      expect(provider.parseStatus(pendingRaw).phase).toBe('Pending');
+        // No Ready condition or Ready=False means Pending
+        const pendingRaw = {
+          kind: 'InferenceSet',
+          metadata: { name: 'test' },
+          spec: { template: { inference: { template: { spec: { containers: [{ image: 'test:latest' }] } } } } },
+          status: { readyReplicas: 0 },
+        };
+        expect(provider.parseStatus(pendingRaw).phase).toBe('Pending');
+      });
     });
 
     test('extracts model name from premade image', () => {
       const premadeModel = aikitService.getPremadeModel('llama3.2:3b');
       const raw = {
+        kind: 'InferenceSet',
         metadata: {
           name: 'test',
           labels: { 'kubefoundry.io/model-source': 'premade' },
