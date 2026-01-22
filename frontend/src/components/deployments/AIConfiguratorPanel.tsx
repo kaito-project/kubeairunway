@@ -61,8 +61,8 @@ export function AIConfiguratorPanel({
     try {
       const analysisResult = await analyzeMutation.mutateAsync(input)
       setResult(analysisResult)
-    } catch (error) {
-      console.error('AI Configurator analysis failed:', error)
+    } catch {
+      // Error state is handled by the mutation's error property
     }
   }
 

@@ -310,3 +310,19 @@ Interfaces with NVIDIA AI Configurator for optimal inference configuration:
 - Provide sensible defaults when AI Configurator is unavailable
 - Input validation to prevent command injection attacks
 - Automatic temp directory cleanup with try/finally pattern
+
+### CloudPricingService
+Fetches real-time pricing from cloud provider APIs:
+- Azure Retail Prices API integration (no auth required)
+- In-memory caching with 1-hour TTL and LRU eviction
+- Provider detection from instance type naming conventions
+- GPU info extraction for Azure GPU instance types
+- Retry logic with exponential backoff and timeout handling
+- AWS and GCP pricing API support (planned)
+
+### CostEstimationService
+Handles GPU cost estimation and normalization:
+- GPU model normalization (e.g., "NVIDIA-A100-SXM4-80GB" → "A100-80GB")
+- GPU info lookup (memory, generation)
+- Node pool cost estimation with real-time pricing integration
+- Fallback to static estimates when cloud pricing unavailable
