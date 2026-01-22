@@ -37,12 +37,31 @@ export const costsRoutes = new Hono()
     const gpuCountParam = c.req.query('gpuCount');
     const replicasParam = c.req.query('replicas');
     const useRealtime = c.req.query('realtime') !== 'false'; // Default to realtime
+    const computeType = c.req.query('computeType') || 'gpu'; // 'gpu' or 'cpu'
 
     const gpuCount = gpuCountParam ? parseInt(gpuCountParam, 10) : 1;
     const replicas = replicasParam ? parseInt(replicasParam, 10) : 1;
 
-    // Get detailed cluster capacity with node pool info
-    const capacity = await kubernetesService.getDetailedClusterGpuCapacity();
+    // Get node pools based on compute type
+    let nodePools: Array<{
+      name: string;
+      gpuCount: number;
+      nodeCount: number;
+      availableGpus: number;
+      gpuModel?: string;
+      instanceType?: string;
+      region?: string;
+    }>;
+
+    if (computeType === 'cpu') {
+      // Get all node pools and filter to CPU-only (no GPUs)
+      const allPools = await kubernetesService.getAllNodePools();
+      nodePools = allPools.filter(pool => pool.gpuCount === 0);
+    } else {
+      // Get GPU node pools (existing behavior)
+      const capacity = await kubernetesService.getDetailedClusterGpuCapacity();
+      nodePools = capacity.nodePools;
+    }
 
     // Try real-time pricing first, fall back to static
     const nodePoolCosts: Array<NodePoolCostEstimate & { realtimePricing?: {
@@ -54,8 +73,58 @@ export const costsRoutes = new Hono()
       source: 'realtime' | 'cached';
     } }> = [];
 
-    for (const pool of capacity.nodePools) {
-      // Start with static estimate as fallback
+    for (const pool of nodePools) {
+      // For CPU pools, create a simple cost structure
+      if (computeType === 'cpu') {
+        if (useRealtime && pool.instanceType) {
+          const provider = cloudPricingService.detectProvider(pool.instanceType);
+          if (provider) {
+            const result = await cloudPricingService.getInstancePrice(
+              pool.instanceType,
+              provider,
+              pool.region
+            );
+
+            if (result.success && result.price) {
+              const hourlyPrice = result.price.hourlyPrice * replicas;
+              const monthlyPrice = hourlyPrice * 730;
+
+              nodePoolCosts.push({
+                poolName: pool.name,
+                gpuModel: 'CPU',
+                availableGpus: 0,
+                costBreakdown: {
+                  estimate: {
+                    hourly: hourlyPrice,
+                    monthly: monthlyPrice,
+                    currency: 'USD',
+                    source: 'cloud-api',
+                    confidence: 'high',
+                  },
+                  perGpu: { hourly: 0, monthly: 0 },
+                  totalGpus: 0,
+                  gpuModel: 'CPU',
+                  normalizedGpuModel: 'CPU',
+                  notes: [`Real-time pricing from ${provider.toUpperCase()}`],
+                },
+                realtimePricing: {
+                  instanceType: pool.instanceType,
+                  hourlyPrice: Math.round(hourlyPrice * 100) / 100,
+                  monthlyPrice: Math.round(monthlyPrice * 100) / 100,
+                  currency: result.price.currency,
+                  region: result.price.region,
+                  source: result.cached ? 'cached' : 'realtime',
+                },
+              });
+              continue;
+            }
+          }
+        }
+        // No realtime pricing available for this CPU pool
+        continue;
+      }
+
+      // GPU pools - existing logic
       const staticEstimate = costEstimationService.estimateNodePoolCosts([pool], gpuCount, replicas)[0];
 
       if (useRealtime && pool.instanceType) {

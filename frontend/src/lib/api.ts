@@ -710,12 +710,12 @@ export const costsApi = {
     }),
 
   /** Get cost estimates for all node pools in the cluster */
-  getNodePoolCosts: (gpuCount: number = 1, replicas: number = 1) =>
+  getNodePoolCosts: (gpuCount: number = 1, replicas: number = 1, computeType: 'gpu' | 'cpu' = 'gpu') =>
     request<{
       success: boolean;
       nodePoolCosts: NodePoolCostEstimate[];
       pricingLastUpdated: string;
-    }>(`/costs/node-pools?gpuCount=${gpuCount}&replicas=${replicas}`),
+    }>(`/costs/node-pools?gpuCount=${gpuCount}&replicas=${replicas}&computeType=${computeType}`),
 
   /** Get list of supported GPU models with pricing */
   getGpuModels: () =>

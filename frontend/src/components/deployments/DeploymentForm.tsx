@@ -1397,9 +1397,21 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             />
           );
         })()}
-        {/* Cost Estimate - show for GPU deployments */}
-        {detailedCapacity && detailedCapacity.nodePools.length > 0 && 
-         (selectedRuntime !== 'kaito' || kaitoComputeType === 'gpu' || isVllmModel) && (
+        {/* Cost Estimate - show for GPU and CPU deployments */}
+        {(selectedRuntime === 'kaito') && (
+          <CostEstimate
+            nodePools={detailedCapacity?.nodePools}
+            gpuCount={config.mode === 'disaggregated' 
+              ? Math.max(config.prefillGpus || 1, config.decodeGpus || 1)
+              : (config.resources?.gpu || gpuRecommendation.recommendedGpus || 1)}
+            replicas={config.mode === 'disaggregated'
+              ? (config.prefillReplicas || 1) + (config.decodeReplicas || 1)
+              : config.replicas}
+            computeType={kaitoComputeType === 'cpu' && !isVllmModel ? 'cpu' : 'gpu'}
+          />
+        )}
+        {/* Cost Estimate for non-KAITO runtimes (always GPU) */}
+        {selectedRuntime !== 'kaito' && detailedCapacity && detailedCapacity.nodePools.length > 0 && (
           <CostEstimate
             nodePools={detailedCapacity.nodePools}
             gpuCount={config.mode === 'disaggregated' 
@@ -1408,6 +1420,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             replicas={config.mode === 'disaggregated'
               ? (config.prefillReplicas || 1) + (config.decodeReplicas || 1)
               : config.replicas}
+            computeType="gpu"
           />
         )}
 

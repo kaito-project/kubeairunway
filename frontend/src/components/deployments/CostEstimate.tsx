@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { DollarSign, Info, AlertCircle, Loader2, Zap } from 'lucide-react'
+import { DollarSign, Info, AlertCircle, Loader2, Zap, ChevronDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import {
   Tooltip,
   TooltipContent,
@@ -16,10 +17,12 @@ import { costsApi } from '@/lib/api'
 interface CostEstimateProps {
   /** Node pools with GPU info */
   nodePools?: NodePoolInfo[]
-  /** Number of GPUs per replica */
+  /** Number of GPUs per replica (ignored for CPU) */
   gpuCount: number
   /** Number of replicas */
   replicas: number
+  /** Compute type: 'gpu' or 'cpu' */
+  computeType?: 'gpu' | 'cpu'
   /** Show compact version */
   compact?: boolean
   /** Additional CSS class */
@@ -34,6 +37,7 @@ export function CostEstimate({
   nodePools,
   gpuCount,
   replicas,
+  computeType = 'gpu',
   compact = false,
   className = '',
 }: CostEstimateProps) {
@@ -42,17 +46,20 @@ export function CostEstimate({
   const [pricingSource, setPricingSource] = useState<string>('')
   const [pricingError, setPricingError] = useState<string | null>(null)
   const [unsupportedProvider, setUnsupportedProvider] = useState<boolean>(false)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   // Fetch real-time pricing from backend API
   useEffect(() => {
-    if (!nodePools || nodePools.length === 0) return
+    // For CPU, we don't need nodePools - the backend will fetch them
+    // For GPU, we need nodePools to be present
+    if (computeType === 'gpu' && (!nodePools || nodePools.length === 0)) return
 
     const fetchPricing = async () => {
       setIsLoading(true)
       setPricingError(null)
       setUnsupportedProvider(false)
       try {
-        const response = await costsApi.getNodePoolCosts(gpuCount, replicas)
+        const response = await costsApi.getNodePoolCosts(gpuCount, replicas, computeType)
         if (response.success && response.nodePoolCosts) {
           setNodePoolCosts(response.nodePoolCosts)
           setPricingSource((response as unknown as { pricingSource?: string }).pricingSource || 'realtime')
@@ -75,7 +82,7 @@ export function CostEstimate({
     }
 
     fetchPricing()
-  }, [nodePools, gpuCount, replicas])
+  }, [nodePools, gpuCount, replicas, computeType])
 
   // Show unsupported provider message
   if (unsupportedProvider) {
@@ -102,16 +109,8 @@ export function CostEstimate({
     )
   }
 
-  // If no pools with GPU info, show nothing
-  if (!nodePools || nodePools.length === 0 || nodePoolCosts.length === 0) {
-    if (isLoading) {
-      return (
-        <div className={`flex items-center gap-2 text-sm text-muted-foreground ${className}`}>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Loading pricing...</span>
-        </div>
-      )
-    }
+  // If no pools with GPU info (and not CPU mode), show nothing
+  if (computeType === 'gpu' && (!nodePools || nodePools.length === 0)) {
     return null
   }
 
@@ -195,35 +194,67 @@ export function CostEstimate({
   // Full view - show per-pool breakdown
   return (
     <Card className={className} data-testid="cost-estimate-card">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <DollarSign className="h-4 w-4" />
-          Estimated Cost
-          {pricingSource.includes('realtime') && (
-            <Badge variant="secondary" className="text-xs font-normal gap-1">
-              <Zap className="h-3 w-3" />
-              Live
-            </Badge>
-          )}
-          {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <Info className="h-3.5 w-3.5 text-muted-foreground" />
-              </TooltipTrigger>
-              <TooltipContent side="right" className="max-w-xs">
-                <p className="text-xs">
-                  {pricingSource.includes('realtime')
-                    ? 'Real-time pricing from Azure Retail Prices API. Reflects current on-demand VM costs.'
-                    : 'Estimates based on average on-demand cloud rates.'}
-                  {' '}Actual costs vary by commitment level. Spot instances can save 60-80%.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </CardTitle>
+      <CardHeader
+        className="cursor-pointer select-none"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            Estimated Cost
+            {pricingSource.includes('realtime') && (
+              <Badge variant="secondary" className="text-xs font-normal gap-1">
+                <Zap className="h-3 w-3" />
+                Live
+              </Badge>
+            )}
+            {isLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-help" onClick={(e) => e.stopPropagation()}>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs">
+                  <p className="text-xs">
+                    {pricingSource.includes('realtime')
+                      ? 'Real-time pricing from Azure Retail Prices API. Reflects current on-demand VM costs.'
+                      : 'Estimates based on average on-demand cloud rates.'}
+                    {' '}Actual costs vary by commitment level. Spot instances can save 60-80%.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </CardTitle>
+          <ChevronDown
+            className={cn(
+              "h-5 w-5 text-muted-foreground transition-transform duration-200 ease-out",
+              isExpanded && "rotate-180"
+            )}
+          />
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+
+      {/* Smooth accordion animation */}
+      <div
+        className={cn(
+          "grid transition-all duration-300 ease-out",
+          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        )}
+      >
+        <div className="overflow-hidden">
+          <CardContent className="space-y-4 pt-0">
+            {isLoading && nodePoolCosts.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Loading pricing...</span>
+              </div>
+            ) : nodePoolCosts.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-2">
+                No pricing data available
+              </div>
+            ) : (
+              <>
         {nodePoolCosts.map((poolCost) => {
           const pricing = getBestPricing(poolCost)
           const isRealtime = pricing.source === 'realtime' || pricing.source === 'cached'
@@ -237,11 +268,6 @@ export function CostEstimate({
                   <Badge variant="outline" className="text-xs">
                     {poolCost.gpuModel}
                   </Badge>
-                  {isRealtime && (
-                    <Badge variant="secondary" className="text-xs font-normal text-green-600 dark:text-green-400">
-                      Live
-                    </Badge>
-                  )}
                 </div>
               </div>
 
@@ -294,13 +320,11 @@ export function CostEstimate({
           )
         })}
 
-        {/* Notes */}
-        {pricingSource.includes('realtime') && (
-          <div className="pt-2 border-t text-xs text-muted-foreground">
-            <p className="text-green-600 dark:text-green-400">• Prices from Azure Retail Prices API</p>
-          </div>
-        )}
-      </CardContent>
+              </>
+            )}
+          </CardContent>
+        </div>
+      </div>
     </Card>
   )
 }

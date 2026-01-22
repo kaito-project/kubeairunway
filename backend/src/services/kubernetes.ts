@@ -930,6 +930,105 @@ class KubernetesService {
   }
 
   /**
+   * Get all node pools in the cluster (both CPU and GPU).
+   * Used for cost estimation of CPU-based deployments.
+   */
+  async getAllNodePools(): Promise<import('@kubefoundry/shared').NodePoolInfo[]> {
+    try {
+      const nodesResponse = await withRetry(
+        () => this.coreV1Api.listNode(),
+        { operationName: 'getAllNodePools:listNodes' }
+      );
+
+      const nodePoolMap = new Map<string, {
+        nodeCount: number;
+        gpuCount: number;
+        availableGpus: number;
+        gpuModel?: string;
+        instanceType?: string;
+        region?: string;
+      }>();
+
+      for (const node of nodesResponse.body.items) {
+        // Determine node pool name from labels
+        const nodePoolName =
+          node.metadata?.labels?.['agentpool'] ||
+          node.metadata?.labels?.['kubernetes.azure.com/agentpool'] ||
+          node.metadata?.labels?.['cloud.google.com/gke-nodepool'] ||
+          node.metadata?.labels?.['eks.amazonaws.com/nodegroup'] ||
+          'default';
+
+        // Get instance type from standard Kubernetes labels
+        const instanceType =
+          node.metadata?.labels?.['node.kubernetes.io/instance-type'] ||
+          node.metadata?.labels?.['beta.kubernetes.io/instance-type'];
+
+        // Get region from labels
+        const region =
+          node.metadata?.labels?.['topology.kubernetes.io/region'] ||
+          node.metadata?.labels?.['failure-domain.beta.kubernetes.io/region'];
+
+        // Check for GPU capacity
+        const gpuCapacity = node.status?.allocatable?.['nvidia.com/gpu'];
+        const gpuCount = gpuCapacity ? parseInt(gpuCapacity, 10) : 0;
+
+        // Get GPU model from labels if this node has GPUs
+        const gpuModel = gpuCount > 0 ? (
+          node.metadata?.labels?.['nvidia.com/gpu.product'] ||
+          this.extractGpuModelFromInstanceType(node.metadata?.labels)
+        ) : undefined;
+
+        if (!nodePoolMap.has(nodePoolName)) {
+          nodePoolMap.set(nodePoolName, {
+            nodeCount: 0,
+            gpuCount: 0,
+            availableGpus: 0,
+            gpuModel,
+            instanceType,
+            region,
+          });
+        }
+
+        const poolInfo = nodePoolMap.get(nodePoolName)!;
+        poolInfo.nodeCount += 1;
+        poolInfo.gpuCount += gpuCount;
+
+        // Update instance type if not set
+        if (!poolInfo.instanceType && instanceType) {
+          poolInfo.instanceType = instanceType;
+        }
+        // Update region if not set
+        if (!poolInfo.region && region) {
+          poolInfo.region = region;
+        }
+        // Update GPU model if not set
+        if (!poolInfo.gpuModel && gpuModel) {
+          poolInfo.gpuModel = gpuModel;
+        }
+      }
+
+      // Convert to array
+      const nodePools: import('@kubefoundry/shared').NodePoolInfo[] = [];
+      for (const [name, info] of nodePoolMap) {
+        nodePools.push({
+          name,
+          gpuCount: info.gpuCount,
+          nodeCount: info.nodeCount,
+          availableGpus: info.availableGpus,
+          gpuModel: info.gpuModel,
+          instanceType: info.instanceType,
+          region: info.region,
+        });
+      }
+
+      return nodePools;
+    } catch (error) {
+      logger.error({ error }, 'Error getting all node pools');
+      return [];
+    }
+  }
+
+  /**
    * Get failure reasons for a pending pod by parsing Kubernetes Events
    */
   async getPodFailureReasons(
