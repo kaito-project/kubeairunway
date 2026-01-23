@@ -67,5 +67,8 @@ Read these files **only when relevant** to your task:
 - GPU validation: `backend/src/services/gpuValidation.ts`
 - AI Configurator service: `backend/src/services/aiconfigurator.ts`
 - AI Configurator routes: `backend/src/routes/aiconfigurator.ts`
+- Cloud pricing service: `backend/src/services/cloudPricing.ts`
+- Cost estimation service: `backend/src/services/costEstimation.ts`
+- Cost routes: `backend/src/routes/costs.ts`
 - Prometheus parser: `backend/src/lib/prometheus-parser.ts`
 - K8s error handling: `backend/src/lib/k8s-errors.ts`

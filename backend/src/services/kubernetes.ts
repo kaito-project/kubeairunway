@@ -817,6 +817,8 @@ class KubernetesService {
         nodeCount: number;
         availableGpus: number;
         gpuModel?: string;
+        instanceType?: string;
+        region?: string;
       }>();
 
       for (const node of nodesResponse.body.items) {
@@ -837,10 +839,21 @@ class KubernetesService {
               node.metadata?.labels?.['eks.amazonaws.com/nodegroup'] ||
               'default';
 
-            // Get GPU model from labels
+            // Get GPU model from labels - try multiple sources
             const gpuModel =
               node.metadata?.labels?.['nvidia.com/gpu.product'] ||
+              this.extractGpuModelFromInstanceType(node.metadata?.labels) ||
               node.metadata?.labels?.['accelerator'];
+
+            // Get instance type from standard Kubernetes labels
+            const instanceType =
+              node.metadata?.labels?.['node.kubernetes.io/instance-type'] ||
+              node.metadata?.labels?.['beta.kubernetes.io/instance-type'];
+
+            // Get region from labels
+            const region =
+              node.metadata?.labels?.['topology.kubernetes.io/region'] ||
+              node.metadata?.labels?.['failure-domain.beta.kubernetes.io/region'];
 
             // Find available GPUs for this node
             const nodeInfo = basicCapacity.nodes.find(n => n.nodeName === nodeName);
@@ -852,6 +865,8 @@ class KubernetesService {
                 nodeCount: 0,
                 availableGpus: 0,
                 gpuModel,
+                instanceType,
+                region,
               });
             }
 
@@ -863,6 +878,14 @@ class KubernetesService {
             // Update GPU model if not set or if we find a more specific one
             if (!poolInfo.gpuModel && gpuModel) {
               poolInfo.gpuModel = gpuModel;
+            }
+            // Update instance type if not set
+            if (!poolInfo.instanceType && instanceType) {
+              poolInfo.instanceType = instanceType;
+            }
+            // Update region if not set
+            if (!poolInfo.region && region) {
+              poolInfo.region = region;
             }
           }
         }
@@ -877,6 +900,8 @@ class KubernetesService {
           nodeCount: info.nodeCount,
           availableGpus: info.availableGpus,
           gpuModel: info.gpuModel,
+          instanceType: info.instanceType,
+          region: info.region,
         });
       }
 
@@ -901,6 +926,105 @@ class KubernetesService {
         gpuNodeCount: 0,
         nodePools: [],
       };
+    }
+  }
+
+  /**
+   * Get all node pools in the cluster (both CPU and GPU).
+   * Used for cost estimation of CPU-based deployments.
+   */
+  async getAllNodePools(): Promise<import('@kubefoundry/shared').NodePoolInfo[]> {
+    try {
+      const nodesResponse = await withRetry(
+        () => this.coreV1Api.listNode(),
+        { operationName: 'getAllNodePools:listNodes' }
+      );
+
+      const nodePoolMap = new Map<string, {
+        nodeCount: number;
+        gpuCount: number;
+        availableGpus: number;
+        gpuModel?: string;
+        instanceType?: string;
+        region?: string;
+      }>();
+
+      for (const node of nodesResponse.body.items) {
+        // Determine node pool name from labels
+        const nodePoolName =
+          node.metadata?.labels?.['agentpool'] ||
+          node.metadata?.labels?.['kubernetes.azure.com/agentpool'] ||
+          node.metadata?.labels?.['cloud.google.com/gke-nodepool'] ||
+          node.metadata?.labels?.['eks.amazonaws.com/nodegroup'] ||
+          'default';
+
+        // Get instance type from standard Kubernetes labels
+        const instanceType =
+          node.metadata?.labels?.['node.kubernetes.io/instance-type'] ||
+          node.metadata?.labels?.['beta.kubernetes.io/instance-type'];
+
+        // Get region from labels
+        const region =
+          node.metadata?.labels?.['topology.kubernetes.io/region'] ||
+          node.metadata?.labels?.['failure-domain.beta.kubernetes.io/region'];
+
+        // Check for GPU capacity
+        const gpuCapacity = node.status?.allocatable?.['nvidia.com/gpu'];
+        const gpuCount = gpuCapacity ? parseInt(gpuCapacity, 10) : 0;
+
+        // Get GPU model from labels if this node has GPUs
+        const gpuModel = gpuCount > 0 ? (
+          node.metadata?.labels?.['nvidia.com/gpu.product'] ||
+          this.extractGpuModelFromInstanceType(node.metadata?.labels)
+        ) : undefined;
+
+        if (!nodePoolMap.has(nodePoolName)) {
+          nodePoolMap.set(nodePoolName, {
+            nodeCount: 0,
+            gpuCount: 0,
+            availableGpus: 0,
+            gpuModel,
+            instanceType,
+            region,
+          });
+        }
+
+        const poolInfo = nodePoolMap.get(nodePoolName)!;
+        poolInfo.nodeCount += 1;
+        poolInfo.gpuCount += gpuCount;
+
+        // Update instance type if not set
+        if (!poolInfo.instanceType && instanceType) {
+          poolInfo.instanceType = instanceType;
+        }
+        // Update region if not set
+        if (!poolInfo.region && region) {
+          poolInfo.region = region;
+        }
+        // Update GPU model if not set
+        if (!poolInfo.gpuModel && gpuModel) {
+          poolInfo.gpuModel = gpuModel;
+        }
+      }
+
+      // Convert to array
+      const nodePools: import('@kubefoundry/shared').NodePoolInfo[] = [];
+      for (const [name, info] of nodePoolMap) {
+        nodePools.push({
+          name,
+          gpuCount: info.gpuCount,
+          nodeCount: info.nodeCount,
+          availableGpus: info.availableGpus,
+          gpuModel: info.gpuModel,
+          instanceType: info.instanceType,
+          region: info.region,
+        });
+      }
+
+      return nodePools;
+    } catch (error) {
+      logger.error({ error }, 'Error getting all node pools');
+      return [];
     }
   }
 
@@ -982,6 +1106,70 @@ class KubernetesService {
       logger.error({ error, podName, namespace }, 'Error getting pod failure reasons');
       return [];
     }
+  }
+
+  /**
+   * Extract GPU model from cloud provider instance type labels
+   * Supports Azure, AWS, and GCP instance type naming conventions
+   */
+  private extractGpuModelFromInstanceType(
+    labels: Record<string, string> | undefined
+  ): string | undefined {
+    if (!labels) return undefined;
+
+    // Get instance type from standard Kubernetes labels
+    const instanceType =
+      labels['node.kubernetes.io/instance-type'] ||
+      labels['beta.kubernetes.io/instance-type'];
+
+    if (!instanceType) return undefined;
+
+    const instanceLower = instanceType.toLowerCase();
+
+    // Azure NV-series GPU mapping
+    // Standard_NV36ads_A10_v5 -> A10
+    // Standard_NC24ads_A100_v4 -> A100
+    // Standard_ND96asr_A100_v4 -> A100
+    // Standard_NC6s_v3 (V100), Standard_NC24s_v3, etc.
+    // Standard_NV6 (M60 - older)
+    if (instanceLower.includes('_a10')) return 'A10';
+    if (instanceLower.includes('_a100')) return 'A100-80GB';
+    if (instanceLower.includes('_h100')) return 'H100';
+    if (instanceLower.includes('nc') && instanceLower.includes('_v3'))
+      return 'V100';
+    if (instanceLower.includes('nc') && instanceLower.includes('t4'))
+      return 'T4';
+
+    // AWS instance type mapping
+    // p4d.24xlarge -> A100
+    // p5.48xlarge -> H100
+    // g4dn.xlarge -> T4
+    // g5.xlarge -> A10G
+    // g6.xlarge -> L4
+    // g6e.xlarge -> L40S
+    if (instanceLower.startsWith('p5')) return 'H100';
+    if (instanceLower.startsWith('p4d') || instanceLower.startsWith('p4de'))
+      return 'A100-40GB';
+    if (instanceLower.startsWith('p3')) return 'V100';
+    if (instanceLower.startsWith('g4dn') || instanceLower.startsWith('g4ad'))
+      return 'T4';
+    if (instanceLower.startsWith('g5g') || instanceLower.startsWith('g5.'))
+      return 'A10G';
+    if (instanceLower.startsWith('g6e')) return 'L40S';
+    if (instanceLower.startsWith('g6.')) return 'L4';
+
+    // GCP machine type mapping
+    // a2-highgpu-1g (A100 40GB)
+    // a2-ultragpu-1g (A100 80GB)
+    // a3-highgpu-8g (H100)
+    // n1-standard-4 with nvidia-tesla-t4
+    // g2-standard-4 (L4)
+    if (instanceLower.startsWith('a3')) return 'H100';
+    if (instanceLower.startsWith('a2-ultra')) return 'A100-80GB';
+    if (instanceLower.startsWith('a2')) return 'A100-40GB';
+    if (instanceLower.startsWith('g2')) return 'L4';
+
+    return undefined;
   }
 
   /**

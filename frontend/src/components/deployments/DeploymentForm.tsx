@@ -18,6 +18,8 @@ import { type Model, type DetailedClusterCapacity, type AutoscalerDetectionResul
 import { ChevronDown, AlertCircle, Rocket, CheckCircle2, Sparkles, AlertTriangle, Server, Cpu, Box, Loader2 } from 'lucide-react'
 import { CapacityWarning } from './CapacityWarning'
 import { AIConfiguratorPanel } from './AIConfiguratorPanel'
+import { ManifestViewer } from './ManifestViewer'
+import { CostEstimate } from './CostEstimate'
 import { calculateGpuRecommendation, type GpuRecommendation } from '@/lib/gpu-recommendations'
 
 // Reusable GPU per Replica field component
@@ -1356,6 +1358,74 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             deploymentMode={config.mode}
             replicas={config.replicas}
             gpusPerReplica={config.resources?.gpu || gpuRecommendation.recommendedGpus || 1}
+          />
+        )}
+
+        {/* Manifest Preview - build config with KAITO-specific fields */}
+        {(() => {
+          // Build preview config with all necessary fields
+          let previewConfig = { ...config };
+          
+          if (selectedRuntime === 'kaito') {
+            if (isHuggingFaceGgufModel) {
+              previewConfig = {
+                ...previewConfig,
+                modelSource: 'huggingface' as const,
+                modelId: model.id,
+                ggufFile: ggufFile,
+                ggufRunMode: ggufRunMode,
+                computeType: kaitoComputeType,
+              };
+            } else if (isVllmModel) {
+              previewConfig = {
+                ...previewConfig,
+                modelSource: 'vllm' as const,
+                modelId: model.id,
+                computeType: 'gpu' as const,
+                ...(maxModelLen && { maxModelLen }),
+              };
+            } else if (selectedPremadeModel) {
+              previewConfig = {
+                ...previewConfig,
+                modelSource: 'premade' as const,
+                computeType: kaitoComputeType,
+                premadeModel: selectedPremadeModel.id,
+              };
+            }
+          }
+          
+          return (
+            <ManifestViewer 
+              mode="preview"
+              config={previewConfig}
+              provider={selectedRuntime}
+            />
+          );
+        })()}
+        {/* Cost Estimate - show for GPU and CPU deployments */}
+        {(selectedRuntime === 'kaito') && (
+          <CostEstimate
+            nodePools={detailedCapacity?.nodePools}
+            gpuCount={config.mode === 'disaggregated' 
+              ? Math.max(config.prefillGpus || 1, config.decodeGpus || 1)
+              : (config.resources?.gpu || gpuRecommendation.recommendedGpus || 1)}
+            replicas={config.mode === 'disaggregated'
+              ? (config.prefillReplicas || 1) + (config.decodeReplicas || 1)
+              : config.replicas}
+            computeType={kaitoComputeType === 'cpu' && !isVllmModel ? 'cpu' : 'gpu'}
+          />
+        )}
+        {/* Cost Estimate for non-KAITO runtimes (always GPU) */}
+        {selectedRuntime !== 'kaito' && detailedCapacity && detailedCapacity.nodePools.length > 0 && (
+          <CostEstimate
+            nodePools={detailedCapacity.nodePools}
+            gpuCount={config.mode === 'disaggregated' 
+              ? Math.max(config.prefillGpus || 1, config.decodeGpus || 1)
+              : (config.resources?.gpu || gpuRecommendation.recommendedGpus || 1)}
+            replicas={config.mode === 'disaggregated'
+              ? (config.prefillReplicas || 1) + (config.decodeReplicas || 1)
+              : config.replicas}
+            computeType="gpu"
           />
         )}
 

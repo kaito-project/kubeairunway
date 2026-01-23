@@ -10,6 +10,7 @@ A web-based platform for deploying and managing large language models on Kuberne
 - 📦 **Model Catalog**: Browse curated models or search the entire HuggingFace Hub
 - 🔍 **Smart Filtering**: Automatically filters models by architecture compatibility
 - 📊 **GPU Capacity Warnings**: Visual indicators showing if models fit your cluster's GPU memory
+- 💰 **Real-Time Cost Estimation**: Live pricing from Azure API for GPU node pools
 - ⚡ **Autoscaler Integration**: Detects cluster autoscaling and provides capacity guidance
 - 🧠 **AI Configurator**: NVIDIA AI Configurator integration for optimal inference settings
 - 🚀 **One-Click Deploy**: Configure and deploy models without writing YAML
