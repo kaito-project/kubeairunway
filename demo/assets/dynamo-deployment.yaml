@@ -1,282 +1,220 @@
 # =============================================================================
-# NVIDIA Dynamo DynamoGraphDeployment - Real Example from ai-dynamo/dynamo
-# Source: https://github.com/ai-dynamo/dynamo/tree/main/examples/backends/vllm/deploy
+# NVIDIA Dynamo DynamoGraphDeployment - Real Example from ai-dynamo/dynamo v0.8.1
+# Source: https://github.com/ai-dynamo/dynamo/blob/v0.8.1/recipes/qwen3-32b/vllm/disagg-kv-router/deploy.yaml
 #
 # COMPLEXITY OVERVIEW:
 # - Disaggregated prefill/decode architecture (advanced ML concept)
 # - Multi-service orchestration with Dynamo-specific component types
 # - Requires understanding of KV-cache routing and disaggregated inference
+# - RDMA/InfiniBand networking for high-performance GPU communication
 # - Platform-specific (GKE, EKS, AKS) require different configurations
 # =============================================================================
 
-# PAIN POINT: nvidia.com/v1alpha1 is an alpha API - breaking changes expected
-# Production deployments on alpha APIs carry risk
 apiVersion: nvidia.com/v1alpha1
 kind: DynamoGraphDeployment
 metadata:
-  name: vllm-disagg
+  name: disagg-router-6p-2d
   # PAIN POINT: namespace must have Dynamo operator watching it
   # Operator installation and namespace configuration is a prerequisite
   namespace: dynamo-system
 spec:
   # ===========================================================================
-  # PAIN POINT: Understanding the Dynamo service graph requires deep knowledge
-  # of disaggregated inference architecture:
-  # - Prefill workers: Process input tokens (compute-heavy)
-  # - Decode workers: Generate output tokens (memory-bandwidth heavy)
-  # - Frontend: Routes requests and manages KV-cache migration
+  # PAIN POINT: PVCs must be pre-created (create: false)
+  # Storage provisioning is a separate operational concern
   # ===========================================================================
-  
-  # PAIN POINT: Environment variables at spec level apply to ALL services
-  # This can cause unexpected behavior if services need different configs
-  envs:
-    # PAIN POINT: Log levels affect performance
-    # Debug logging in production can slow down inference
-    - name: DYN_LOG
-      value: "info"
-    # PAIN POINT: JSONL logging required for log aggregation
-    # but increases log volume significantly
-    - name: DYN_LOGGING_JSONL
-      value: "true"
+  pvcs:
+    - create: false
+      name: model-cache
+    - create: false
+      name: compilation-cache
 
   services:
     # =========================================================================
-    # Frontend Service - Routes requests to workers
+    # Frontend Service - Routes requests to workers via KV-cache router
     # =========================================================================
     Frontend:
-      # PAIN POINT: componentType must be one of: frontend, worker
-      # Using wrong type causes the operator to generate incorrect configs
       componentType: frontend
       replicas: 1
-      
+
+      # PAIN POINT: HF_HOME must be consistent across all services
+      # Misconfiguration causes model download failures
       envs:
-        # PAIN POINT: Router mode affects performance characteristics
-        # - "round-robin": Simple but doesn't optimize KV-cache locality
-        # - "kv": Smarter routing but adds latency for routing decisions
-        # Choosing wrong mode can severely impact performance
-        - name: DYN_ROUTER_MODE
-          value: kv
-      
+        - name: HF_HOME
+          value: /home/dynamo/.cache/huggingface
+
+      resources:
+        requests:
+          cpu: "8"
+        limits:
+          cpu: "8"
+      # PAIN POINT: subComponentType must be explicitly null for frontend
+      # Workers use "prefill" or "decode" - easy to misconfigure
+      subComponentType: null
+
       extraPodSpec:
         mainContainer:
-          # PAIN POINT: Image tag "my-tag" is a placeholder
-          # Must be replaced with actual NGC image tag
-          # Finding correct/compatible image versions is non-trivial
-          image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0
-          # PAIN POINT: Probes are critical for reliability
-          # but timeouts/thresholds depend on model load time
-          # which varies by model size and storage speed
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            # PAIN POINT: initialDelaySeconds must account for container startup
-            # Too short = probe failures; too long = slow rollouts
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 30
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 30
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 10
-            failureThreshold: 3
+          image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.8.1
+          workingDir: /workspace
+          command:
+            - python
+            - -m
+            - dynamo.frontend
+          args:
+            # PAIN POINT: Users must figure out which CLI flags exist and what values to use
+            # by reading source code or reverse-engineering from examples
+            # PAIN POINT: Router mode affects performance characteristics
+            # - "round-robin": Simple but doesn't optimize KV-cache locality
+            # - "kv": Smarter routing but adds latency for routing decisions
+            - --router-mode
+            - kv
+            # PAIN POINT: --router-reset-states clears router state on restart
+            # May cause brief performance degradation after restarts
+            - --router-reset-states
 
     # =========================================================================
-    # Decode Worker - Generates output tokens
+    # Decode Worker - Generates output tokens (memory-bandwidth heavy)
     # =========================================================================
     VllmDecodeWorker:
-      # PAIN POINT: envFromSecret requires pre-created Kubernetes Secret
-      # Secret must contain HF_TOKEN for private model access
-      # Secret management is a separate operational concern
-      envFromSecret: hf-token-secret
-      
       componentType: worker
       # PAIN POINT: subComponentType is Dynamo-specific
       # Must be "decode" or "prefill" for disaggregated serving
       # Wrong value silently breaks the inference pipeline
       subComponentType: decode
-      
-      replicas: 1
-      
+
+      # PAIN POINT: envFromSecret requires pre-created Kubernetes Secret
+      # User must manually create this secret with HF_TOKEN before deploying
+      envFromSecret: hf-token-secret
+
+      replicas: 2
+
       resources:
         limits:
-          # PAIN POINT: "gpu: 1" is the abstracted form
-          # Actual GPU type depends on node selectors/tolerations
-          # No validation that requested GPU is suitable for the model
-          gpu: "1"
+          # PAIN POINT: gpu: '2' means 2 GPUs per pod
+          # Must match --tensor-parallel-size in args
+          gpu: '2'
+          custom:
+            # PAIN POINT: RDMA/InfiniBand required for high-performance multi-GPU
+            # Not all clusters have RDMA networking configured
+            rdma/ib: "2"
         requests:
-          # PAIN POINT: CPU/memory requests affect scheduling
-          # Undersized requests = OOM kills; oversized = scheduling failures
-          cpu: "10"
-          memory: "20Gi"
-      
+          gpu: '2'
+
+      # PAIN POINT: volumeMounts must match PVC names exactly
+      # Typos cause silent failures - pods start but can't cache models
+      volumeMounts:
+        - name: model-cache
+          mountPoint: /home/dynamo/.cache/huggingface
+        - name: compilation-cache
+          mountPoint: /home/dynamo/.cache/vllm
+          # PAIN POINT: useAsCompilationCache sets VLLM_CACHE_ROOT for persistent caching
+          # Without this, compiled artifacts aren't persisted across pod restarts
+          useAsCompilationCache: true
+
       extraPodSpec:
-        # PAIN POINT: Affinity rules require cluster-specific node labels
-        # Labels like "node.kubernetes.io/instance-type" are cloud-specific
-        affinity:
-          nodeAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              nodeSelectorTerms:
-                - matchExpressions:
-                    - key: node.kubernetes.io/instance-type
-                      operator: In
-                      values:
-                        # PAIN POINT: GPU instance types are cloud-specific:
-                        # - GKE: a2-highgpu-1g, n1-standard-8 + accelerator
-                        # - EKS: p4d.24xlarge, p3.2xlarge
-                        # - AKS: Standard_NC24ads_A100_v4
-                        - gpu-h100-sxm
-        
         mainContainer:
-          image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0
-          # PAIN POINT: workingDir affects relative path resolution
-          # Must match where the Dynamo modules are installed in the image
-          workingDir: /workspace/examples/backends/vllm
-          
+          image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.8.1
+          workingDir: /workspace
           command:
             - python3
             - -m
             - dynamo.vllm
-          
           args:
             - --model
-            - Qwen/Qwen3-0.6B
-            # PAIN POINT: Flag indicates this is a decode-only worker
-            # Forgetting this flag breaks disaggregated serving
-            - --is-decode-worker
-            # PAIN POINT: tensor-parallel-size must match available GPUs per pod
-            # Mismatch causes silent hangs or crashes
+            # PAIN POINT: Qwen3-32B requires substantial GPU memory
+            # Miscalculating memory requirements causes OOM crashes
+            - Qwen/Qwen3-32B
+            # PAIN POINT: tensor-parallel-size must match GPU count
+            # Mismatch causes silent hangs or NCCL errors
             - --tensor-parallel-size
-            - "1"
-            # PAIN POINT: dtype affects memory usage and precision
-            # float16 saves memory but may affect output quality
-            - --dtype
-            - float16
-            # PAIN POINT: max-model-len affects memory allocation
-            # Too high = OOM; too low = truncated responses
+            - '2'
+            - --disable-log-requests
+            # PAIN POINT: gpu-memory-utilization at 0.90 leaves little headroom
+            # Too high = OOM; too low = wasted expensive GPU memory
+            - --gpu-memory-utilization
+            - '0.90'
+            - --no-enable-prefix-caching
+            # PAIN POINT: async-scheduling is a performance optimization
+            # but can cause issues with certain model architectures
+            - --async-scheduling
+            # PAIN POINT: block-size affects KV-cache efficiency
+            # Wrong value degrades memory utilization
+            - --block-size
+            - '64'
+            # PAIN POINT: hf-overrides requires deep knowledge of model architecture
+            # This RoPE scaling config extends context from 32K to 131K tokens
+            - --hf-overrides
+            - '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768},"max_position_embeddings":131072}'
+            # PAIN POINT: max-model-len of 131K tokens requires careful memory planning
+            # Longer contexts = more KV-cache memory per request
             - --max-model-len
-            - "8192"
-          
-          # PAIN POINT: Startup probe must account for model download time
-          # Large models (70B+) can take 30+ minutes to download
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 9090
-            initialDelaySeconds: 120
-            periodSeconds: 30
-            timeoutSeconds: 10
-            # PAIN POINT: failureThreshold * periodSeconds = max startup time
-            # 60 * 30s = 30 minutes may not be enough for large models
-            failureThreshold: 60
-          
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 9090
-            initialDelaySeconds: 60
-            periodSeconds: 30
-            failureThreshold: 10
+            - '131072'
+          env:
+            # PAIN POINT: Disabling health checks is risky in production
+            # but sometimes needed for debugging startup issues
+            - name: DYN_HEALTH_CHECK_ENABLED
+              value: "false"
+            - name: HF_HOME
+              value: /home/dynamo/.cache/huggingface
 
     # =========================================================================
-    # Prefill Worker - Processes input tokens
+    # Prefill Worker - Processes input tokens (compute-heavy)
     # =========================================================================
     VllmPrefillWorker:
-      envFromSecret: hf-token-secret
       componentType: worker
       subComponentType: prefill
-      replicas: 1
-      
+
+      envFromSecret: hf-token-secret
+
+      # PAIN POINT: 6 prefill workers vs 2 decode workers
+      # This ratio requires understanding of your workload's prefill:decode ratio
+      # Wrong ratio causes either prefill or decode bottlenecks
+      replicas: 6
+
       resources:
         limits:
-          # PAIN POINT: Prefill is more compute-intensive than decode
-          # May need different GPU types (compute vs memory optimized)
-          # But this abstraction hides that complexity
-          gpu: "1"
+          gpu: '2'
+          custom:
+            rdma/ib: "2"
         requests:
-          cpu: "10"
-          memory: "20Gi"
-      
+          gpu: '2'
+
+      # PAIN POINT: Prometheus annotations for metrics scraping
+      # Must be configured correctly for observability to work
+      extraPodMetadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "9400"
+          prometheus.io/path: "/metrics"
+
       extraPodSpec:
-        affinity:
-          nodeAffinity:
-            requiredDuringSchedulingIgnoredDuringExecution:
-              nodeSelectorTerms:
-                - matchExpressions:
-                    - key: node.kubernetes.io/instance-type
-                      operator: In
-                      values:
-                        - gpu-h100-sxm
-        
         mainContainer:
-          image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0
-          workingDir: /workspace/examples/backends/vllm
-          
+          image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.8.1
+          workingDir: /workspace
           command:
             - python3
             - -m
             - dynamo.vllm
-          
           args:
             - --model
-            - Qwen/Qwen3-0.6B
+            - Qwen/Qwen3-32B
+            # PAIN POINT: --is-prefill-worker flag is critical
+            # Forgetting this flag breaks disaggregated serving entirely
             - --is-prefill-worker
+            # PAIN POINT: Users must figure out what all these flags mean and how to tune them
             - --tensor-parallel-size
-            - "1"
-            - --dtype
-            - float16
+            - '2'
+            - --disable-log-requests
+            - --gpu-memory-utilization
+            - '0.90'
+            - --async-scheduling
+            - --block-size
+            - '64'
+            - --hf-overrides
+            - '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768},"max_position_embeddings":131072}'
             - --max-model-len
-            - "8192"
-          
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 9090
-            initialDelaySeconds: 120
-            periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 60
-          
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 9090
-            initialDelaySeconds: 60
-            periodSeconds: 30
-            failureThreshold: 10
-
-  # ===========================================================================
-  # PAIN POINT: PVCs for model caching require pre-provisioned storage
-  # Storage class selection affects performance (SSD vs HDD)
-  # ===========================================================================
-  pvcs:
-    - name: model-cache
-      size: 100Gi
-      # PAIN POINT: storageClassName is cluster-specific
-      # Each cloud has different storage classes with different performance
-      storageClassName: premium-rwo
-      accessModes:
-        - ReadWriteOnce
-
----
-# =============================================================================
-# PAIN POINT: Supporting resources must be created separately
-# HuggingFace token secret for model access
-# =============================================================================
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hf-token-secret
-  namespace: dynamo-system
-type: Opaque
-data:
-  # PAIN POINT: Token must be base64 encoded
-  # Easy to make encoding errors
-  HF_TOKEN: <base64-encoded-token-here>
+            - '131072'
+          env:
+            - name: DYN_HEALTH_CHECK_ENABLED
+              value: "false"
+            - name: HF_HOME
+              value: /home/dynamo/.cache/huggingface

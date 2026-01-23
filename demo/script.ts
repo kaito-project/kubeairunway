@@ -11,10 +11,11 @@ export const NARRATION = {
   intro: `Let me show you what deploying an LLM on Kubernetes typically looks like today.
 This is the reality that platform engineers and ML operators face.`,
 
-  dynamo: `This is a real NVIDIA Dynamo DynamoGraphDeployment. Nearly 300 lines of YAML.
-Multiple services to coordinate - frontend, worker, router.
-You need to understand disaggregated prefill and decode architecture - that's an advanced ML concept.
-Plus, the node affinity labels are different for every cloud provider.
+  dynamo: `This is a real NVIDIA Dynamo DynamoGraphDeployment from their official v0.8.1 recipes.
+Nearly 280 lines of YAML for disaggregated serving with KV-cache routing.
+You need 6 prefill workers, 2 decode workers, and a frontend router - that's 9 pods to coordinate.
+It requires RDMA/InfiniBand networking, pre-provisioned PVCs, and deep knowledge of RoPE scaling.
+Plus you need to manually create Secrets and configure Prometheus annotations.
 Look at all those pain points highlighted in red.`,
 
   apply_attempt: `Let's try to apply this Dynamo deployment and see what happens...`,
