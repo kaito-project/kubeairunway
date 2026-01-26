@@ -235,14 +235,15 @@ export class DynamoProvider implements Provider {
     }
 
     // Add resource requirements in the correct format
+    // Dynamo CRD expects 'gpu' key, not 'nvidia.com/gpu'
     if (config.resources) {
       baseSpec.resources = {
         limits: {
-          'nvidia.com/gpu': String(config.resources.gpu),
+          gpu: String(config.resources.gpu),
           ...(config.resources.memory && { memory: config.resources.memory }),
         },
         requests: {
-          'nvidia.com/gpu': String(config.resources.gpu),
+          gpu: String(config.resources.gpu),
           ...(config.resources.memory && { memory: config.resources.memory }),
         },
       };
@@ -340,13 +341,14 @@ export class DynamoProvider implements Provider {
     }
 
     // Add resource requirements
+    // Dynamo CRD expects 'gpu' key, not 'nvidia.com/gpu'
     baseSpec.resources = {
       limits: {
-        'nvidia.com/gpu': String(gpus),
+        gpu: String(gpus),
         ...(config.resources?.memory && { memory: config.resources.memory }),
       },
       requests: {
-        'nvidia.com/gpu': String(gpus),
+        gpu: String(gpus),
         ...(config.resources?.memory && { memory: config.resources.memory }),
       },
     };
@@ -557,6 +559,19 @@ export class DynamoProvider implements Provider {
       phase = 'Running';
     }
 
+    // Calculate ready replicas from status.services (DynamoGraphDeployment format)
+    let readyReplicas = 0;
+    let availableReplicas = 0;
+    if (status.services) {
+      for (const [serviceName, serviceStatus] of Object.entries(status.services)) {
+        // Skip frontend, only count workers
+        if (serviceName.toLowerCase().includes('worker')) {
+          readyReplicas += serviceStatus.ready || 0;
+          availableReplicas += serviceStatus.available || 0;
+        }
+      }
+    }
+
     const result: DeploymentStatus = {
       name: obj.metadata?.name || 'unknown',
       namespace: obj.metadata?.namespace || 'default',
@@ -568,8 +583,8 @@ export class DynamoProvider implements Provider {
       provider: this.id,
       replicas: {
         desired: status.replicas?.desired || desiredReplicas,
-        ready: status.replicas?.ready || 0,
-        available: status.replicas?.available || 0,
+        ready: readyReplicas || status.replicas?.ready || 0,
+        available: availableReplicas || status.replicas?.available || 0,
       },
       conditions: (status.conditions || []).map((c) => ({
         type: c.type || '',
