@@ -156,7 +156,8 @@ describe('DynamoProvider', () => {
       });
       const services = (manifest.spec as any).services;
       const resources = services.VllmWorker.resources;
-      expect(resources.limits['nvidia.com/gpu']).toBe('2');
+      // Dynamo CRD expects 'gpu' key, not 'nvidia.com/gpu'
+      expect(resources.limits.gpu).toBe('2');
       expect(resources.limits.memory).toBe('16Gi');
     });
   });
