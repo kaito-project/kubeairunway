@@ -172,63 +172,101 @@ export function Integrations() {
               <InlineLoader />
               <span>Checking GPU Operator status...</span>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Status */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 500 }}>Status</span>
-                <StatusLabel status={gpuStatus?.installed ? 'success' : 'error'}>
-                  {gpuStatus?.installed ? 'Installed' : 'Not Installed'}
+          ) : gpuStatus?.installed ? (
+            /* Installed state - show runtime-style status card */
+            <div
+              style={{
+                border: '1px solid rgba(128, 128, 128, 0.3)',
+                borderRadius: '8px',
+                padding: '20px',
+                backgroundColor: 'transparent',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', textTransform: 'uppercase' }}>
+                    GPU Status
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '14px', opacity: 0.7 }}>
+                    NVIDIA GPU Operator manages GPU drivers and device plugins
+                  </p>
+                </div>
+                <StatusLabel status={gpuStatus.operatorRunning && gpuStatus.gpusAvailable ? 'success' : gpuStatus.operatorRunning ? 'warning' : 'error'}>
+                  {gpuStatus.operatorRunning && gpuStatus.gpusAvailable ? 'GPUs Enabled' : gpuStatus.operatorRunning ? 'No GPUs' : 'Unhealthy'}
                 </StatusLabel>
               </div>
 
-              {gpuStatus?.installed && (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 500 }}>Operator Running</span>
-                    <StatusLabel status={gpuStatus?.operatorRunning ? 'success' : 'error'}>
-                      {gpuStatus?.operatorRunning ? 'Yes' : 'No'}
-                    </StatusLabel>
+              {/* Status details */}
+              <div style={{ fontSize: '14px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ opacity: 0.7 }}>Operator</span>
+                  <StatusLabel status={gpuStatus.operatorRunning ? 'success' : 'error'}>
+                    {gpuStatus.operatorRunning ? 'Running' : 'Not Running'}
+                  </StatusLabel>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ opacity: 0.7 }}>GPUs Available</span>
+                  <StatusLabel status={gpuStatus.gpusAvailable ? 'success' : 'warning'}>
+                    {gpuStatus.gpusAvailable ? `${gpuStatus.totalGPUs} GPU(s)` : 'None'}
+                  </StatusLabel>
+                </div>
+                {gpuStatus.gpuNodes && gpuStatus.gpuNodes.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.7 }}>
+                    <span>GPU Nodes</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{gpuStatus.gpuNodes.length} node(s)</span>
                   </div>
+                )}
+              </div>
 
-                  {gpuStatus?.gpusAvailable && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 500 }}>Total GPUs</span>
-                      <span style={{ fontFamily: 'monospace' }}>{gpuStatus.totalGPUs}</span>
-                    </div>
-                  )}
-                </>
+              {/* GPU Node details if available */}
+              {gpuStatus.gpusAvailable && gpuStatus.gpuNodes && gpuStatus.gpuNodes.length > 0 && (
+                <div
+                  style={{
+                    padding: '12px',
+                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    borderRadius: '6px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4caf50', marginBottom: '8px' }}>
+                    <Icon icon="mdi:check-circle" />
+                    <span style={{ fontWeight: 500 }}>
+                      GPUs enabled: {gpuStatus.totalGPUs} GPU(s) on {gpuStatus.gpuNodes.length} node(s)
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '12px', fontFamily: 'monospace', opacity: 0.8 }}>
+                    Nodes: {gpuStatus.gpuNodes.join(', ')}
+                  </div>
+                </div>
               )}
-
-              {/* Install toggle or button */}
-              {!gpuStatus?.installed && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>Enable GPU Operator</div>
-                      <div style={{ fontSize: '13px', opacity: 0.7 }}>
-                        Automatically installs the NVIDIA GPU Operator via Helm
-                      </div>
-                    </div>
-
-                    <Button
-                      variant="contained"                    
-                      color="primary"
-                      size="small"
-                      startIcon={<Icon icon="mdi:download" />}
-                      onClick={handleInstallGpu}
-                      loading={installing}
-                    >
-                      Install
-                    </Button>
+            </div>
+          ) : (
+            /* Not installed state - show install option */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontWeight: 500 }}>Enable GPU Operator</div>
+                  <div style={{ fontSize: '13px', opacity: 0.7 }}>
+                    Automatically installs the NVIDIA GPU Operator via Helm
                   </div>
+                </div>
 
-                  {installing && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.7 }}>
-                      <InlineLoader />
-                      <span>Installing GPU Operator... This may take several minutes.</span>
-                    </div>
-                  )}
+                <Button
+                  variant="contained"                    
+                  color="primary"
+                  size="small"
+                  startIcon={<Icon icon="mdi:download" />}
+                  onClick={handleInstallGpu}
+                  loading={installing}
+                >
+                  Install
+                </Button>
+              </div>
+
+              {installing && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.7 }}>
+                  <InlineLoader />
+                  <span>Installing GPU Operator... This may take several minutes.</span>
                 </div>
               )}
 
