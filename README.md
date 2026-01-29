@@ -18,7 +18,7 @@ A web-based platform for deploying and managing large language models on Kuberne
 - 📝 **Real-Time Logs**: Stream container logs directly from the UI
 - 📊 **Deployment Metrics**: View Prometheus metrics for running deployments (in-cluster)
 - 🔌 **Multi-Provider Support**: Extensible architecture supporting multiple inference runtimes
-- 🔧 **Multiple Engines**: vLLM, SGLang, and TensorRT-LLM (via NVIDIA Dynamo)
+- 🔧 **Multiple Engines**: vLLM, SGLang, Llama.cpp, Transformers and TensorRT-LLM (via NVIDIA Dynamo/Triton)
 - 📥 **Installation Wizard**: Install providers via Helm directly from the UI
 - 🛠️ **Complete Uninstall**: Clean uninstallation with optional CRD removal
 - 🎨 **Dark Theme**: Modern dark UI with provider-specific accents
