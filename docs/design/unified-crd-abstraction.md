@@ -1188,7 +1188,62 @@ The following features are explicitly out of scope for the initial release:
 
 ---
 
-## 13. Alternatives Considered
+## 13. Known Limitations
+
+### 13.1 Provider Schema Compatibility
+
+Dynamic CRD version detection (Section 4.10) only detects API version changes (e.g., `v1alpha1` → `v1beta1`), not schema changes within a version.
+
+**Impact:** If a provider makes breaking schema changes without bumping the API version (e.g., field renames, structural changes), the controller will generate invalid manifests. Errors surface at runtime via provider status, with no proactive warning.
+
+**Mitigation (future):**
+- Schema fingerprinting to detect drift
+- Documented compatibility matrix per release
+- Controller warnings when provider CRD differs from expected schema
+
+### 13.2 Controller RBAC Acts as Privileged Intermediary
+
+The controller runs with cluster-wide permissions to create provider resources (Workspace, DynamoGraphDeployment, RayService) in any namespace. This follows standard Kubernetes operator patterns (e.g., Deployment controller creates Pods on behalf of users).
+
+**Impact:** A user who can create `ModelDeployment` in namespace X can effectively create provider resources in that namespace, even if they lack direct RBAC permissions for those provider CRDs. Organizations wanting per-provider access control (e.g., "Team A can only use KAITO") cannot enforce this at the provider CRD level.
+
+**Mitigation (future):**
+- SubjectAccessReview checks before creating provider resources
+- Namespace-level provider allowlists via ConfigMap or annotation
+- Validating webhook that checks user permissions for the target provider
+
+### 13.3 Unmappable Provider Features
+
+The unified API abstracts common patterns, but providers may have features that don't fit the `ModelDeployment` schema.
+
+**Impact:** Users needing provider-specific features not exposed in the unified API must either:
+1. Use `provider.overrides` (limited to documented keys)
+2. Create provider resources directly, bypassing KubeFoundry
+
+Mixed management (some resources via KubeFoundry, some direct) creates operational complexity and potential conflicts.
+
+**Mitigation (future):**
+- Expand `provider.overrides` as new provider features emerge
+- Passthrough mode for arbitrary provider fields (with validation disabled)
+
+### 13.4 Provider Operator Unavailability
+
+The design handles provider operator unavailability at deletion time (finalizer timeout, Section 4.7), but not during ongoing operations.
+
+**Impact:** If a provider operator crashes, is uninstalled, or becomes unavailable while `ModelDeployment` resources exist:
+- KubeFoundry controller continues creating/updating provider resources
+- Provider resources are not reconciled into actual workloads
+- `ModelDeployment.status` becomes stale (no status updates from provider)
+- No proactive detection or user notification
+
+**Mitigation (future):**
+- Health checks for provider operators before reconciliation
+- Status condition indicating provider operator health
+- Periodic staleness detection for provider resource status
+
+---
+
+## 14. Alternatives Considered
 
 ### Alternative 1: No Abstraction
 
@@ -1228,11 +1283,11 @@ Run controller logic in the local kubefoundry binary instead of in-cluster.
 
 ---
 
-## 14. Engine-Specific Parameter Reference
+## 15. Engine-Specific Parameter Reference
 
 Since each inference engine has different parameter names and defaults, the unified API abstracts common concepts while providing an escape hatch via `engine.args`.
 
-### 14.1 Context Length
+### 15.1 Context Length
 
 | Engine       | Parameter           | Default       |
 | ------------ | ------------------- | ------------- |
@@ -1241,7 +1296,7 @@ Since each inference engine has different parameter names and defaults, the unif
 | TensorRT-LLM | Build-time config   | -             |
 | llama.cpp    | `--ctx-size` / `-c` | Model max     |
 
-### 14.2 Trust Remote Code
+### 15.2 Trust Remote Code
 
 | Engine       | Parameter             | Default |
 | ------------ | --------------------- | ------- |
@@ -1250,7 +1305,7 @@ Since each inference engine has different parameter names and defaults, the unif
 | TensorRT-LLM | Build-time            | -       |
 | llama.cpp    | N/A                   | -       |
 
-### 14.3 Quantization (via engine.args)
+### 15.3 Quantization (via engine.args)
 
 | Engine       | Parameter        | Values                     |
 | ------------ | ---------------- | -------------------------- |
@@ -1267,7 +1322,7 @@ engine:
     quantization: "awq"
 ```
 
-### 14.4 GPU Memory Utilization (via engine.args)
+### 15.4 GPU Memory Utilization (via engine.args)
 
 | Engine       | Parameter                  | Default  |
 | ------------ | -------------------------- | -------- |
@@ -1278,7 +1333,7 @@ engine:
 
 ---
 
-## 15. References
+## 16. References
 
 - [Kubernetes Custom Resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
 - [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime)
