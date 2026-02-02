@@ -5,7 +5,7 @@
 **Status:** Draft
 **Author:** Sertac Ozercan
 **Date:** January 2026
-**Last Updated:** January 30, 2026
+**Last Updated:** February 2, 2026
 
 ---
 
@@ -69,6 +69,15 @@ kubectl apply -f https://raw.githubusercontent.com/kubefoundry/kubefoundry/main/
 kubectl apply -k https://github.com/kubefoundry/kubefoundry/manifests
 ```
 
+**Upgrading the controller:**
+```bash
+# Option A: CLI
+$ kubefoundry controller upgrade
+
+# Option B: kubectl (re-apply latest manifests)
+kubectl apply -f https://raw.githubusercontent.com/kubefoundry/kubefoundry/main/manifests/install.yaml
+```
+
 If controller isn't installed:
 ```bash
 $ kubefoundry start
@@ -78,14 +87,14 @@ Run 'kubefoundry controller install' first.
 
 ### 2.2 TypeScript Binary Role Change
 
-| Function | Before | After |
-|----------|--------|-------|
-| Generate provider manifests | Yes | No (controller does this) |
-| Apply provider CRDs | Yes | No (controller does this) |
-| Parse provider status | Yes | No (reads ModelDeployment.status) |
-| Web UI | Yes | Yes (unchanged) |
-| Create deployments | Direct to provider | Creates ModelDeployment CRD |
-| Install controller | Applies controller manifests | Applies controller manifests (also available via kubectl) |
+| Function                    | Before                       | After                                                     |
+| --------------------------- | ---------------------------- | --------------------------------------------------------- |
+| Generate provider manifests | Yes                          | No (controller does this)                                 |
+| Apply provider CRDs         | Yes                          | No (controller does this)                                 |
+| Parse provider status       | Yes                          | No (reads ModelDeployment.status)                         |
+| Web UI                      | Yes                          | Yes (unchanged)                                           |
+| Create deployments          | Direct to provider           | Creates ModelDeployment CRD                               |
+| Install controller          | Applies controller manifests | Applies controller manifests (also available via kubectl) |
 
 ### 2.3 Manifest Generation Location
 
@@ -153,11 +162,11 @@ User Config → ModelDeployment CRD → KubeFoundry Controller → Provider CRD 
 
 ### 3.3 Existing Providers
 
-| Provider | CRD | API Group | Primary Use Case |
-|----------|-----|-----------|------------------|
-| KAITO | `Workspace` | `kaito.sh/v1beta1` | CPU/GPU flexible with GGUF, vLLM |
-| Dynamo | `DynamoGraphDeployment` | `nvidia.com/v1alpha1` | High-perf GPU with vLLM/sglang/trtllm |
-| KubeRay | `RayService` | `ray.io/v1` | Scalable serving with Ray Serve |
+| Provider | CRD                     | API Group             | Primary Use Case                      |
+| -------- | ----------------------- | --------------------- | ------------------------------------- |
+| KAITO    | `Workspace`             | `kaito.sh/v1beta1`    | CPU/GPU flexible with GGUF, vLLM      |
+| Dynamo   | `DynamoGraphDeployment` | `nvidia.com/v1alpha1` | High-perf GPU with vLLM/sglang/trtllm |
+| KubeRay  | `RayService`            | `ray.io/v1`           | Scalable serving with Ray Serve       |
 
 ---
 
@@ -177,17 +186,21 @@ metadata:
 spec:
   # Model specification (required)
   model:
-    id: "meta-llama/Llama-3.1-8B-Instruct"  # HuggingFace model ID
-    servedName: "llama-3.1-8b"               # API-facing model name (optional)
-    source: "huggingface"                    # huggingface | custom
+    id: "meta-llama/Llama-3.1-8B-Instruct"  # HuggingFace model ID (or path for custom)
+    servedName: "llama-3.1-8b"               # API-facing model name (optional, defaults to model ID basename)
+    source: "huggingface"                    # huggingface | custom (pre-loaded in image)
 
   # Provider selection (optional - auto-selected if not specified)
   provider:
     name: "dynamo"                           # dynamo | kaito | kuberay
-    # Provider-specific overrides (optional, escape hatch)
-    overrides:
-      # Example: Dynamo-specific router mode
-      # routerMode: "kv"                     # none | kv | round-robin (Dynamo only)
+    # Provider-specific overrides (optional escape hatch, see Section 4.15)
+    overrides: {}
+      # Dynamo example:
+      # routerMode: "kv"
+      # frontend: { replicas: 2, resources: { cpu: "4", memory: "8Gi" } }
+      #
+      # KubeRay example:
+      # head: { resources: { cpu: "4", memory: "8Gi" }, rayStartParams: { "num-cpus": "0" } }
 
   # Inference engine configuration
   engine:
@@ -200,12 +213,13 @@ spec:
     trustRemoteCode: false
 
     # Engine-specific options (use args for full control)
+    # Schema: map[string]string - all values are strings
     # These are passed directly to the engine and vary by type:
     #   vllm:    --enforce-eager, --enable-prefix-caching, --gpu-memory-utilization, --quantization
     #   sglang:  --disable-cuda-graph, --disable-radix-cache, --mem-fraction-static, --quantization
     #   trtllm:  enable_block_reuse, kv_cache_config
     #   llamacpp: --cache-type-k, --cache-type-v, --ctx-size
-    args: {}
+    args: {}  # e.g., { "quantization": "awq", "gpu-memory-utilization": "0.9" }
 
   # Serving mode
   serving:
@@ -215,19 +229,22 @@ spec:
   # Scaling configuration
   scaling:
     replicas: 1                              # For aggregated mode
-    # For disaggregated mode
+    # For disaggregated mode (spec.resources not allowed, use per-component)
+    # Note: Frontend/head component uses controller defaults; customize via provider.overrides
     prefill:
       replicas: 1
       gpus: 1
+      memory: "64Gi"                         # Required for disaggregated
     decode:
       replicas: 1
       gpus: 1
+      memory: "64Gi"                         # Required for disaggregated
 
   # Resource requirements (GPU inferred from gpu.count > 0)
   resources:
     gpu:
       count: 1
-      # Optional: specific GPU type requirement
+      # Optional: GPU resource name (defaults to nvidia.com/gpu, override for AMD/Intel)
       type: "nvidia.com/gpu"
     memory: "32Gi"
     cpu: "4"
@@ -468,20 +485,27 @@ spec:
   provider:
     name: "dynamo"
     overrides:
-      routerMode: "kv"  # KV cache routing (Dynamo-specific)
+      routerMode: "kv"                    # KV cache routing (Dynamo-specific)
+      frontend:                           # Optional: customize router (uses defaults if omitted)
+        replicas: 2
+        resources:
+          cpu: "4"
+          memory: "8Gi"
   engine:
     type: "vllm"
   serving:
     mode: "disaggregated"
   scaling:
+    # Frontend/head not specified here - configured via provider.overrides or uses defaults
     prefill:
       replicas: 2
       gpus: 4
+      memory: "128Gi"
     decode:
       replicas: 4
       gpus: 2
-  resources:
-    memory: "128Gi"
+      memory: "64Gi"
+  # Note: spec.resources is not allowed in disaggregated mode
   secrets:
     huggingFaceToken: "hf-token"
 ```
@@ -504,9 +528,13 @@ spec:
     Frontend:
       componentType: frontend
       dynamoNamespace: llama-70b-pd
-      replicas: 1
-      router-mode: kv
+      replicas: 2                          # From overrides.frontend.replicas
+      router-mode: kv                      # From overrides.routerMode
       envFromSecret: hf-token
+      resources:
+        requests:
+          cpu: "4"                         # From overrides.frontend.resources.cpu
+          memory: "8Gi"                    # From overrides.frontend.resources.memory
       extraPodSpec:
         mainContainer:
           image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1
@@ -519,7 +547,7 @@ spec:
       resources:
         limits:
           gpu: "4"
-          memory: "128Gi"
+          memory: "128Gi"  # From scaling.prefill.memory
       extraPodSpec:
         mainContainer:
           image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1
@@ -534,7 +562,7 @@ spec:
       resources:
         limits:
           gpu: "2"
-          memory: "128Gi"
+          memory: "64Gi"   # From scaling.decode.memory
       extraPodSpec:
         mainContainer:
           image: nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1
@@ -621,8 +649,10 @@ status:
 
 The controller auto-selects a provider when `spec.provider.name` is omitted.
 
+**GPU default behavior:** If `resources.gpu` is omitted entirely, it is treated as `gpu.count: 0` (CPU-only), which selects KAITO.
+
 ```
-IF gpu.count == 0 OR gpu.count is not set:
+IF gpu.count == 0 OR resources.gpu is omitted:
     return KAITO
     reason: "no GPU requested → kaito (only CPU provider)"
 
@@ -647,18 +677,18 @@ DEFAULT:
 
 ### 4.5 Provider Capability Matrix
 
-| Criteria | KAITO | Dynamo | KubeRay |
-|----------|-------|--------|---------|
-| CPU inference | **Yes** | No | No |
-| GPU inference | Yes | **Yes** | Yes |
-| vLLM engine | Yes | **Yes** | Yes |
-| sglang engine | No | **Yes** | No |
-| trtllm engine | No | **Yes** | No |
-| llamacpp engine | **Yes** | No | No |
-| GGUF models | **Yes** | No | No |
-| Disaggregated P/D | No | **Yes** | Yes |
-| KV routing (via overrides) | No | **Yes** | Yes (manual) |
-| Auto-selection | Yes | Yes (default) | No (explicit only) |
+| Criteria                   | KAITO   | Dynamo        | KubeRay            |
+| -------------------------- | ------- | ------------- | ------------------ |
+| CPU inference              | **Yes** | No            | No                 |
+| GPU inference              | Yes     | **Yes**       | Yes                |
+| vLLM engine                | Yes     | **Yes**       | Yes                |
+| sglang engine              | No      | **Yes**       | No                 |
+| trtllm engine              | No      | **Yes**       | No                 |
+| llamacpp engine            | **Yes** | No            | No                 |
+| GGUF models                | **Yes** | No            | No                 |
+| Disaggregated P/D          | No      | **Yes**       | Yes                |
+| KV routing (via overrides) | No      | **Yes**       | Yes (via RayService config) |
+| Auto-selection             | Yes     | Yes (default) | No (explicit only) |
 
 ### 4.6 Drift Detection and Reconciliation
 
@@ -712,17 +742,17 @@ This ensures:
 
 The controller extracts meaningful error messages from provider status.
 
-| Provider | Provider Status | Unified Phase | Message Extraction |
-|----------|-----------------|---------------|-------------------|
-| KAITO | `WorkspaceSucceeded: True` | Running | - |
-| KAITO | `InferenceReady: False` | Deploying | Extract condition message |
-| KAITO | Error condition | Failed | Extract error from condition |
-| Dynamo | `state: successful` | Running | - |
-| Dynamo | `state: deploying` | Deploying | - |
-| Dynamo | `state: failed` | Failed | Extract from status.message |
-| KubeRay | `serviceStatus: Running` | Running | - |
-| KubeRay | `serviceStatus: Pending` | Pending | - |
-| KubeRay | `serviceStatus: Failed` | Failed | Extract from serveStatuses |
+| Provider | Provider Status            | Unified Phase | Message Extraction           |
+| -------- | -------------------------- | ------------- | ---------------------------- |
+| KAITO    | `WorkspaceSucceeded: True` | Running       | -                            |
+| KAITO    | `InferenceReady: False`    | Deploying     | Extract condition message    |
+| KAITO    | Error condition            | Failed        | Extract error from condition |
+| Dynamo   | `state: successful`        | Running       | -                            |
+| Dynamo   | `state: deploying`         | Deploying     | -                            |
+| Dynamo   | `state: failed`            | Failed        | Extract from status.message  |
+| KubeRay  | `serviceStatus: Running`   | Running       | -                            |
+| KubeRay  | `serviceStatus: Pending`   | Pending       | -                            |
+| KubeRay  | `serviceStatus: Failed`    | Failed        | Extract from serveStatuses   |
 
 ### 4.10 Dynamic CRD Version Detection
 
@@ -734,6 +764,124 @@ The controller dynamically detects installed provider CRD versions:
 4. Log warnings if expected CRDs are missing
 
 This prevents breakage when providers release new CRD versions.
+
+### 4.11 Update Semantics
+
+When a user updates a `ModelDeployment` spec, the controller handles changes based on field type:
+
+**Identity fields (trigger delete + recreate):**
+- `model.id` - Changing the model fundamentally changes the deployment
+- `engine.type` - Changing inference engine requires new containers
+- `provider.name` - Changing provider requires different resource type
+
+> **Warning:** Changing identity fields causes brief downtime as the provider resource is deleted and recreated. In-flight requests will fail during this window.
+
+**Config fields (in-place update):**
+- `scaling.replicas` - Can be updated without recreation
+- `env` - Environment variable changes
+- `resources` - Memory/CPU adjustments
+- `engine.args` - Engine parameter tuning
+- `nodeSelector`, `tolerations` - Scheduling constraints
+
+The controller patches the provider resource in place for config field changes. If the provider operator rejects an update (e.g., due to its own immutable field constraints), the error is surfaced in `ModelDeployment.status`.
+
+### 4.12 Label Propagation
+
+Labels from `ModelDeployment.metadata.labels` are selectively propagated:
+
+- **To provider resource:** Only labels with `kubefoundry.ai/` prefix are copied
+- **To pods:** Use `spec.podTemplate.metadata.labels` for pod-level labels
+- **Controller-managed:** The controller always adds `kubefoundry.ai/managed-by: kubefoundry`
+
+This prevents accidental conflicts with provider-managed labels while allowing KubeFoundry-specific labels to flow through.
+
+### 4.13 Secret Handling
+
+The `secrets.huggingFaceToken` field accepts a Kubernetes secret name (string). The controller passes this to provider resources using `envFromSecret`, which injects all keys from the secret as environment variables.
+
+```yaml
+secrets:
+  huggingFaceToken: "my-hf-secret"  # Secret name only (not secretKeyRef)
+```
+
+Users should create secrets with the keys expected by the runtime (e.g., `HF_TOKEN`).
+
+### 4.14 Endpoint Access
+
+The controller creates ClusterIP services only. Users are responsible for external access:
+
+```yaml
+status:
+  endpoint:
+    service: "my-llm-frontend"  # ClusterIP service
+    port: 8000
+```
+
+**Accessing the endpoint:**
+- **Local development:** `kubectl port-forward svc/my-llm-frontend 8000:8000`
+- **Production:** Create Ingress, Gateway, or LoadBalancer service separately
+
+LoadBalancer/Ingress configuration is deferred to future versions to keep the initial scope focused.
+
+### 4.15 Provider Overrides Reference
+
+The `provider.overrides` field is an untyped `map[string]interface{}` that allows provider-specific configuration. The controller interprets known keys at runtime.
+
+**Schema:** `map[string]interface{}` (flexible, no compile-time validation)
+
+#### Dynamo Overrides
+
+| Key | Type | Description | Default |
+|-----|------|-------------|---------|
+| `routerMode` | string | Request routing strategy: `kv`, `round-robin`, `none` | `round-robin` |
+| `frontend.replicas` | int | Number of frontend/router pods | `1` |
+| `frontend.resources.cpu` | string | CPU request for frontend | `"2"` |
+| `frontend.resources.memory` | string | Memory request for frontend | `"4Gi"` |
+
+**Example:**
+```yaml
+provider:
+  name: "dynamo"
+  overrides:
+    routerMode: "kv"
+    frontend:
+      replicas: 2
+      resources:
+        cpu: "4"
+        memory: "8Gi"
+```
+
+#### KubeRay Overrides
+
+| Key | Type | Description | Default |
+|-----|------|-------------|---------|
+| `head.resources.cpu` | string | CPU request for Ray head node | `"2"` |
+| `head.resources.memory` | string | Memory request for Ray head node | `"4Gi"` |
+| `head.rayStartParams` | map[string]string | Ray head start parameters | `{}` |
+
+**Example:**
+```yaml
+provider:
+  name: "kuberay"
+  overrides:
+    head:
+      resources:
+        cpu: "4"
+        memory: "8Gi"
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+        num-cpus: "0"
+```
+
+#### KAITO Overrides
+
+KAITO currently has no supported overrides (aggregated mode only, no separate router component).
+
+#### Override Behavior
+
+- **Unknown keys are ignored** - Controller logs a warning but continues
+- **Invalid types cause reconciliation failure** - Error surfaced in `ModelDeployment.status`
+- **Defaults apply when omitted** - Only specify what you need to customize
 
 ---
 
@@ -834,19 +982,55 @@ The controller is implemented in Go using Kubebuilder.
 
 The TypeScript binary becomes a thin client:
 
-| Function | Implementation |
-|----------|----------------|
-| Web UI | Unchanged |
-| Create deployment | Creates `ModelDeployment` CRD via K8s API |
-| Show status | Reads `ModelDeployment.status` |
-| Delete deployment | Deletes `ModelDeployment` CRD |
-| Install controller | Applies controller manifests |
-| Upgrade controller | Updates controller deployment image |
+| Function           | Implementation                            |
+| ------------------ | ----------------------------------------- |
+| Web UI             | Unchanged                                 |
+| Create deployment  | Creates `ModelDeployment` CRD via K8s API |
+| Show status        | Reads `ModelDeployment.status`            |
+| Delete deployment  | Deletes `ModelDeployment` CRD             |
+| Install controller | Applies controller manifests              |
+| Upgrade controller | Updates controller deployment image       |
 
 **Removed from TypeScript:**
 - Provider manifest generation (Dynamo, KAITO, KubeRay templates)
 - Direct provider CRD application
 - Provider-specific status parsing
+
+### 6.3 Controller Upgrades
+
+When upgrading the KubeFoundry controller:
+
+**Upgrade process:**
+```bash
+# Option A: CLI upgrade
+kubefoundry controller upgrade
+
+# Option B: kubectl
+kubectl apply -f https://raw.githubusercontent.com/kubefoundry/kubefoundry/main/manifests/install.yaml
+```
+
+**Behavior during upgrade:**
+- Controller deployment performs a rolling update (no downtime)
+- Existing `ModelDeployment` resources continue to function
+- In-flight reconciliations complete with the old controller, then new controller takes over
+- Provider resources are not disrupted during controller upgrade
+
+**CRD updates:**
+- New controller versions may include updated CRD schemas
+- CRD updates are applied automatically by `controller upgrade` or manifest apply
+- Existing resources remain valid (new fields have defaults)
+- Breaking CRD changes only occur between API versions (e.g., v1alpha1 → v1beta1)
+
+**Rollback:**
+```bash
+# Rollback to previous version
+kubectl rollout undo deployment/kubefoundry-controller -n kubefoundry-system
+```
+
+**Version compatibility:**
+- Controller version is independent of provider operator versions
+- Controller detects provider CRD versions dynamically (see Section 4.10)
+- Minimum supported Kubernetes version: 1.26+ (required for CEL validation and server-side apply improvements)
 
 ---
 
@@ -884,16 +1068,21 @@ The controller includes a validating admission webhook (Phase 1).
 
 ### Validation Rules
 
-| Rule | Error Message |
-|------|---------------|
-| `engine: sglang` with `provider: kaito` | "KAITO does not support sglang engine" |
-| `engine: trtllm` with `provider: kaito` | "KAITO does not support trtllm engine" |
-| `engine: llamacpp` with `provider: dynamo` | "Dynamo does not support llamacpp engine" |
-| `gpu.count: 0` with `provider: dynamo` | "Dynamo requires GPU (set resources.gpu.count > 0)" |
-| `gpu.count: 0` with `provider: kuberay` | "KubeRay requires GPU (set resources.gpu.count > 0)" |
-| `mode: disaggregated` with `provider: kaito` | "KAITO does not support disaggregated mode" |
-| Missing `engine.type` | "engine.type is required" |
-| Missing `model.id` | "model.id is required" |
+| Rule                                         | Error Message                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------- |
+| `engine: sglang` with `provider: kaito`      | "KAITO does not support sglang engine"                           |
+| `engine: trtllm` with `provider: kaito`      | "KAITO does not support trtllm engine"                           |
+| `engine: llamacpp` with `provider: dynamo`   | "Dynamo does not support llamacpp engine"                        |
+| `gpu.count: 0` with `provider: dynamo`       | "Dynamo requires GPU (set resources.gpu.count > 0)"              |
+| `gpu.count: 0` with `provider: kuberay`      | "KubeRay requires GPU (set resources.gpu.count > 0)"             |
+| `mode: disaggregated` with `provider: kaito` | "KAITO does not support disaggregated mode"                      |
+| `mode: disaggregated` with `spec.resources`  | "Disaggregated mode requires per-component resources in scaling" |
+| `mode: disaggregated` without `scaling.prefill` or `scaling.decode` | "Disaggregated mode requires scaling.prefill and scaling.decode" |
+| Provider CRD not installed (webhook only)    | "Provider '{name}' CRD not installed in cluster"                 |
+| Missing `engine.type`                        | "engine.type is required"                                        |
+| Missing `model.id`                           | "model.id is required"                                           |
+
+**Note:** If the webhook is not available (e.g., during initial setup), provider CRD validation occurs at reconciliation time. The controller will accept the resource and retry until the provider CRD is installed, setting `status.phase: Pending` with a descriptive message.
 
 ---
 
@@ -988,35 +1177,18 @@ rules:
 
 The following features are explicitly out of scope for the initial release:
 
-| Feature | Reason | Future Consideration |
-|---------|--------|---------------------|
-| Performance-based autoscaling | Replica scaling based on metrics (HPA/KEDA). Not to be confused with cluster autoscaling (Karpenter). Only KubeRay supports it natively. | v1alpha2+ with KEDA/HPA integration |
-| Multi-model serving (LoRA) | Complex, vLLM-specific | Future version if demand exists |
-| Adoption of existing resources | Adds ownership conflict complexity | May add with explicit opt-in |
-| Resource presets (small/medium/large) | Adds indirection without clear value | Docs provide recommended values |
-| GGUF auto-detection | Magic detection has edge cases | Users specify `engine: llamacpp` |
-| Quantization field | Can use `engine.args.quantization` | Evaluate based on usage patterns |
+| Feature                               | Reason                                                                                                                                   | Future Consideration                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Performance-based autoscaling         | Replica scaling based on metrics (HPA/KEDA). Not to be confused with cluster autoscaling (Karpenter). Only KubeRay supports it natively. | v1alpha2+ with KEDA/HPA integration |
+| Multi-model serving (LoRA)            | Complex, vLLM-specific                                                                                                                   | Future version if demand exists     |
+| Adoption of existing resources        | Adds ownership conflict complexity                                                                                                       | May add with explicit opt-in        |
+| Resource presets (small/medium/large) | Adds indirection without clear value                                                                                                     | Docs provide recommended values     |
+| GGUF auto-detection                   | Magic detection has edge cases                                                                                                           | Users specify `engine: llamacpp`    |
+| Quantization field                    | Can use `engine.args.quantization`                                                                                                       | Evaluate based on usage patterns    |
 
 ---
 
-## 13. Open Questions (Resolved)
-
-| Question | Resolution |
-|----------|------------|
-| Go vs TypeScript controller? | **Go + Kubebuilder** - industry standard, proper patterns |
-| When to add webhooks? | **Phase 1** - prevents invalid resources from day one |
-| What additional fields? | **image, env, podTemplate.metadata** - common production needs |
-| How to explain provider selection? | **status.provider.selectedReason** - shows decision path |
-| How to handle finalizer deadlock? | **Timeout (5-10 min) + documented manual escape** |
-| How to handle drift? | **Reconcile back + pause annotation for debugging** |
-| When to auto-select KubeRay? | **Never** - explicit only, autoscaling out of scope |
-| How to detect GGUF models? | **Don't** - users specify `engine: llamacpp` |
-| Disaggregated mode provider? | **Always Dynamo** - best support |
-| Provider CRD version changes? | **Dynamic detection** - query API for installed versions |
-
----
-
-## 14. Alternatives Considered
+## 13. Alternatives Considered
 
 ### Alternative 1: No Abstraction
 
@@ -1056,36 +1228,36 @@ Run controller logic in the local kubefoundry binary instead of in-cluster.
 
 ---
 
-## 15. Engine-Specific Parameter Reference
+## 14. Engine-Specific Parameter Reference
 
 Since each inference engine has different parameter names and defaults, the unified API abstracts common concepts while providing an escape hatch via `engine.args`.
 
-### 15.1 Context Length
+### 14.1 Context Length
 
-| Engine | Parameter | Default |
-|--------|-----------|---------|
-| vLLM | `--max-model-len` | Model default |
-| SGLang | `--context-length` | Model default |
-| TensorRT-LLM | Build-time config | - |
-| llama.cpp | `--ctx-size` / `-c` | Model max |
+| Engine       | Parameter           | Default       |
+| ------------ | ------------------- | ------------- |
+| vLLM         | `--max-model-len`   | Model default |
+| SGLang       | `--context-length`  | Model default |
+| TensorRT-LLM | Build-time config   | -             |
+| llama.cpp    | `--ctx-size` / `-c` | Model max     |
 
-### 15.2 Trust Remote Code
+### 14.2 Trust Remote Code
 
-| Engine | Parameter | Default |
-|--------|-----------|---------|
-| vLLM | `--trust-remote-code` | `false` |
-| SGLang | `--trust-remote-code` | `false` |
-| TensorRT-LLM | Build-time | - |
-| llama.cpp | N/A | - |
+| Engine       | Parameter             | Default |
+| ------------ | --------------------- | ------- |
+| vLLM         | `--trust-remote-code` | `false` |
+| SGLang       | `--trust-remote-code` | `false` |
+| TensorRT-LLM | Build-time            | -       |
+| llama.cpp    | N/A                   | -       |
 
-### 15.3 Quantization (via engine.args)
+### 14.3 Quantization (via engine.args)
 
-| Engine | Parameter | Values |
-|--------|-----------|--------|
-| vLLM | `--quantization` | awq, gptq, squeezellm, fp8 |
-| SGLang | `--quantization` | awq, gptq, squeezellm, fp8 |
-| TensorRT-LLM | Build-time | - |
-| llama.cpp | N/A | Built into GGUF file |
+| Engine       | Parameter        | Values                     |
+| ------------ | ---------------- | -------------------------- |
+| vLLM         | `--quantization` | awq, gptq, squeezellm, fp8 |
+| SGLang       | `--quantization` | awq, gptq, squeezellm, fp8 |
+| TensorRT-LLM | Build-time       | -                          |
+| llama.cpp    | N/A              | Built into GGUF file       |
 
 Example:
 ```yaml
@@ -1095,18 +1267,18 @@ engine:
     quantization: "awq"
 ```
 
-### 15.4 GPU Memory Utilization (via engine.args)
+### 14.4 GPU Memory Utilization (via engine.args)
 
-| Engine | Parameter | Default |
-|--------|-----------|---------|
-| vLLM | `--gpu-memory-utilization` | `0.9` |
-| SGLang | `--mem-fraction-static` | `0.88` |
-| TensorRT-LLM | KvCacheConfig | - |
-| llama.cpp | `--cache-ram` | 8192 MiB |
+| Engine       | Parameter                  | Default  |
+| ------------ | -------------------------- | -------- |
+| vLLM         | `--gpu-memory-utilization` | `0.9`    |
+| SGLang       | `--mem-fraction-static`    | `0.88`   |
+| TensorRT-LLM | KvCacheConfig              | -        |
+| llama.cpp    | `--cache-ram`              | 8192 MiB |
 
 ---
 
-## 16. References
+## 15. References
 
 - [Kubernetes Custom Resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
 - [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime)
