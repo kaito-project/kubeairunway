@@ -677,18 +677,18 @@ DEFAULT:
 
 ### 4.5 Provider Capability Matrix
 
-| Criteria                   | KAITO   | Dynamo        | KubeRay            |
-| -------------------------- | ------- | ------------- | ------------------ |
-| CPU inference              | **Yes** | No            | No                 |
-| GPU inference              | Yes     | **Yes**       | Yes                |
-| vLLM engine                | Yes     | **Yes**       | Yes                |
-| sglang engine              | No      | **Yes**       | No                 |
-| trtllm engine              | No      | **Yes**       | No                 |
-| llamacpp engine            | **Yes** | No            | No                 |
-| GGUF models                | **Yes** | No            | No                 |
-| Disaggregated P/D          | No      | **Yes**       | Yes                |
+| Criteria                   | KAITO   | Dynamo        | KubeRay                     |
+| -------------------------- | ------- | ------------- | --------------------------- |
+| CPU inference              | **Yes** | No            | No                          |
+| GPU inference              | Yes     | **Yes**       | Yes                         |
+| vLLM engine                | Yes     | **Yes**       | Yes                         |
+| sglang engine              | No      | **Yes**       | No                          |
+| trtllm engine              | No      | **Yes**       | No                          |
+| llamacpp engine            | **Yes** | No            | No                          |
+| GGUF models                | **Yes** | No            | No                          |
+| Disaggregated P/D          | No      | **Yes**       | Yes                         |
 | KV routing (via overrides) | No      | **Yes**       | Yes (via RayService config) |
-| Auto-selection             | Yes     | Yes (default) | No (explicit only) |
+| Auto-selection             | Yes     | Yes (default) | No (explicit only)          |
 
 ### 4.6 Drift Detection and Reconciliation
 
@@ -831,12 +831,12 @@ The `provider.overrides` field is an untyped `map[string]interface{}` that allow
 
 #### Dynamo Overrides
 
-| Key | Type | Description | Default |
-|-----|------|-------------|---------|
-| `routerMode` | string | Request routing strategy: `kv`, `round-robin`, `none` | `round-robin` |
-| `frontend.replicas` | int | Number of frontend/router pods | `1` |
-| `frontend.resources.cpu` | string | CPU request for frontend | `"2"` |
-| `frontend.resources.memory` | string | Memory request for frontend | `"4Gi"` |
+| Key                         | Type   | Description                                           | Default       |
+| --------------------------- | ------ | ----------------------------------------------------- | ------------- |
+| `routerMode`                | string | Request routing strategy: `kv`, `round-robin`, `none` | `round-robin` |
+| `frontend.replicas`         | int    | Number of frontend/router pods                        | `1`           |
+| `frontend.resources.cpu`    | string | CPU request for frontend                              | `"2"`         |
+| `frontend.resources.memory` | string | Memory request for frontend                           | `"4Gi"`       |
 
 **Example:**
 ```yaml
@@ -853,11 +853,11 @@ provider:
 
 #### KubeRay Overrides
 
-| Key | Type | Description | Default |
-|-----|------|-------------|---------|
-| `head.resources.cpu` | string | CPU request for Ray head node | `"2"` |
-| `head.resources.memory` | string | Memory request for Ray head node | `"4Gi"` |
-| `head.rayStartParams` | map[string]string | Ray head start parameters | `{}` |
+| Key                     | Type              | Description                      | Default |
+| ----------------------- | ----------------- | -------------------------------- | ------- |
+| `head.resources.cpu`    | string            | CPU request for Ray head node    | `"2"`   |
+| `head.resources.memory` | string            | Memory request for Ray head node | `"4Gi"` |
+| `head.rayStartParams`   | map[string]string | Ray head start parameters        | `{}`    |
 
 **Example:**
 ```yaml
@@ -1068,19 +1068,19 @@ The controller includes a validating admission webhook (Phase 1).
 
 ### Validation Rules
 
-| Rule                                         | Error Message                                                    |
-| -------------------------------------------- | ---------------------------------------------------------------- |
-| `engine: sglang` with `provider: kaito`      | "KAITO does not support sglang engine"                           |
-| `engine: trtllm` with `provider: kaito`      | "KAITO does not support trtllm engine"                           |
-| `engine: llamacpp` with `provider: dynamo`   | "Dynamo does not support llamacpp engine"                        |
-| `gpu.count: 0` with `provider: dynamo`       | "Dynamo requires GPU (set resources.gpu.count > 0)"              |
-| `gpu.count: 0` with `provider: kuberay`      | "KubeRay requires GPU (set resources.gpu.count > 0)"             |
-| `mode: disaggregated` with `provider: kaito` | "KAITO does not support disaggregated mode"                      |
-| `mode: disaggregated` with `spec.resources`  | "Disaggregated mode requires per-component resources in scaling" |
+| Rule                                                                | Error Message                                                    |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `engine: sglang` with `provider: kaito`                             | "KAITO does not support sglang engine"                           |
+| `engine: trtllm` with `provider: kaito`                             | "KAITO does not support trtllm engine"                           |
+| `engine: llamacpp` with `provider: dynamo`                          | "Dynamo does not support llamacpp engine"                        |
+| `gpu.count: 0` with `provider: dynamo`                              | "Dynamo requires GPU (set resources.gpu.count > 0)"              |
+| `gpu.count: 0` with `provider: kuberay`                             | "KubeRay requires GPU (set resources.gpu.count > 0)"             |
+| `mode: disaggregated` with `provider: kaito`                        | "KAITO does not support disaggregated mode"                      |
+| `mode: disaggregated` with `spec.resources`                         | "Disaggregated mode requires per-component resources in scaling" |
 | `mode: disaggregated` without `scaling.prefill` or `scaling.decode` | "Disaggregated mode requires scaling.prefill and scaling.decode" |
-| Provider CRD not installed (webhook only)    | "Provider '{name}' CRD not installed in cluster"                 |
-| Missing `engine.type`                        | "engine.type is required"                                        |
-| Missing `model.id`                           | "model.id is required"                                           |
+| Provider CRD not installed (webhook only)                           | "Provider '{name}' CRD not installed in cluster"                 |
+| Missing `engine.type`                                               | "engine.type is required"                                        |
+| Missing `model.id`                                                  | "model.id is required"                                           |
 
 **Note:** If the webhook is not available (e.g., during initial setup), provider CRD validation occurs at reconciliation time. The controller will accept the resource and retry until the provider CRD is installed, setting `status.phase: Pending` with a descriptive message.
 
