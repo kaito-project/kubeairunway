@@ -186,8 +186,8 @@ metadata:
 spec:
   # Model specification (required)
   model:
-    id: "meta-llama/Llama-3.1-8B-Instruct"  # HuggingFace model ID (or path for custom)
-    servedName: "llama-3.1-8b"               # API-facing model name (optional, defaults to model ID basename)
+    id: "meta-llama/Llama-3.1-8B-Instruct"  # HuggingFace model ID (required when source=huggingface, omit for custom)
+    servedName: "llama-3.1-8b"               # API-facing model name (optional - defaults to model ID basename; for custom, container defines this)
     source: "huggingface"                    # huggingface | custom (pre-loaded in image)
 
   # Provider selection (optional - auto-selected if not specified)
@@ -1080,7 +1080,7 @@ The controller includes a validating admission webhook (Phase 1).
 | `mode: disaggregated` without `scaling.prefill` or `scaling.decode` | "Disaggregated mode requires scaling.prefill and scaling.decode" |
 | Provider CRD not installed (webhook only)                           | "Provider '{name}' CRD not installed in cluster"                 |
 | Missing `engine.type`                                               | "engine.type is required"                                        |
-| Missing `model.id`                                                  | "model.id is required"                                           |
+| Missing `model.id` when `source: huggingface`                       | "model.id is required when source is huggingface"                |
 
 **Note:** If the webhook is not available (e.g., during initial setup), provider CRD validation occurs at reconciliation time. The controller will accept the resource and retry until the provider CRD is installed, setting `status.phase: Pending` with a descriptive message.
 
