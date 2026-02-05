@@ -2,15 +2,133 @@
 
 ## System Overview
 
-KubeFoundry is a monorepo with three packages:
-- **frontend** - React SPA for user interaction
-- **backend** - Hono API for Kubernetes operations (runs on Bun)
-- **shared** - Common TypeScript types (imported directly by frontend and backend)
+KubeFoundry consists of two main components:
+
+1. **Kubernetes Controller** (Go + Kubebuilder)
+   - Manages `ModelDeployment` and `InferenceProviderConfig` CRDs
+   - Handles validation, provider selection, and lifecycle management
+   - Delegates actual resource creation to provider-specific controllers
+
+2. **Web UI** (React + Hono/Bun)
+   - **frontend** - React SPA for user interaction
+   - **backend** - Hono API for Kubernetes operations (runs on Bun)
+   - **shared** - Common TypeScript types
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Kubernetes Cluster                              │
+│                                                                         │
+│  ┌─────────────────┐     ┌──────────────────────────────────────────┐  │
+│  │  KubeFoundry    │     │         Provider Controllers              │  │
+│  │  Controller     │────▶│  (KAITO, Dynamo, KubeRay, etc.)          │  │
+│  │  (core)         │     │                                          │  │
+│  └────────┬────────┘     └──────────────────────────────────────────┘  │
+│           │                              │                              │
+│           │ watches                      │ creates                      │
+│           ▼                              ▼                              │
+│  ┌─────────────────┐          ┌──────────────────────────────────────┐ │
+│  │ ModelDeployment │          │  Provider Resources                   │ │
+│  │ (CRD)           │          │  (KAITO Workspace, DynamoGraph, etc.)│ │
+│  └─────────────────┘          └──────────────────────────────────────┘ │
+│                                                                         │
+│  ┌─────────────────────────┐                                           │
+│  │ InferenceProviderConfig │  (cluster-scoped, provider registration)  │
+│  │ (CRD)                   │                                           │
+│  └─────────────────────────┘                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+          ▲
+          │ kubectl / API
+          │
+┌─────────────┐     ┌─────────────┐
+│   Browser   │────▶│   Backend   │  (optional Web UI)
+│  (React)    │◀────│   (Hono)    │
+└─────────────┘     └─────────────┘
+```
+
+## Controller Architecture
+
+The KubeFoundry controller follows a **two-tier reconciliation model**:
+
+### Core Controller
+The core controller (`modeldeployment_controller.go`) is intentionally minimal:
+1. **Validates** the `ModelDeployment` spec
+2. **Selects a provider** (if `spec.provider.name` is empty) using `InferenceProviderConfig` resources
+3. **Updates status conditions** (Validated, ProviderSelected)
+4. **Does NOT create** provider-specific resources
+
+### Provider Controllers (Out-of-Tree)
+Provider controllers watch for `ModelDeployment` resources where `status.provider.name` matches their name:
+1. Check compatibility with the deployment configuration
+2. Create provider-specific resources (KAITO Workspace, DynamoGraphDeployment, RayService, etc.)
+3. Update `ModelDeployment` status (phase, replicas, endpoint, conditions)
+
+This separation allows:
+- Clean separation of concerns
+- Independent provider controller versioning
+- Easy addition of new providers
+- Provider-specific features via `spec.provider.overrides`
+
+## CRD Reference
+
+### ModelDeployment
+Unified API for deploying ML models. See [unified-crd-abstraction.md](design/unified-crd-abstraction.md) for full specification.
+
+```yaml
+apiVersion: kubefoundry.kubefoundry.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: my-model
+  namespace: default
+spec:
+  model:
+    id: "Qwen/Qwen3-0.6B"       # HuggingFace model ID
+    source: huggingface          # huggingface or custom
+  engine:
+    type: vllm                   # vllm, sglang, trtllm, llamacpp
+    contextLength: 32768
+    trustRemoteCode: false
+  provider:
+    name: ""                     # Optional: explicit provider selection
+  serving:
+    mode: aggregated             # aggregated or disaggregated
+  resources:
+    gpu:
+      count: 1
+      type: "nvidia.com/gpu"
+  scaling:
+    replicas: 1
+```
+
+### InferenceProviderConfig
+Cluster-scoped resource for provider registration:
+
+```yaml
+apiVersion: kubefoundry.kubefoundry.ai/v1alpha1
+kind: InferenceProviderConfig
+metadata:
+  name: dynamo
+spec:
+  capabilities:
+    engines: [vllm, sglang, trtllm]
+    servingModes: [aggregated, disaggregated]
+    gpuSupport: true
+    cpuSupport: false
+  selectionRules:
+    - condition: "spec.serving.mode == 'disaggregated'"
+      priority: 100
+status:
+  ready: true
+  version: "0.7.1"
+```
+
+## Web UI Architecture
+
+The Web UI provides a graphical interface for managing deployments:
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
 │   Browser   │────▶│   Backend   │────▶│   Kubernetes     │
-│  (React)    │◀────│   (Hono)    │◀────│   Cluster        │
+│  (React)    │◀────│   (Hono)    │◀────│   API Server     │
 └─────────────┘     └─────────────┘     └──────────────────┘
        │                   │
        │            ┌──────┴──────┐
@@ -59,7 +177,16 @@ When `AUTH_ENABLED=true`, the system uses Kubernetes OIDC tokens:
 
 ## Provider Abstraction
 
-The provider pattern enables support for multiple inference runtimes:
+KubeFoundry supports two deployment methods, both using the provider abstraction pattern:
+
+### 1. CRD-Based Deployment (Recommended)
+Users create `ModelDeployment` CRs, and the controller + provider controllers handle the rest:
+- Automatic provider selection based on capabilities
+- Unified status reporting
+- Provider-agnostic lifecycle management
+
+### 2. Web UI Deployment (Legacy)
+The Web UI backend can directly create provider-specific resources:
 
 ```typescript
 interface Provider {
@@ -87,11 +214,11 @@ interface Provider {
 
 ### Supported Providers
 
-| Provider | CRD | Status | Description |
-|----------|-----|--------|-------------|
-| NVIDIA Dynamo | DynamoGraphDeployment | ✅ Available | High-performance GPU inference with KV-cache routing |
-| KubeRay | RayService | ✅ Available | Ray-based serving with autoscaling |
-| KAITO | Pod/Deployment | ✅ Available | CPU-capable inference with pre-built GGUF models |
+| Provider | Upstream CRD | Status | Description |
+|----------|--------------|--------|-------------|
+| NVIDIA Dynamo | DynamoGraphDeployment | ✅ Available | High-performance GPU inference with KV-cache routing and disaggregated serving |
+| KubeRay | RayService | ✅ Available | Ray-based distributed inference with autoscaling |
+| KAITO | Workspace | ✅ Available | Flexible inference with vLLM (GPU) or llama.cpp (CPU/GPU) |
 
 ### KAITO Provider
 

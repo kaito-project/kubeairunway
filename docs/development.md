@@ -2,13 +2,15 @@
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) 1.0+
+- [Go](https://go.dev) 1.23+ (for controller development)
+- [Bun](https://bun.sh) 1.0+ (for Web UI development)
 - Access to a Kubernetes cluster
 - Helm CLI (for provider installation)
 - kubectl configured with cluster access
 
 ## Quick Start
 
+### Web UI Development
 ```bash
 # Install dependencies
 bun install
@@ -22,6 +24,32 @@ bun run dev
 #
 # Production mode (compiled binary):
 #   Single server: http://localhost:3001 (frontend embedded in backend)
+```
+
+### Controller Development
+```bash
+# Build the controller binary
+make controller-build
+
+# Run controller tests
+make controller-test
+
+# Run controller locally (uses your kubeconfig)
+make controller-run
+
+# Regenerate CRDs and deepcopy code after editing *_types.go files
+make controller-generate
+
+# Install CRDs into the cluster
+make controller-install
+
+# Deploy controller to cluster
+make controller-deploy
+```
+
+**Important**: After editing `controller/api/v1alpha1/*_types.go` files, always run:
+```bash
+cd controller && make manifests generate
 ```
 
 ## Building a Single Binary
@@ -68,6 +96,56 @@ Supported targets:
 - `linux-x64`, `linux-arm64`
 - `darwin-x64`, `darwin-arm64`
 - `windows-x64`
+
+## Controller Development
+
+The controller is a Go-based Kubernetes operator built with [Kubebuilder](https://kubebuilder.io/).
+
+### Project Structure
+```
+controller/
+├── api/v1alpha1/           # CRD type definitions
+│   ├── modeldeployment_types.go
+│   └── inferenceproviderconfig_types.go
+├── cmd/                    # Main entrypoint
+├── config/                 # Kustomize manifests
+│   ├── crd/                # Generated CRD YAMLs
+│   ├── rbac/               # RBAC manifests
+│   └── manager/            # Controller deployment
+├── internal/
+│   ├── controller/         # Reconciliation logic
+│   └── webhook/            # Validation webhooks
+└── Makefile                # Build commands
+```
+
+### CRDs
+KubeFoundry defines two CRDs:
+
+1. **ModelDeployment** (namespaced) - User-facing API for deploying models
+2. **InferenceProviderConfig** (cluster-scoped) - Provider registration
+
+After editing `*_types.go` files, regenerate code:
+```bash
+cd controller && make manifests generate
+```
+
+### Running Locally
+```bash
+# Install CRDs first
+make controller-install
+
+# Run controller (uses your kubeconfig)
+make controller-run
+```
+
+### Testing
+```bash
+# Run unit tests
+make controller-test
+
+# Run with verbose output
+cd controller && go test -v ./...
+```
 
 ## Environment Variables
 
@@ -152,6 +230,16 @@ bun run dev           # Start both frontend and backend
 bun run build         # Build all packages
 bun run compile       # Build single binary (frontend + backend) to dist/kubefoundry
 bun run lint          # Lint all packages
+```
+
+### Controller (Go)
+```bash
+make controller-build       # Build Go controller binary
+make controller-test        # Run controller tests
+make controller-run         # Run controller locally
+make controller-generate    # Regenerate CRDs and deepcopy code
+make controller-install     # Install CRDs into cluster
+make controller-deploy      # Deploy controller to cluster
 ```
 
 ### Frontend
@@ -348,6 +436,16 @@ curl http://localhost:5000/v1/chat/completions \
 ```
 
 ## Troubleshooting
+
+### Controller not reconciling
+- Check controller logs: `kubectl logs -n kubefoundry-system deploy/kubefoundry-controller-manager`
+- Verify CRDs are installed: `kubectl get crd modeldeployments.kubefoundry.kubefoundry.ai`
+- Check RBAC permissions for the controller service account
+
+### ModelDeployment stuck in Pending
+- Check if any `InferenceProviderConfig` resources exist: `kubectl get inferenceproviderconfigs`
+- Verify at least one provider has `status.ready: true`
+- Check controller logs for provider selection errors
 
 ### Backend can't connect to cluster
 - Verify kubectl is configured: `kubectl cluster-info`

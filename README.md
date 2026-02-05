@@ -22,6 +22,8 @@ A web-based platform for deploying and managing large language models on Kuberne
 - 📥 **Installation Wizard**: Install providers via Helm directly from the UI
 - 🛠️ **Complete Uninstall**: Clean uninstallation with optional CRD removal
 - 🎨 **Dark Theme**: Modern dark UI with provider-specific accents
+- 🎯 **Unified CRD**: Single `ModelDeployment` API that works across all providers
+- 🤖 **Smart Provider Selection**: Automatic provider selection based on capabilities
 
 ## Supported Providers
 
@@ -30,6 +32,32 @@ A web-based platform for deploying and managing large language models on Kuberne
 | **NVIDIA Dynamo** | ✅ Available | GPU-accelerated inference with aggregated or disaggregated serving |
 | **KubeRay**       | ✅ Available | Ray-based distributed inference                                    |
 | **KAITO**         | ✅ Available | Flexible inference with vLLM (GPU) and llama.cpp (CPU/GPU) support |
+
+## Architecture
+
+KubeFoundry provides a **unified CRD abstraction** (`ModelDeployment`) that works across all providers:
+
+```yaml
+apiVersion: kubefoundry.kubefoundry.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: my-model
+spec:
+  model:
+    id: "Qwen/Qwen3-0.6B"
+  engine:
+    type: vllm
+  resources:
+    gpu:
+      count: 1
+```
+
+The controller automatically:
+- Selects the best provider based on your configuration
+- Creates provider-specific resources (KAITO Workspace, DynamoGraphDeployment, etc.)
+- Reports unified status across all providers
+
+See [architecture.md](docs/architecture.md) for details.
 
 ## Prerequisites
 
@@ -73,6 +101,20 @@ Open the web UI at **http://localhost:3001**
 See [Kubernetes Deployment](deploy/kubernetes/README.md) for configuration options.
 
 ---
+
+### 0. Install the Controller (Optional but Recommended)
+
+For CRD-based deployments, install the KubeFoundry controller:
+
+```bash
+# Install CRDs
+kubectl apply -f https://raw.githubusercontent.com/sozercan/kube-foundry/main/controller/config/crd/bases/
+
+# Deploy controller
+kubectl apply -f https://raw.githubusercontent.com/sozercan/kube-foundry/main/controller/config/manager/
+```
+
+This enables you to create `ModelDeployment` resources directly via kubectl.
 
 ### 1. Install a Provider
 
@@ -165,6 +207,7 @@ The login command extracts your OIDC token and opens the browser automatically.
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md)
+- [Unified CRD Design](docs/design/unified-crd-abstraction.md)
 - [API Reference](docs/api.md)
 - [Development Guide](docs/development.md)
 - [Azure Cluster Autoscaling Setup](docs/azure-autoscaling.md)

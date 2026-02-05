@@ -1,5 +1,51 @@
 # API Reference
 
+KubeFoundry provides two APIs for managing deployments:
+
+1. **CRD API** (Recommended) - Create `ModelDeployment` custom resources directly via kubectl
+2. **REST API** - Web UI backend API for browser-based management
+
+## CRD API (Kubernetes Native)
+
+The preferred way to deploy models is via the `ModelDeployment` CRD:
+
+```bash
+# Create a deployment
+kubectl apply -f - <<EOF
+apiVersion: kubefoundry.kubefoundry.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: default
+spec:
+  model:
+    id: "Qwen/Qwen3-0.6B"
+    source: huggingface
+  engine:
+    type: vllm
+  resources:
+    gpu:
+      count: 1
+  scaling:
+    replicas: 1
+EOF
+
+# List deployments
+kubectl get modeldeployments
+
+# Check status
+kubectl describe modeldeployment qwen-demo
+
+# Delete deployment
+kubectl delete modeldeployment qwen-demo
+```
+
+See [architecture.md](architecture.md) for full CRD specification.
+
+---
+
+## REST API (Web UI)
+
 Base URL: `http://localhost:3001/api`
 
 ## Health & Status
