@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import type { HelmResult, HelmRelease, HelmRepo, HelmChart } from '../providers/types';
+import type { HelmResult, HelmRelease, HelmRepo, HelmChart } from './helm';
 import { GPU_OPERATOR_REPO, GPU_OPERATOR_CHART } from './helm';
 
 describe('HelmService - GPU Operator Constants', () => {

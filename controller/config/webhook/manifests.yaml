@@ -1,0 +1,52 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-kubefoundry-kubefoundry-ai-v1alpha1-modeldeployment
+  failurePolicy: Fail
+  name: mmodeldeployment-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - kubefoundry.kubefoundry.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - modeldeployments
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-kubefoundry-kubefoundry-ai-v1alpha1-modeldeployment
+  failurePolicy: Fail
+  name: vmodeldeployment-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - kubefoundry.kubefoundry.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - modeldeployments
+  sideEffects: None

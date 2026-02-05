@@ -4,13 +4,12 @@ import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
 import { kubernetesService } from '../services/kubernetes';
 import { configService } from '../services/config';
-import { providerRegistry } from '../providers';
 import { metricsService } from '../services/metrics';
 import { validateGpuFit, formatGpuWarnings } from '../services/gpuValidation';
 import { handleK8sError } from '../lib/k8s-errors';
 import models from '../data/models.json';
 import logger from '../lib/logger';
-import type { DeploymentStatus } from '@kubefoundry/shared';
+import type { DeploymentStatus, DeploymentConfig } from '@kubefoundry/shared';
 import {
   namespaceSchema,
   resourceNameSchema,
@@ -43,36 +42,11 @@ const deployments = new Hono()
     try {
       const { namespace, limit, offset } = c.req.valid('query');
 
-      let deploymentsList: DeploymentStatus[] = [];
+      // Get default namespace if not specified
+      const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
 
-      if (namespace) {
-        // If namespace specified, query that namespace only
-        deploymentsList = await kubernetesService.listDeployments(namespace);
-      } else {
-        // Query all provider namespaces and merge results
-        const providerNamespaces = providerRegistry.listProviderIds()
-          .map(id => providerRegistry.getProvider(id).defaultNamespace);
-        
-        // Remove duplicates
-        const uniqueNamespaces = [...new Set(providerNamespaces)];
-        
-        // Query all namespaces in parallel
-        const results = await Promise.all(
-          uniqueNamespaces.map(ns => kubernetesService.listDeployments(ns))
-        );
-        
-        // Merge and flatten
-        for (const result of results) {
-          deploymentsList.push(...result);
-        }
-        
-        // Sort by creation time (newest first)
-        deploymentsList.sort((a, b) => {
-          const dateA = new Date(a.createdAt).getTime();
-          const dateB = new Date(b.createdAt).getTime();
-          return dateB - dateA;
-        });
-      }
+      // List deployments from the ModelDeployment CRD
+      let deploymentsList: DeploymentStatus[] = await kubernetesService.listDeployments(resolvedNamespace);
 
       const total = deploymentsList.length;
 
@@ -100,127 +74,39 @@ const deployments = new Hono()
       });
     }
   })
-  .post('/preview', async (c) => {
-    // Preview endpoint - generates all resources without creating them
-    const body = await c.req.json();
-
-    const providerId = body.provider;
-    if (!providerId) {
-      throw new HTTPException(400, {
-        message: 'The "provider" field is required. Please specify the runtime (dynamo, kuberay, or kaito).',
-      });
-    }
-
-    const provider = providerRegistry.getProvider(providerId);
-    const validationResult = provider.validateConfig(body);
-
-    if (!validationResult.valid) {
-      throw new HTTPException(400, {
-        message: `Validation error: ${validationResult.errors.join(', ')}`,
-      });
-    }
-
-    const config = validationResult.data!;
-    config.provider = providerId;
-
-    // Generate the main manifest
-    const mainManifest = provider.generateManifest(config);
-
-    // Add kubefoundry.io/provider label for consistency
-    const metadata = mainManifest.metadata as Record<string, unknown> || {};
-    const labels = (metadata.labels as Record<string, string>) || {};
-    labels['kubefoundry.io/provider'] = providerId;
-    metadata.labels = labels;
-    mainManifest.metadata = metadata;
-
-    const crdConfig = provider.getCRDConfig();
-
-    // Build array of all resources that will be created
-    const resources: Array<{
-      kind: string;
-      apiVersion: string;
-      name: string;
-      manifest: Record<string, unknown>;
-    }> = [];
-
-    // Add the main CR
-    resources.push({
-      kind: crdConfig.kind,
-      apiVersion: `${crdConfig.apiGroup}/${crdConfig.apiVersion}`,
-      name: config.name,
-      manifest: mainManifest,
-    });
-
-    // Generate additional resources based on provider and config
-    // KAITO vLLM deployments get a separate Service for port 8000
-    if (providerId === 'kaito' && (config as { modelSource?: string }).modelSource === 'vllm') {
-      const serviceName = `${config.name}-vllm`;
-      const serviceManifest = {
-        apiVersion: 'v1',
-        kind: 'Service',
-        metadata: {
-          name: serviceName,
-          namespace: config.namespace,
-          labels: {
-            'app.kubernetes.io/name': 'kubefoundry',
-            'app.kubernetes.io/instance': config.name,
-            'app.kubernetes.io/managed-by': 'kubefoundry',
-          },
-        },
-        spec: {
-          type: 'ClusterIP',
-          ports: [
-            {
-              name: 'http',
-              port: 8000,
-              targetPort: 8000,
-              protocol: 'TCP',
-            },
-          ],
-          selector: {
-            'kaito.sh/workspace': config.name,
-          },
-        },
-      };
-      resources.push({
-        kind: 'Service',
-        apiVersion: 'v1',
-        name: serviceName,
-        manifest: serviceManifest,
-      });
-    }
-
-    return c.json({
-      resources,
-      primaryResource: {
-        kind: crdConfig.kind,
-        apiVersion: `${crdConfig.apiGroup}/${crdConfig.apiVersion}`,
-      },
-    });
-  })
   .post('/', async (c) => {
     const body = await c.req.json();
 
-    // Provider is required - no more fallback to active provider
-    const providerId = body.provider;
-    if (!providerId) {
+    // Validate required fields
+    if (!body.name || !body.modelId || !body.engine) {
       throw new HTTPException(400, {
-        message: 'The "provider" field is required. Please specify the runtime (dynamo or kuberay).',
+        message: 'Required fields: name, modelId, engine',
       });
     }
 
-    const provider = providerRegistry.getProvider(providerId);
-    const validationResult = provider.validateConfig(body);
-
-    if (!validationResult.valid) {
-      throw new HTTPException(400, {
-        message: `Validation error: ${validationResult.errors.join(', ')}`,
-      });
-    }
-
-    const config = validationResult.data!;
-    // Ensure provider is set on config
-    config.provider = providerId;
+    // Set defaults
+    const config: DeploymentConfig = {
+      name: body.name,
+      namespace: body.namespace || (await configService.getDefaultNamespace()),
+      modelId: body.modelId,
+      engine: body.engine,
+      mode: body.mode || 'aggregated',
+      provider: body.provider,
+      servedModelName: body.servedModelName,
+      routerMode: body.routerMode || 'none',
+      replicas: body.replicas || 1,
+      hfTokenSecret: body.hfTokenSecret || '',
+      contextLength: body.contextLength,
+      enforceEager: body.enforceEager ?? false,
+      enablePrefixCaching: body.enablePrefixCaching ?? false,
+      trustRemoteCode: body.trustRemoteCode ?? false,
+      resources: body.resources,
+      engineArgs: body.engineArgs,
+      prefillReplicas: body.prefillReplicas,
+      decodeReplicas: body.decodeReplicas,
+      prefillGpus: body.prefillGpus,
+      decodeGpus: body.decodeGpus,
+    };
 
     // GPU fit validation
     let gpuWarnings: string[] = [];
@@ -251,13 +137,12 @@ const deployments = new Hono()
 
     // Create deployment with detailed error handling
     try {
-      await kubernetesService.createDeployment(config, providerId);
+      await kubernetesService.createDeployment(config);
     } catch (error) {
       const { message, statusCode } = handleK8sError(error, {
         operation: 'createDeployment',
         deploymentName: config.name,
         namespace: config.namespace,
-        providerId,
         modelId: config.modelId,
       });
 
@@ -271,7 +156,6 @@ const deployments = new Hono()
         message: 'Deployment created successfully',
         name: config.name,
         namespace: config.namespace,
-        provider: providerId,
         ...(gpuWarnings.length > 0 && { warnings: gpuWarnings }),
       },
       201
@@ -311,12 +195,8 @@ const deployments = new Hono()
         throw new HTTPException(404, { message: 'Deployment manifest not found' });
       }
 
-      // Determine provider from the manifest labels
-      const metadata = manifest.metadata as Record<string, unknown> | undefined;
-      const labels = (metadata?.labels as Record<string, string>) || {};
-      const providerId = labels['kubefoundry.io/provider'] || 'unknown';
-      const kind = (manifest.kind as string) || 'Unknown';
-      const apiVersion = (manifest.apiVersion as string) || 'v1';
+      const kind = (manifest.kind as string) || 'ModelDeployment';
+      const apiVersion = (manifest.apiVersion as string) || 'kubefoundry.kubefoundry.ai/v1alpha1';
 
       // Build array of resources
       const resources: Array<{
@@ -333,62 +213,6 @@ const deployments = new Hono()
         name,
         manifest,
       });
-
-      // Look for related resources (Services, ConfigMaps, etc.)
-      try {
-        // Check for KAITO vLLM service
-        if (providerId === 'kaito') {
-          const vllmServiceName = `${name}-vllm`;
-          try {
-            const k8s = await import('@kubernetes/client-node');
-            const kc = new k8s.KubeConfig();
-            kc.loadFromDefault();
-            const coreV1Api = kc.makeApiClient(k8s.CoreV1Api);
-            
-            const serviceResponse = await coreV1Api.readNamespacedService(vllmServiceName, resolvedNamespace);
-            if (serviceResponse.body) {
-              resources.push({
-                kind: 'Service',
-                apiVersion: 'v1',
-                name: vllmServiceName,
-                manifest: serviceResponse.body as unknown as Record<string, unknown>,
-              });
-            }
-          } catch {
-            // Service doesn't exist, that's fine
-          }
-        }
-
-        // Look for ConfigMaps with kubefoundry labels matching this deployment
-        try {
-          const k8s = await import('@kubernetes/client-node');
-          const kc = new k8s.KubeConfig();
-          kc.loadFromDefault();
-          const coreV1Api = kc.makeApiClient(k8s.CoreV1Api);
-          
-          const configMapsResponse = await coreV1Api.listNamespacedConfigMap(
-            resolvedNamespace,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            `app.kubernetes.io/instance=${name},app.kubernetes.io/managed-by=kubefoundry`
-          );
-          
-          for (const cm of configMapsResponse.body.items) {
-            resources.push({
-              kind: 'ConfigMap',
-              apiVersion: 'v1',
-              name: (cm.metadata?.name as string) || 'unknown',
-              manifest: cm as unknown as Record<string, unknown>,
-            });
-          }
-        } catch {
-          // Failed to list ConfigMaps, that's fine
-        }
-      } catch (error) {
-        logger.debug({ error, name, namespace: resolvedNamespace }, 'Error fetching related resources');
-      }
 
       return c.json({
         resources,
@@ -452,11 +276,7 @@ const deployments = new Hono()
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
 
-      // Get deployment to determine its provider
-      const deployment = await kubernetesService.getDeployment(name, resolvedNamespace);
-      const providerId = deployment?.provider;
-
-      const metricsResponse = await metricsService.getDeploymentMetrics(name, resolvedNamespace, providerId);
+      const metricsResponse = await metricsService.getDeploymentMetrics(name, resolvedNamespace);
       return c.json(metricsResponse);
     }
 )
@@ -525,7 +345,7 @@ const deployments = new Hono()
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
 
       try {
-        // Get pods for this deployment using label selectors (works for all providers)
+        // Get pods for this deployment using label selectors
         const pods = await kubernetesService.getDeploymentPods(name, resolvedNamespace);
 
         if (pods.length === 0) {
@@ -535,12 +355,12 @@ const deployments = new Hono()
 
         // Use specified pod or default to first pod
         const targetPodName = podName || pods[0].name;
-        
+
         // Verify the pod belongs to this deployment
         const podExists = pods.some(pod => pod.name === targetPodName);
         if (!podExists) {
-          throw new HTTPException(400, { 
-            message: `Pod '${targetPodName}' is not part of deployment '${name}'` 
+          throw new HTTPException(400, {
+            message: `Pod '${targetPodName}' is not part of deployment '${name}'`
           });
         }
 
@@ -552,8 +372,8 @@ const deployments = new Hono()
           timestamps: timestamps || false,
         });
 
-        return c.json({ 
-          logs, 
+        return c.json({
+          logs,
           podName: targetPodName,
           container: container || undefined,
         });

@@ -1,10 +1,17 @@
 import * as k8s from '@kubernetes/client-node';
 import { configService } from './config';
-import { providerRegistry } from '../providers';
-import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus } from '@kubefoundry/shared';
-import type { InstallationStatus } from '../providers/types';
-import { withRetry, isK8sRetryableError } from '../lib/retry';
+import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment } from '@kubefoundry/shared';
+import { toModelDeploymentManifest, toDeploymentStatus } from '@kubefoundry/shared';
+import { withRetry } from '../lib/retry';
 import logger from '../lib/logger';
+
+// ModelDeployment CRD configuration
+const MODEL_DEPLOYMENT_CRD = {
+  apiGroup: 'kubefoundry.kubefoundry.ai',
+  apiVersion: 'v1alpha1',
+  plural: 'modeldeployments',
+  kind: 'ModelDeployment',
+};
 
 /**
  * GPU availability information from cluster nodes
@@ -52,6 +59,17 @@ export interface ClusterGpuCapacity {
   nodes: NodeGpuInfo[];           // Per-node breakdown
 }
 
+/**
+ * Installation status for CRDs
+ */
+export interface InstallationStatus {
+  installed: boolean;
+  crdFound?: boolean;
+  operatorRunning?: boolean;
+  version?: string;
+  message?: string;
+}
+
 class KubernetesService {
   private kc: k8s.KubeConfig;
   private customObjectsApi: k8s.CustomObjectsApi;
@@ -95,119 +113,51 @@ class KubernetesService {
     }
   }
 
-  async listDeployments(namespace: string, providerId?: string): Promise<DeploymentStatus[]> {
-    logger.debug({ namespace, providerId }, 'listDeployments called');
-
-    // If a specific provider is requested, only query that provider
-    if (providerId) {
-      return this.listDeploymentsForProvider(namespace, providerId);
-    }
-
-    // Query all providers and merge results
-    const allProviders = providerRegistry.listProviderIds();
-    const allDeployments: DeploymentStatus[] = [];
-
-    // Query each provider in parallel
-    const results = await Promise.all(
-      allProviders.map(pid => this.listDeploymentsForProvider(namespace, pid))
-    );
-
-    for (const deployments of results) {
-      allDeployments.push(...deployments);
-    }
-
-    // Sort by creation time (newest first)
-    allDeployments.sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return dateB - dateA;
-    });
-
-    logger.debug({ count: allDeployments.length }, 'Found total deployments across all providers');
-    return allDeployments;
-  }
-
-  /**
-   * List deployments for a specific provider
-   */
-  private async listDeploymentsForProvider(namespace: string, providerId: string): Promise<DeploymentStatus[]> {
-    const provider = providerRegistry.getProvider(providerId);
-    const crdConfig = provider.getCRDConfig();
+  async listDeployments(namespace: string): Promise<DeploymentStatus[]> {
+    logger.debug({ namespace }, 'listDeployments called');
 
     try {
       logger.debug(
-        { providerId, apiGroup: crdConfig.apiGroup, apiVersion: crdConfig.apiVersion, plural: crdConfig.plural },
-        'Calling listNamespacedCustomObject'
+        { apiGroup: MODEL_DEPLOYMENT_CRD.apiGroup, apiVersion: MODEL_DEPLOYMENT_CRD.apiVersion, plural: MODEL_DEPLOYMENT_CRD.plural },
+        'Calling listNamespacedCustomObject for ModelDeployment'
       );
 
       const response = await withRetry(
         () => this.customObjectsApi.listNamespacedCustomObject(
-          crdConfig.apiGroup,
-          crdConfig.apiVersion,
+          MODEL_DEPLOYMENT_CRD.apiGroup,
+          MODEL_DEPLOYMENT_CRD.apiVersion,
           namespace,
-          crdConfig.plural
-        ),
-        { operationName: `listDeployments:${providerId}` }
-      );
-
-      logger.debug({ statusCode: response.response.statusCode }, 'listNamespacedCustomObject success');
-
-      const items = (response.body as { items?: unknown[] }).items || [];
-      logger.debug({ count: items.length, providerId }, 'Found deployments for provider');
-      return items.map((item) => provider.parseStatus(item));
-    } catch (error: any) {
-      // Check for CRD not found (404) or permission denied (403)
-      const statusCode = error?.statusCode || error?.response?.statusCode;
-      if (error?.message === 'HTTP request failed' || statusCode === 404 || statusCode === 403) {
-        // This is expected when the provider CRD is not installed - don't log as error
-        logger.debug({ namespace, providerId }, 'CRD not found in namespace (provider may not be installed)');
-        return [];
-      }
-
-      // Log unexpected errors
-      logger.error({ error: error?.message || error, providerId }, 'Unexpected error listing deployments');
-      return [];
-    }
-  }
-
-  /**
-   * @deprecated Use listDeployments without providerId to get all deployments
-   */
-  async listDeploymentsLegacy(namespace: string, providerId?: string): Promise<DeploymentStatus[]> {
-    logger.debug({ namespace }, 'listDeploymentsLegacy called');
-
-    // Get the provider (use specified or active provider)
-    const activeProviderId = providerId || await configService.getActiveProviderId();
-    const provider = providerRegistry.getProvider(activeProviderId);
-    const crdConfig = provider.getCRDConfig();
-
-    try {
-      logger.debug(
-        { apiGroup: crdConfig.apiGroup, apiVersion: crdConfig.apiVersion, plural: crdConfig.plural },
-        'Calling listNamespacedCustomObject'
-      );
-
-      const response = await withRetry(
-        () => this.customObjectsApi.listNamespacedCustomObject(
-          crdConfig.apiGroup,
-          crdConfig.apiVersion,
-          namespace,
-          crdConfig.plural
+          MODEL_DEPLOYMENT_CRD.plural
         ),
         { operationName: 'listDeployments' }
       );
 
       logger.debug({ statusCode: response.response.statusCode }, 'listNamespacedCustomObject success');
 
-      const items = (response.body as { items?: unknown[] }).items || [];
-      logger.debug({ count: items.length }, 'Found deployments');
-      return items.map((item) => provider.parseStatus(item));
+      const items = (response.body as { items?: ModelDeployment[] }).items || [];
+      logger.debug({ count: items.length }, 'Found ModelDeployments');
+
+      // Convert each ModelDeployment to DeploymentStatus
+      const deployments: DeploymentStatus[] = [];
+      for (const item of items) {
+        const pods = await this.getDeploymentPods(item.metadata.name, namespace);
+        deployments.push(toDeploymentStatus(item, pods));
+      }
+
+      // Sort by creation time (newest first)
+      deployments.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA;
+      });
+
+      return deployments;
     } catch (error: any) {
       // Check for CRD not found (404) or permission denied (403)
       const statusCode = error?.statusCode || error?.response?.statusCode;
       if (error?.message === 'HTTP request failed' || statusCode === 404 || statusCode === 403) {
-        // This is expected when the provider CRD is not installed - don't log as error
-        logger.debug({ namespace }, 'CRD not found in namespace (provider may not be installed)');
+        // This is expected when the ModelDeployment CRD is not installed
+        logger.debug({ namespace }, 'ModelDeployment CRD not found in namespace');
         return [];
       }
 
@@ -217,52 +167,29 @@ class KubernetesService {
     }
   }
 
-  async getDeployment(name: string, namespace: string, providerId?: string): Promise<DeploymentStatus | null> {
-    // If provider is specified, only check that provider
-    if (providerId) {
-      return this.getDeploymentFromProvider(name, namespace, providerId);
-    }
-
-    // Try all providers until we find the deployment
-    const allProviders = providerRegistry.listProviderIds();
-    for (const pid of allProviders) {
-      const deployment = await this.getDeploymentFromProvider(name, namespace, pid);
-      if (deployment) {
-        return deployment;
-      }
-    }
-
-    logger.debug({ name, namespace }, 'Deployment not found in any provider');
-    return null;
-  }
-
-  /**
-   * Get a deployment from a specific provider
-   */
-  private async getDeploymentFromProvider(name: string, namespace: string, providerId: string): Promise<DeploymentStatus | null> {
+  async getDeployment(name: string, namespace: string): Promise<DeploymentStatus | null> {
     try {
-      const provider = providerRegistry.getProvider(providerId);
-      const crdConfig = provider.getCRDConfig();
-
       const response = await withRetry(
         () => this.customObjectsApi.getNamespacedCustomObject(
-          crdConfig.apiGroup,
-          crdConfig.apiVersion,
+          MODEL_DEPLOYMENT_CRD.apiGroup,
+          MODEL_DEPLOYMENT_CRD.apiVersion,
           namespace,
-          crdConfig.plural,
+          MODEL_DEPLOYMENT_CRD.plural,
           name
         ),
-        { operationName: `getDeployment:${providerId}` }
+        { operationName: 'getDeployment' }
       );
 
-      return provider.parseStatus(response.body);
+      const md = response.body as ModelDeployment;
+      const pods = await this.getDeploymentPods(name, namespace);
+      return toDeploymentStatus(md, pods);
     } catch (error: any) {
       const statusCode = error?.statusCode || error?.response?.statusCode;
       if (statusCode === 404) {
-        // Not found in this provider, will try others
+        logger.debug({ name, namespace }, 'ModelDeployment not found');
         return null;
       }
-      logger.error({ error, name, namespace, providerId }, 'Error getting deployment from provider');
+      logger.error({ error, name, namespace }, 'Error getting deployment');
       return null;
     }
   }
@@ -271,150 +198,79 @@ class KubernetesService {
    * Get the raw Custom Resource manifest for a deployment
    * Returns the full CR object as stored in Kubernetes
    */
-  async getDeploymentManifest(name: string, namespace: string, providerId?: string): Promise<Record<string, unknown> | null> {
-    // If provider is specified, only check that provider
-    if (providerId) {
-      return this.getDeploymentManifestFromProvider(name, namespace, providerId);
-    }
-
-    // Try all providers until we find the deployment
-    const allProviders = providerRegistry.listProviderIds();
-    for (const pid of allProviders) {
-      const manifest = await this.getDeploymentManifestFromProvider(name, namespace, pid);
-      if (manifest) {
-        return manifest;
-      }
-    }
-
-    logger.debug({ name, namespace }, 'Deployment manifest not found in any provider');
-    return null;
-  }
-
-  /**
-   * Get the raw CR manifest from a specific provider
-   */
-  private async getDeploymentManifestFromProvider(
-    name: string,
-    namespace: string,
-    providerId: string
-  ): Promise<Record<string, unknown> | null> {
+  async getDeploymentManifest(name: string, namespace: string): Promise<Record<string, unknown> | null> {
     try {
-      const provider = providerRegistry.getProvider(providerId);
-      const crdConfig = provider.getCRDConfig();
-
       const response = await withRetry(
         () => this.customObjectsApi.getNamespacedCustomObject(
-          crdConfig.apiGroup,
-          crdConfig.apiVersion,
+          MODEL_DEPLOYMENT_CRD.apiGroup,
+          MODEL_DEPLOYMENT_CRD.apiVersion,
           namespace,
-          crdConfig.plural,
+          MODEL_DEPLOYMENT_CRD.plural,
           name
         ),
-        { operationName: `getDeploymentManifest:${providerId}` }
+        { operationName: 'getDeploymentManifest' }
       );
 
       return response.body as Record<string, unknown>;
     } catch (error: any) {
       const statusCode = error?.statusCode || error?.response?.statusCode;
       if (statusCode === 404) {
-        // Not found in this provider, will try others
+        logger.debug({ name, namespace }, 'ModelDeployment manifest not found');
         return null;
       }
-      logger.error({ error, name, namespace, providerId }, 'Error getting deployment manifest from provider');
+      logger.error({ error, name, namespace }, 'Error getting deployment manifest');
       return null;
     }
   }
 
-  async createDeployment(config: DeploymentConfig, providerId?: string): Promise<void> {
-    // Get the provider - prefer config.provider, then explicit providerId, then fall back to active provider
-    const resolvedProviderId = config.provider || providerId || await configService.getActiveProviderId();
-    const provider = providerRegistry.getProvider(resolvedProviderId);
-    const crdConfig = provider.getCRDConfig();
+  async createDeployment(config: DeploymentConfig): Promise<void> {
+    // Generate ModelDeployment manifest from config
+    const manifest = toModelDeploymentManifest(config) as Record<string, unknown>;
 
-    // Generate manifest using provider
-    const manifest = provider.generateManifest(config) as Record<string, unknown>;
-
-    // Add kubefoundry.io/provider label for easier querying
-    const metadata = manifest.metadata as Record<string, unknown> || {};
-    const labels = (metadata.labels as Record<string, string>) || {};
-    labels['kubefoundry.io/provider'] = resolvedProviderId;
-    metadata.labels = labels;
-    manifest.metadata = metadata;
+    logger.info({ name: config.name, namespace: config.namespace }, 'Creating ModelDeployment');
 
     await withRetry(
       () => this.customObjectsApi.createNamespacedCustomObject(
-        crdConfig.apiGroup,
-        crdConfig.apiVersion,
+        MODEL_DEPLOYMENT_CRD.apiGroup,
+        MODEL_DEPLOYMENT_CRD.apiVersion,
         config.namespace,
-        crdConfig.plural,
+        MODEL_DEPLOYMENT_CRD.plural,
         manifest
       ),
       { operationName: 'createDeployment' }
     );
 
-    // For KAITO vLLM deployments, create a separate service targeting port 8000
-    // KAITO controller creates its service with hardcoded targetPort 5000, which doesn't work for vLLM
-    const kaitoConfig = config as { modelSource?: string };
-    if (resolvedProviderId === 'kaito' && kaitoConfig.modelSource === 'vllm') {
-      try {
-        await this.createService(
-          config.name,
-          config.namespace,
-          8000,  // service port
-          8000,  // target port (vLLM listens on 8000)
-          { 'kaito.sh/workspace': config.name }  // KAITO pod selector
-        );
-      } catch (error) {
-        logger.warn({ error, name: config.name }, 'Failed to create vLLM service, deployment may not be accessible');
-      }
-    }
+    logger.info({ name: config.name, namespace: config.namespace }, 'ModelDeployment created');
   }
 
-  async deleteDeployment(name: string, namespace: string, providerId?: string): Promise<void> {
-    // If provider is specified, delete from that provider
-    if (providerId) {
-      await this.deleteDeploymentFromProvider(name, namespace, providerId);
-      // Also try to delete vLLM service if it exists
-      await this.deleteService(`${name}-vllm`, namespace);
-      return;
-    }
-
-    // First, find which provider has this deployment
+  async deleteDeployment(name: string, namespace: string): Promise<void> {
+    // First, check if deployment exists
     const deployment = await this.getDeployment(name, namespace);
     if (!deployment) {
       throw new Error(`Deployment '${name}' not found in namespace '${namespace}'`);
     }
 
-    // Use the provider from the deployment status
-    await this.deleteDeploymentFromProvider(name, namespace, deployment.provider);
-    
-    // Also try to delete vLLM service if it exists (for KAITO vLLM deployments)
-    await this.deleteService(`${name}-vllm`, namespace);
-  }
-
-  /**
-   * Delete a deployment from a specific provider
-   */
-  private async deleteDeploymentFromProvider(name: string, namespace: string, providerId: string): Promise<void> {
-    const provider = providerRegistry.getProvider(providerId);
-    const crdConfig = provider.getCRDConfig();
+    logger.info({ name, namespace }, 'Deleting ModelDeployment');
 
     await withRetry(
       () => this.customObjectsApi.deleteNamespacedCustomObject(
-        crdConfig.apiGroup,
-        crdConfig.apiVersion,
+        MODEL_DEPLOYMENT_CRD.apiGroup,
+        MODEL_DEPLOYMENT_CRD.apiVersion,
         namespace,
-        crdConfig.plural,
+        MODEL_DEPLOYMENT_CRD.plural,
         name
       ),
       { operationName: 'deleteDeployment' }
     );
+
+    logger.info({ name, namespace }, 'ModelDeployment deleted');
   }
 
   async getDeploymentPods(name: string, namespace: string): Promise<PodStatus[]> {
     // Try multiple label selectors since different providers use different labels
     const labelSelectors = [
       `app.kubernetes.io/instance=${name}`,  // Standard K8s label (Dynamo, KubeRay)
+      `kubefoundry.kubefoundry.ai/deployment=${name}`,  // KubeFoundry label
       `kaito.sh/workspace=${name}`,          // KAITO workspace label
       `app=${name}`,                         // Common fallback
     ];
@@ -490,17 +346,38 @@ class KubernetesService {
   }
 
   /**
-   * Check if a provider is installed in the cluster
+   * Check if the ModelDeployment CRD is installed in the cluster
    */
-  async checkProviderInstallation(providerId?: string): Promise<InstallationStatus> {
-    const activeProviderId = providerId || await configService.getActiveProviderId();
-    const provider = providerRegistry.getProvider(activeProviderId);
+  async checkCRDInstallation(): Promise<InstallationStatus> {
+    try {
+      await withRetry(
+        () => this.apiExtensionsApi.readCustomResourceDefinition(
+          `${MODEL_DEPLOYMENT_CRD.plural}.${MODEL_DEPLOYMENT_CRD.apiGroup}`
+        ),
+        { operationName: 'checkCRDInstallation', maxRetries: 1 }
+      );
 
-    return provider.checkInstallation({
-      customObjectsApi: this.customObjectsApi,
-      coreV1Api: this.coreV1Api,
-      apiExtensionsApi: this.apiExtensionsApi,
-    });
+      return {
+        installed: true,
+        crdFound: true,
+        message: 'ModelDeployment CRD is installed',
+      };
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.response?.statusCode;
+      if (statusCode === 404) {
+        return {
+          installed: false,
+          crdFound: false,
+          message: 'ModelDeployment CRD not found. Please install KubeFoundry controller.',
+        };
+      }
+      logger.error({ error }, 'Error checking CRD installation');
+      return {
+        installed: false,
+        crdFound: false,
+        message: `Error checking CRD: ${error?.message || 'Unknown error'}`,
+      };
+    }
   }
 
   /**
@@ -508,37 +385,48 @@ class KubernetesService {
    * Returns installation and health status for each runtime.
    */
   async getRuntimesStatus(): Promise<RuntimeStatus[]> {
-    const allProviders = providerRegistry.listProviders();
-    
-    const statusPromises = allProviders.map(async (provider): Promise<RuntimeStatus> => {
+    // Check if KubeFoundry controller is installed by checking for the CRD
+    const crdStatus = await this.checkCRDInstallation();
+
+    const kubefoundryStatus: RuntimeStatus = {
+      id: 'kubefoundry',
+      name: 'KubeFoundry',
+      installed: crdStatus.installed,
+      healthy: crdStatus.installed,
+      message: crdStatus.message,
+    };
+
+    // Check for controller pods
+    if (crdStatus.installed) {
       try {
-        const installStatus = await provider.checkInstallation({
-          customObjectsApi: this.customObjectsApi,
-          coreV1Api: this.coreV1Api,
-          apiExtensionsApi: this.apiExtensionsApi,
-        });
+        const pods = await withRetry(
+          () => this.coreV1Api.listNamespacedPod(
+            'kubefoundry-system',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'app.kubernetes.io/name=kubefoundry'
+          ),
+          { operationName: 'checkControllerPods', maxRetries: 1 }
+        );
 
-        return {
-          id: provider.id,
-          name: provider.name,
-          installed: installStatus.installed || (installStatus.crdFound ?? false),
-          healthy: installStatus.installed && (installStatus.operatorRunning ?? true),
-          version: installStatus.version,
-          message: installStatus.message,
-        };
-      } catch (error) {
-        logger.error({ error, providerId: provider.id }, 'Error checking runtime status');
-        return {
-          id: provider.id,
-          name: provider.name,
-          installed: false,
-          healthy: false,
-          message: error instanceof Error ? error.message : 'Unknown error checking status',
-        };
+        const runningPods = pods.body.items.filter(
+          (pod) => pod.status?.phase === 'Running'
+        );
+
+        kubefoundryStatus.healthy = runningPods.length > 0;
+        if (runningPods.length === 0) {
+          kubefoundryStatus.message = 'CRD found but controller not running';
+        }
+      } catch {
+        // Namespace might not exist
+        kubefoundryStatus.healthy = false;
+        kubefoundryStatus.message = 'CRD found but controller namespace not accessible';
       }
-    });
+    }
 
-    return Promise.all(statusPromises);
+    return [kubefoundryStatus];
   }
 
   /**
@@ -1223,11 +1111,11 @@ class KubernetesService {
         })
         .map(node => {
           const nodeName = node.metadata?.name || 'unknown';
-          
+
           // Check if node is Ready
           const readyCondition = node.status?.conditions?.find(c => c.type === 'Ready');
           const isReady = readyCondition?.status === 'True';
-          
+
           // Get GPU count if available
           const gpuCapacity = node.status?.allocatable?.['nvidia.com/gpu'];
           const gpuCount = gpuCapacity ? parseInt(gpuCapacity, 10) : 0;

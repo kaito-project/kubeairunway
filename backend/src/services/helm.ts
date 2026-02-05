@@ -1,7 +1,29 @@
 import { spawn } from 'child_process';
 import { mkdirSync, existsSync } from 'fs';
-import type { HelmRepo, HelmChart } from '../providers/types';
 import logger from '../lib/logger';
+
+/**
+ * Helm repository configuration
+ */
+export interface HelmRepo {
+  name: string;
+  url: string;
+}
+
+/**
+ * Helm chart configuration for installation
+ */
+export interface HelmChart {
+  name: string;
+  chart: string;
+  namespace: string;
+  version?: string;
+  createNamespace?: boolean;
+  values?: Record<string, unknown>;
+  skipCrds?: boolean;
+  fetchUrl?: string;
+  preCrdUrls?: string[];
+}
 
 /**
  * NVIDIA GPU Operator Helm configuration

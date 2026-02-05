@@ -1,0 +1,40 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - kubefoundry.kubefoundry.ai
+  resources:
+  - inferenceproviderconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubefoundry.kubefoundry.ai
+  resources:
+  - modeldeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubefoundry.kubefoundry.ai
+  resources:
+  - modeldeployments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kubefoundry.kubefoundry.ai
+  resources:
+  - modeldeployments/status
+  verbs:
+  - get
+  - patch
+  - update

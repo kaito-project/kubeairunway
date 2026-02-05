@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- kubefoundry_v1alpha1_modeldeployment.yaml
+- kubefoundry_v1alpha1_inferenceproviderconfig.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
