@@ -297,7 +297,7 @@ export class KaitoProvider implements Provider {
         // This label is published by NVIDIA GFD on nodes with NVIDIA GPUs
         resourceSpec.labelSelector = {
           matchLabels: {
-            'nvidia.com/gpu.present': 'true',
+            'nvidia.com/vgpu.present': 'true',
           },
         };
       } else {

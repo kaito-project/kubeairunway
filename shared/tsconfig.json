@@ -6,12 +6,12 @@
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
-    "rootDir": "./types",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["types/**/*"],
+  "include": ["types/**/*", "api/**/*"],
   "exclude": ["node_modules", "dist"]
 }

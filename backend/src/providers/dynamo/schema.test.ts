@@ -161,10 +161,10 @@ describe('dynamoDeploymentConfigSchema', () => {
       expect(result.success).toBe(false);
     });
 
-    it('rejects missing hfTokenSecret', () => {
+    it('accepts missing hfTokenSecret (optional for non-gated models)', () => {
       const { hfTokenSecret, ...configWithoutToken } = validConfig;
       const result = dynamoDeploymentConfigSchema.safeParse(configWithoutToken);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
   });
 

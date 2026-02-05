@@ -224,19 +224,19 @@ describe('KaitoProvider', () => {
       expect((manifest.resource as any).labelSelector.matchLabels['kubernetes.io/os']).toBe('linux');
     });
 
-    test('GPU workload generates nvidia.com/gpu.present: true labelSelector by default', () => {
+    test('GPU workload generates nvidia.com/vgpu.present: true labelSelector by default', () => {
       const config = {
         ...basePremadeConfig,
         computeType: 'gpu' as const,
         resources: { gpu: 1 },
       };
       const manifest = provider.generateManifest(config);
-      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
+      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/vgpu.present']).toBe('true');
     });
 
-    test('vLLM workload always generates nvidia.com/gpu.present: true labelSelector', () => {
+    test('vLLM workload always generates nvidia.com/vgpu.present: true labelSelector', () => {
       const manifest = provider.generateManifest(baseVllmConfig);
-      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBe('true');
+      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/vgpu.present']).toBe('true');
     });
 
     test('user-provided labelSelector overrides default GPU/CPU labels', () => {
@@ -249,9 +249,9 @@ describe('KaitoProvider', () => {
         },
       };
       const manifest = provider.generateManifest(config);
-      // Should use custom label, not nvidia.com/gpu.present
+      // Should use custom label, not nvidia.com/vgpu.present
       expect((manifest.resource as any).labelSelector.matchLabels['custom-label']).toBe('custom-value');
-      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/gpu.present']).toBeUndefined();
+      expect((manifest.resource as any).labelSelector.matchLabels['nvidia.com/vgpu.present']).toBeUndefined();
     });
 
     test('includes resource requests when specified', () => {

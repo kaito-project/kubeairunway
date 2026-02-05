@@ -1,0 +1,55 @@
+{
+  "name": "kubefoundry-headlamp-plugin",
+  "version": "0.1.0",
+  "description": "KubeFoundry ML deployment management plugin for Headlamp",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "headlamp-plugin build",
+    "start": "headlamp-plugin start",
+    "extract": "headlamp-plugin extract . .plugins",
+    "format": "headlamp-plugin format",
+    "lint": "headlamp-plugin lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tsc": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kubefoundry/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@kinvolk/headlamp-plugin": "^0.9.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^14.1.2",
+    "@types/react": "^18.2.47",
+    "@types/react-router-dom": "5",
+    "@vitejs/plugin-react": "^5.1.2",
+    "@vitest/coverage-v8": "^1.1.3",
+    "jsdom": "^23.2.0",
+    "react-router": "^6.22.0",
+    "react-router-dom": "5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.3"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "keywords": [
+    "headlamp",
+    "headlamp-plugin",
+    "kubefoundry",
+    "kubernetes",
+    "ml",
+    "machine-learning",
+    "kaito",
+    "kuberay",
+    "dynamo"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sozercan/kube-foundry.git"
+  }
+}
