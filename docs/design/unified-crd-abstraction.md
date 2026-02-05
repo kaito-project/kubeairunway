@@ -5,7 +5,7 @@
 **Status:** Draft
 **Author:** Sertac Ozercan
 **Date:** January 2026
-**Last Updated:** February 2, 2026
+**Last Updated:** February 4, 2026
 
 ---
 
@@ -25,7 +25,7 @@ This document proposes the introduction of a unified KubeFoundry Custom Resource
 - Supporting all possible provider-specific features in the unified API
 - Auto-migration between providers (manual trigger only)
 - Performance-based autoscaling (HPA/KEDA replica scaling - deferred to future version)
-- Adopting existing provider resources
+- Adopting/migrating existing provider resources (users with existing KAITO Workspaces or DynamoGraphDeployments must create new ModelDeployments and manually delete old resources)
 - Multi-model serving (LoRA adapters)
 
 ---
@@ -118,55 +118,587 @@ spec:
 
 ---
 
-## 3. Architecture
+## 3. Architecture: Provider Plugin Model
 
-### 3.1 System Overview
+> This architecture treats all providers (KAITO, Dynamo, KubeRay, and future providers) as external plugins rather than built-in components. This approach is inspired by the Kubernetes Container Runtime Interface (CRI) and Cluster API provider patterns.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     User's Machine                                │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │              kubefoundry binary (TypeScript)                │ │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │ │
-│  │  │   Web UI     │  │   CLI        │  │ Controller       │  │ │
-│  │  │              │  │   Commands   │  │ Installer        │  │ │
-│  │  └──────────────┘  └──────────────┘  └──────────────────┘  │ │
-│  └────────────────────────────┬────────────────────────────────┘ │
-└───────────────────────────────┼──────────────────────────────────┘
-                                │ kubeconfig
-                                ▼
-┌───────────────────────────────────────────────────────────────────┐
-│                         K8s Cluster                                │
-│  ┌─────────────────────────────────────────────────────────────┐  │
-│  │              kubefoundry-controller (Go)                     │  │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │  │
-│  │  │ Reconciler   │  │  Manifest    │  │ Status           │   │  │
-│  │  │              │  │  Generators  │  │ Aggregation      │   │  │
-│  │  └──────────────┘  └──────────────┘  └──────────────────┘   │  │
-│  └─────────────────────────────────────────────────────────────┘  │
-│                                                                    │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐   │
-│  │ ModelDeployment │  │ Provider CRDs   │  │ Pods/Services   │   │
-│  │ CRDs            │  │ (Dynamo/KAITO)  │  │                 │   │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘   │
-└───────────────────────────────────────────────────────────────────┘
-```
+### 3.1 Design Principles
 
-### 3.2 Data Flow
+> **Recommendation:** This plugin architecture is the recommended approach for KubeFoundry. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need third-party providers.
+
+1. **Core has zero provider knowledge** - The core controller only handles ModelDeployment CRD validation and defaults
+2. **Providers are adapters** - Each provider controller is a "shim" (like dockershim for CRI) that translates ModelDeployment to upstream CRDs
+3. **Independent releases** - Provider controllers are versioned and released independently from core
+4. **Third-party extensibility** - Anyone can add a new provider without modifying KubeFoundry core
+
+### 3.2 The CRI Analogy
+
+This design follows the same pattern as Kubernetes Container Runtime Interface (CRI):
 
 ```
-User Config → ModelDeployment CRD → KubeFoundry Controller → Provider CRD → Provider Operator → Pods/Services
-                     ↓
-              Status Aggregation
+CRI Pattern:
+   kubelet ──► CRI Interface ──► containerd/CRI-O/dockershim ──► containers
+
+KubeFoundry Provider Pattern:
+   core ──► Provider Interface ──► kaito-provider/dynamo-provider ──► upstream CRDs
 ```
 
-### 3.3 Existing Providers
+Just as `dockershim` was an adapter that made Docker (which predates CRI) work with the CRI interface, `kaito-provider` is an adapter that makes KAITO (which doesn't know about KubeFoundry) work with the KubeFoundry provider interface.
+
+#### Lessons from Dockershim
+
+Dockershim was deprecated and removed from Kubernetes in v1.24 due to architectural issues. Our design explicitly avoids these mistakes:
+
+| Dockershim Problem | Our Solution |
+|--------------------|--------------|
+| **Embedded in kubelet** - Tight coupling meant every kubelet release had to consider Docker compatibility | Provider controllers are **separate deployments** with independent release cycles |
+| **Maintenance burden** - Docker bugs affected core Kubernetes releases | A bug in kaito-provider only affects KAITO users, not core |
+| **Blocked innovation** - New features (cgroups v2) couldn't be adopted because dockershim couldn't translate them | Providers can be updated independently; `provider.overrides` provides escape hatch |
+| **Special treatment** - Docker got different treatment than other runtimes | All providers go through the same InferenceProviderConfig interface |
+
+When dockershim was removed, Mirantis created `cri-dockerd` as an external adapter - validating that shims can live outside core. Our architecture follows this correct pattern from day one.
+
+### 3.3 System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                    User                                          │
+└──────────────────────────────────────┬──────────────────────────────────────────┘
+                                       │
+                                       │ kubectl apply
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                             ModelDeployment                                      │
+│                          kubefoundry.ai/v1alpha1                                 │
+│                                                                                  │
+│  spec:                                                                           │
+│    model: {id: "meta-llama/Llama-3.1-8B", source: huggingface}                  │
+│    engine: {type: vllm}                                                          │
+│    provider: {name: kaito}   ◄─── explicit, or let provider-selector choose     │
+│    resources: {...}                                                              │
+│                                                                                  │
+│  status:                                                                         │
+│    provider:                       ◄─── set by provider-selector or user        │
+│      name: kaito                                                                 │
+│      selectedReason: "..."                                                       │
+│    phase: Running                  ◄─── set by provider controller              │
+│    endpoint: {...}                 ◄─── set by provider controller              │
+│    conditions: [...]               ◄─── set by provider controller              │
+└──────────────────────────────────────┬──────────────────────────────────────────┘
+                                       │
+         ┌─────────────────────────────┼─────────────────────────────┐
+         │                             │                             │
+         ▼                             ▼                             ▼
+┌─────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
+│  kubefoundry-core   │  │   provider-selector     │  │   provider controllers  │
+│  (webhooks only)    │  │   (optional component)  │  │                         │
+│                     │  │                         │  │  ┌───────────────────┐  │
+│  • Validate schema  │  │  • Watches MD where     │  │  │  kaito-provider   │  │
+│  • Set defaults     │  │    provider.name empty  │  │  └───────────────────┘  │
+│  • NO provider      │  │  • Queries registered   │  │  ┌───────────────────┐  │
+│    knowledge        │  │    providers            │  │  │  dynamo-provider  │  │
+│                     │  │  • Runs selection algo  │  │  └───────────────────┘  │
+│                     │  │  • Sets provider.name   │  │  ┌───────────────────┐  │
+│                     │  │                         │  │  │  kuberay-provider │  │
+│                     │  │  Can be replaced with   │  │  └───────────────────┘  │
+│                     │  │  custom selector!       │  │  ┌───────────────────┐  │
+│                     │  │                         │  │  │  your-provider    │  │
+│                     │  │                         │  │  └───────────────────┘  │
+└─────────────────────┘  └─────────────────────────┘  └─────────────────────────┘
+                                       │
+                                       │ reads
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                       InferenceProviderConfig                              │
+│                          kubefoundry.ai/v1alpha1                                 │
+│                                                                                  │
+│  Each provider registers itself with capabilities and selection rules            │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.4 Data Flow
+
+```
+                                    ┌─────────────────┐
+                                    │ User applies    │
+                                    │ ModelDeployment │
+                                    └────────┬────────┘
+                                             │
+                                             ▼
+                                    ┌─────────────────┐
+                                    │ kubefoundry-    │
+                                    │ core webhooks   │
+                                    │ (validation)    │
+                                    └────────┬────────┘
+                                             │
+                          ┌──────────────────┴──────────────────┐
+                          │                                     │
+                          ▼                                     ▼
+               ┌─────────────────────┐              ┌─────────────────────┐
+               │ provider specified? │──── yes ───►│ provider controller │
+               └─────────────────────┘              │ watches & acts      │
+                          │                         └──────────┬──────────┘
+                          no                                   │
+                          │                                    │
+                          ▼                                    │
+               ┌─────────────────────┐                         │
+               │ provider-selector   │                         │
+               │ picks best match    │                         │
+               │ from configs        │                         │
+               └─────────┬───────────┘                         │
+                         │                                     │
+                         │ sets status.provider.name           │
+                         │                                     │
+                         └─────────────────────────────────────┤
+                                                               │
+                                                               ▼
+                                                    ┌─────────────────────┐
+                                                    │ Provider creates    │
+                                                    │ upstream resource   │
+                                                    │ (Workspace, etc.)   │
+                                                    └─────────┬───────────┘
+                                                              │
+                                                              ▼
+                                                    ┌─────────────────────┐
+                                                    │ Upstream operator   │
+                                                    │ reconciles pods     │
+                                                    └─────────┬───────────┘
+                                                              │
+                                                              ▼
+                                                    ┌─────────────────────┐
+                                                    │ Provider syncs      │
+                                                    │ status back to      │
+                                                    │ ModelDeployment     │
+                                                    └─────────────────────┘
+```
+
+### 3.5 Component Breakdown
+
+#### 3.5.1 kubefoundry-core (Minimal)
+
+The core component contains only:
+- `ModelDeployment` CRD definition
+- `InferenceProviderConfig` CRD definition
+- Validating webhook (schema validation only, no provider knowledge)
+- Mutating webhook (defaults only)
+
+The core does NOT contain:
+- Provider-specific transformation logic
+- Provider selection algorithm (this is in provider-selector)
+- Knowledge of Workspace, DynamoGraphDeployment, or RayService schemas
+
+#### 3.5.2 provider-selector (Conditionally Required, Replaceable)
+
+A separate component that handles auto-selection:
+- Watches `ModelDeployment` resources where `status.provider.name` is empty
+- Queries all `InferenceProviderConfig` resources
+- Runs selection algorithm based on provider capabilities
+- Sets `status.provider.name` and `status.provider.selectedReason`
+
+**When is provider-selector required?**
+- **Required** if `spec.provider.name` is omitted (auto-selection needed)
+- **Not required** if user explicitly specifies `spec.provider.name`
+
+If provider-selector is not installed and no provider is specified, the `ModelDeployment` remains in `Pending` status with condition `ProviderSelected: False` and message "No provider specified and provider-selector not installed".
+
+**No healthy providers:** If all `InferenceProviderConfig` resources report `ready: false`, the `ModelDeployment` remains in `Pending` status with message "No healthy providers available".
+
+Organizations can replace this with custom selectors for:
+- Policy-based selection ("Team X can only use KAITO")
+- Cost-based selection ("Prefer cheapest provider")
+- Availability-based selection ("Use provider with most capacity")
+
+#### 3.5.3 Provider Controllers
+
+Each provider is a separate controller deployment that acts as an adapter (shim):
+
+```
+github.com/kubefoundry/kaito-provider/
+github.com/kubefoundry/dynamo-provider/
+github.com/kubefoundry/kuberay-provider/
+github.com/third-party/their-provider/   # Third-party providers welcome
+```
+
+Provider controllers:
+1. Register themselves by creating an `InferenceProviderConfig`
+2. Watch `ModelDeployment` filtered by `status.provider.name == "their-name"`
+3. Transform `ModelDeployment` spec to upstream CRD (e.g., Workspace)
+4. Write status back to `ModelDeployment` using server-side apply
+5. Handle upstream schema changes with version-specific transformers
+
+### 3.6 Upstream Providers
 
 | Provider | CRD                     | API Group             | Primary Use Case                      |
 | -------- | ----------------------- | --------------------- | ------------------------------------- |
 | KAITO    | `Workspace`             | `kaito.sh/v1beta1`    | CPU/GPU flexible with GGUF, vLLM      |
 | Dynamo   | `DynamoGraphDeployment` | `nvidia.com/v1alpha1` | High-perf GPU with vLLM/sglang/trtllm |
 | KubeRay  | `RayService`            | `ray.io/v1`           | Scalable serving with Ray Serve       |
+
+### 3.7 Deployment Topology
+
+```
+kubefoundry-system namespace:
+├── kubefoundry-core         (webhooks, minimal resources)
+├── provider-selector        (optional, replaceable)
+├── kaito-provider      ─┐
+├── dynamo-provider      ├── independently versioned & released
+├── kuberay-provider    ─┘
+└── third-party-provider     (installed separately)
+```
+
+### 3.8 Installation Options
+
+```bash
+# Full bundle (core + selector + all built-in providers)
+kubectl apply -f https://kubefoundry.io/install.yaml
+
+# À la carte installation
+kubectl apply -f https://kubefoundry.io/core.yaml
+kubectl apply -f https://kubefoundry.io/provider-selector.yaml
+kubectl apply -f https://kubefoundry.io/providers/kaito.yaml
+kubectl apply -f https://kubefoundry.io/providers/dynamo.yaml
+
+# Third-party provider
+kubectl apply -f https://newframework.io/kubefoundry-provider.yaml
+```
+
+Or with CLI:
+
+```bash
+kubefoundry controller install                    # Core only
+kubefoundry provider install kaito                # Built-in provider
+kubefoundry provider install dynamo
+kubefoundry provider install https://example.com/provider.yaml  # Third-party
+```
+
+### 3.9 InferenceProviderConfig CRD
+
+Each provider registers itself by creating an `InferenceProviderConfig` resource:
+
+```yaml
+apiVersion: kubefoundry.ai/v1alpha1
+kind: InferenceProviderConfig
+metadata:
+  name: kaito
+spec:
+  # Capabilities this provider supports
+  capabilities:
+    engines: [vllm, llamacpp]
+    servingModes: [aggregated]
+    cpuSupport: true
+    gpuSupport: true
+
+  # Selection rules for auto-selection algorithm
+  # Conditions use CEL (Common Expression Language) - same as K8s ValidatingAdmissionPolicy
+  selectionRules:
+    - condition: "!has(spec.resources.gpu) || spec.resources.gpu.count == 0"
+      priority: 100  # Best for CPU workloads
+    - condition: "spec.engine.type == 'llamacpp'"
+      priority: 100  # Only llamacpp provider
+
+  # Documentation link
+  documentation: "https://github.com/kubefoundry/kaito-provider"
+
+status:
+  # Written by the provider controller on startup
+  ready: true
+  version: "kaito-provider:v1.2.0"
+  lastHeartbeat: "2026-02-04T10:00:00Z"
+  upstreamCRDVersion: "kaito.sh/v1alpha1"
+  upstreamSchemaHash: "abc123def456"
+```
+
+**Selection Rule Expression Language:** Conditions use [CEL (Common Expression Language)](https://github.com/google/cel-spec), the same expression language used by Kubernetes ValidatingAdmissionPolicy. This provides:
+- Type-safe expressions with compile-time validation
+- Access to the full `ModelDeployment` spec via `spec.*`
+- Standard functions: `has()`, `size()`, string operations, etc.
+- Example: `has(spec.resources.gpu) && spec.resources.gpu.count > 0`
+
+### 3.10 Status Ownership with Server-Side Apply
+
+Multiple controllers write to `ModelDeployment.status` using server-side apply with distinct field managers.
+
+**Conflict Resolution:** Server-side apply (SSA) handles conflicts via field ownership. Each controller uses a unique `fieldManager` identifier and owns distinct, non-overlapping fields. This means:
+- `provider-selector` owns `status.provider.name` and `status.provider.selectedReason`
+- Provider controllers own `status.phase`, `status.endpoint`, `status.replicas`, etc.
+- No conflicts occur because fields don't overlap
+- If a controller attempts to write a field owned by another, SSA rejects the update (this indicates a bug)
+
+```yaml
+status:
+  # Written by provider-selector (fieldManager: "provider-selector")
+  provider:
+    name: kaito
+    selectedReason: "no GPU requested → kaito"
+    # Written by provider controller (fieldManager: "kaito-provider")
+    resourceName: my-llm
+    resourceKind: Workspace
+
+  # Written by kaito-provider (fieldManager: "kaito-provider")
+  phase: Running
+  message: "All replicas healthy"
+  endpoint:
+    service: my-llm
+    port: 80
+
+  replicas:
+    desired: 1
+    ready: 1
+    available: 1
+
+  conditions:
+    - type: Validated           # core webhook
+      status: "True"
+    - type: ProviderSelected    # provider-selector
+      status: "True"
+    - type: ProviderCompatible  # provider controller
+      status: "True"
+    - type: ResourceCreated     # provider controller
+      status: "True"
+    - type: Ready               # provider controller
+      status: "True"
+
+  observedGeneration: 1
+```
+
+### 3.11 Provider Controller Implementation
+
+Each provider controller transforms `ModelDeployment` to its upstream CRD and handles schema instability:
+
+```go
+type KAITOProviderController struct {
+    client          client.Client
+    schemaDetector  *SchemaDetector
+    transformers    map[string]KAITOTransformer  // schema hash → transformer
+}
+
+func (r *KAITOProviderController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    var md kubefoundryv1alpha1.ModelDeployment
+    if err := r.client.Get(ctx, req.NamespacedName, &md); err != nil {
+        return ctrl.Result{}, client.IgnoreNotFound(err)
+    }
+
+    // 1. Detect current KAITO CRD schema
+    schema, err := r.schemaDetector.Detect(ctx)
+    if err != nil {
+        return r.handleSchemaDetectionFailure(ctx, &md, err)
+    }
+
+    // 2. Find transformer for this schema version
+    transformer, ok := r.transformers[schema.Hash]
+    if !ok {
+        return r.handleUnknownSchema(ctx, &md, schema)
+    }
+
+    // 3. Transform ModelDeployment to Workspace
+    workspace, err := transformer.ToWorkspace(&md)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
+
+    // 4. Validate with dry-run before applying
+    if err := r.validateAndApply(ctx, workspace); err != nil {
+        return r.handleApplyFailure(ctx, &md, err)
+    }
+
+    // 5. Sync Workspace status back to ModelDeployment
+    return r.syncStatus(ctx, &md, workspace)
+}
+
+func (r *KAITOProviderController) SetupWithManager(mgr ctrl.Manager) error {
+    return ctrl.NewControllerManagedBy(mgr).
+        For(&kubefoundryv1alpha1.ModelDeployment{}).
+        WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+            md := obj.(*kubefoundryv1alpha1.ModelDeployment)
+            return md.Status.Provider.Name == "kaito"
+        })).
+        Owns(&unstructured.Unstructured{/* Workspace */}).
+        Complete(r)
+}
+```
+
+### 3.12 Schema Version Adapters
+
+Provider controllers maintain multiple transformers for different upstream schema versions:
+
+```go
+// Original KAITO schema
+type KAITOTransformerV03 struct{}
+
+func (t *KAITOTransformerV03) ToWorkspace(md *ModelDeployment) (*unstructured.Unstructured, error) {
+    ws := &unstructured.Unstructured{}
+    ws.SetAPIVersion("kaito.sh/v1alpha1")
+    ws.SetKind("Workspace")
+    // Uses resource.count (original field name)
+    unstructured.SetNestedField(ws.Object, md.Spec.Scaling.Replicas, "spec", "resource", "count")
+    return ws, nil
+}
+
+// After KAITO renamed fields (hypothetical future version)
+type KAITOTransformerV04 struct{}
+
+func (t *KAITOTransformerV04) ToWorkspace(md *ModelDeployment) (*unstructured.Unstructured, error) {
+    ws := &unstructured.Unstructured{}
+    ws.SetAPIVersion("kaito.sh/v1alpha1")
+    ws.SetKind("Workspace")
+    // Uses resource.replicas (new field name)
+    unstructured.SetNestedField(ws.Object, md.Spec.Scaling.Replicas, "spec", "resource", "replicas")
+    return ws, nil
+}
+
+// Registry of known schemas
+var KAITOTransformers = map[string]KAITOTransformer{
+    "abc123def456": &KAITOTransformerV03{},  // schema hash for v0.3.x
+    "789xyz000111": &KAITOTransformerV04{},  // schema hash for v0.4.x
+}
+```
+
+### 3.13 Semantic Translation
+
+Provider controllers handle two types of translation, similar to how Kubernetes dockershim translated between CRI and Docker:
+
+1. **Syntactic translation** - Field mapping and schema version adapters (covered in 3.12)
+2. **Semantic translation** - Concept mapping when ModelDeployment concepts don't exist in the upstream provider
+
+#### The Dockershim Precedent
+
+Dockershim was an adapter that made Docker (which predates CRI) work with the CRI interface. It handled semantic mismatches like:
+- CRI's "PodSandbox" concept → Docker had no equivalent, so dockershim created a `pause` container
+- CRI's streaming APIs → Translated to Docker's different streaming semantics
+
+Provider controllers follow the same pattern - they're adapters that handle semantic gaps between ModelDeployment and upstream CRDs.
+
+#### Semantic Translation Examples
+
+| ModelDeployment Concept | KAITO Translation | Dynamo Translation | KubeRay Translation |
+|------------------------|-------------------|--------------------|--------------------|
+| `engine.type: vllm` | Creates inference template with vLLM preset | Sets `backendFramework: vllm` | Configures RayServe with vLLM worker |
+| `engine.type: llamacpp` | Creates custom inference template | ❌ Rejects with error | ❌ Rejects with error |
+| `serving.mode: disaggregated` | ❌ Rejects with error | Creates separate Prefill/Decode workers | Creates multiple Ray actor groups |
+| `scaling.replicas` | Sets `resource.count` | Sets worker replicas | Sets Ray worker replicas |
+
+#### Implementation Pattern
+
+```go
+type SemanticTranslator interface {
+    // CanHandle returns whether this provider supports the ModelDeployment configuration
+    CanHandle(md *ModelDeployment) (bool, string)  // (supported, reason if not)
+
+    // TranslateSpec performs semantic translation to upstream CRD
+    TranslateSpec(md *ModelDeployment) (*unstructured.Unstructured, error)
+
+    // TranslateStatus maps upstream status back to ModelDeployment status
+    TranslateStatus(upstream *unstructured.Unstructured) (*ModelDeploymentStatus, error)
+}
+
+// Example: KAITO rejects disaggregated mode
+func (t *KAITOTransformer) CanHandle(md *ModelDeployment) (bool, string) {
+    if md.Spec.Serving.Mode == "disaggregated" {
+        return false, "KAITO does not support disaggregated serving mode"
+    }
+    if md.Spec.Engine.Type == "sglang" || md.Spec.Engine.Type == "trtllm" {
+        return false, fmt.Sprintf("KAITO does not support %s engine", md.Spec.Engine.Type)
+    }
+    return true, ""
+}
+```
+
+#### Status Semantic Translation
+
+Each provider reports status differently. Provider controllers translate these to the unified ModelDeployment status:
+
+```go
+// KAITO status translation
+func (t *KAITOTransformer) TranslateStatus(ws *unstructured.Unstructured) (*ModelDeploymentStatus, error) {
+    // KAITO uses conditions: WorkspaceSucceeded, InferenceReady
+    conditions, _ := getNestedSlice(ws.Object, "status", "conditions")
+
+    status := &ModelDeploymentStatus{}
+    for _, c := range conditions {
+        if c["type"] == "WorkspaceSucceeded" && c["status"] == "True" {
+            status.Phase = "Running"
+        } else if c["type"] == "WorkspaceSucceeded" && c["status"] == "False" {
+            status.Phase = "Failed"
+            status.Message = c["message"].(string)
+        }
+    }
+    return status, nil
+}
+
+// Dynamo status translation
+func (t *DynamoTransformer) TranslateStatus(dgd *unstructured.Unstructured) (*ModelDeploymentStatus, error) {
+    // Dynamo uses state field: "deploying", "successful", "failed"
+    state, _ := getNestedString(dgd.Object, "status", "state")
+
+    status := &ModelDeploymentStatus{}
+    switch state {
+    case "successful":
+        status.Phase = "Running"
+    case "deploying":
+        status.Phase = "Deploying"
+    case "failed":
+        status.Phase = "Failed"
+        status.Message, _ = getNestedString(dgd.Object, "status", "message")
+    }
+    return status, nil
+}
+```
+
+#### Additional Resource Creation
+
+Like dockershim creating pause containers, provider controllers may create additional resources:
+
+```go
+func (t *DynamoTransformer) TranslateSpec(md *ModelDeployment) ([]*unstructured.Unstructured, error) {
+    resources := []*unstructured.Unstructured{}
+
+    // Primary resource: DynamoGraphDeployment
+    dgd := t.createDynamoGraphDeployment(md)
+    resources = append(resources, dgd)
+
+    // Additional resource: ConfigMap for NATS configuration (if needed)
+    if md.Spec.Serving.Mode == "disaggregated" {
+        natsConfig := t.createNATSConfigMap(md)
+        resources = append(resources, natsConfig)
+    }
+
+    return resources, nil
+}
+```
+
+### 3.14 Adding a New Provider
+
+Third parties can add providers without any changes to KubeFoundry core:
+
+1. Create a controller that watches `ModelDeployment`
+2. Filter for `status.provider.name == "your-provider"`
+3. Transform to your upstream CRD
+4. Write status back to `ModelDeployment`
+5. Create `InferenceProviderConfig` on startup
+
+```go
+// third-party-provider/main.go
+func main() {
+    // Register this provider
+    providerConfig := &kubefoundryv1alpha1.InferenceProviderConfig{
+        ObjectMeta: metav1.ObjectMeta{Name: "newframework"},
+        Spec: kubefoundryv1alpha1.ProviderConfigSpec{
+            Capabilities: kubefoundryv1alpha1.ProviderCapabilities{
+                Engines:      []string{"vllm", "custom"},
+                ServingModes: []string{"aggregated"},
+                GPUSupport:   true,
+            },
+            SelectionRules: []kubefoundryv1alpha1.SelectionRule{
+                {Condition: "spec.model.id.startsWith('newframework/')", Priority: 100},
+            },
+        },
+    }
+    client.Create(ctx, providerConfig)
+
+    // Start controller
+    mgr.Start(ctx)
+}
+```
 
 ---
 
@@ -187,8 +719,9 @@ spec:
   # Model specification (required)
   model:
     id: "meta-llama/Llama-3.1-8B-Instruct"  # HuggingFace model ID (required when source=huggingface, omit for custom)
-    servedName: "llama-3.1-8b"               # API-facing model name (optional - defaults to model ID basename; for custom, container defines this)
-    source: "huggingface"                    # huggingface | custom (pre-loaded in image)
+    servedName: "llama-3.1-8b"               # API-facing model name (optional - defaults to model ID basename)
+                                             # N/A for source=custom (container defines model name internally)
+    source: "huggingface"                    # huggingface (default) | custom (pre-loaded in image)
 
   # Provider selection (optional - auto-selected if not specified)
   provider:
@@ -228,16 +761,18 @@ spec:
 
   # Scaling configuration
   scaling:
-    replicas: 1                              # For aggregated mode
+    replicas: 1                              # For aggregated mode (0 allowed for scale-to-zero)
     # For disaggregated mode (spec.resources not allowed, use per-component)
     # Note: Frontend/head component uses controller defaults; customize via provider.overrides
     prefill:
       replicas: 1
-      gpus: 1
+      gpu:
+        count: 1                             # Required for disaggregated
       memory: "64Gi"                         # Required for disaggregated
     decode:
       replicas: 1
-      gpus: 1
+      gpu:
+        count: 1                             # Required for disaggregated
       memory: "64Gi"                         # Required for disaggregated
 
   # Resource requirements (GPU inferred from gpu.count > 0)
@@ -294,16 +829,31 @@ status:
 
   # Conditions (Kubernetes-style)
   conditions:
-    - type: "Ready"
+    - type: "Validated"                          # Set by core webhook
       status: "True"
-      lastTransitionTime: "2026-01-30T10:00:00Z"
-      reason: "DeploymentReady"
-      message: "All replicas are ready"
-    - type: "ProviderResourceCreated"
+      lastTransitionTime: "2026-01-30T09:50:00Z"
+      reason: "ValidationPassed"
+      message: "Schema validation passed"
+    - type: "ProviderSelected"                   # Set by provider-selector
+      status: "True"
+      lastTransitionTime: "2026-01-30T09:51:00Z"
+      reason: "AutoSelected"
+      message: "Provider dynamo auto-selected"
+    - type: "ProviderCompatible"                 # Set by provider controller
+      status: "True"
+      lastTransitionTime: "2026-01-30T09:52:00Z"
+      reason: "CompatibilityVerified"
+      message: "Configuration compatible with Dynamo"
+    - type: "ResourceCreated"                    # Set by provider controller
       status: "True"
       lastTransitionTime: "2026-01-30T09:55:00Z"
       reason: "ResourceCreated"
       message: "DynamoGraphDeployment created successfully"
+    - type: "Ready"                              # Set by provider controller
+      status: "True"
+      lastTransitionTime: "2026-01-30T10:00:00Z"
+      reason: "DeploymentReady"
+      message: "All replicas are ready"
 
   # Observed generation for controller
   observedGeneration: 1
@@ -499,11 +1049,13 @@ spec:
     # Frontend/head not specified here - configured via provider.overrides or uses defaults
     prefill:
       replicas: 2
-      gpus: 4
+      gpu:
+        count: 4
       memory: "128Gi"
     decode:
       replicas: 4
-      gpus: 2
+      gpu:
+        count: 2
       memory: "64Gi"
   # Note: spec.resources is not allowed in disaggregated mode
   secrets:
@@ -707,7 +1259,7 @@ metadata:
 
 The controller uses finalizers to ensure cleanup. If the provider operator is unavailable:
 
-1. Controller attempts cleanup for 5-10 minutes
+1. Controller attempts cleanup for **5 minutes**
 2. After timeout, controller removes finalizer with warning event
 3. Orphaned provider resources may remain (logged for manual cleanup)
 
@@ -737,6 +1289,11 @@ This ensures:
 - Deleting `ModelDeployment` automatically deletes the provider resource
 - Provider resources cannot be accidentally orphaned
 - Clear ownership hierarchy in the cluster
+
+**Namespace Requirement:** Provider resources are always created in the **same namespace** as the `ModelDeployment`. Cross-namespace ownership is not supported because:
+- Kubernetes owner references require same-namespace resources
+- Simplifies RBAC configuration
+- Follows standard Kubernetes patterns (e.g., Deployment → ReplicaSet → Pod)
 
 ### 4.9 Status Mapping
 
@@ -770,18 +1327,34 @@ This prevents breakage when providers release new CRD versions.
 When a user updates a `ModelDeployment` spec, the controller handles changes based on field type:
 
 **Identity fields (trigger delete + recreate):**
-- `model.id` - Changing the model fundamentally changes the deployment
-- `engine.type` - Changing inference engine requires new containers
-- `provider.name` - Changing provider requires different resource type
+
+| Field | Reason |
+|-------|--------|
+| `model.id` | Changing the model fundamentally changes the deployment |
+| `model.source` | Changing from huggingface to custom changes how model is loaded |
+| `engine.type` | Changing inference engine requires new containers |
+| `provider.name` | Changing provider requires different resource type |
+| `serving.mode` | Changing aggregated ↔ disaggregated restructures the entire deployment |
 
 > **Warning:** Changing identity fields causes brief downtime as the provider resource is deleted and recreated. In-flight requests will fail during this window.
 
 **Config fields (in-place update):**
-- `scaling.replicas` - Can be updated without recreation
-- `env` - Environment variable changes
-- `resources` - Memory/CPU adjustments
-- `engine.args` - Engine parameter tuning
-- `nodeSelector`, `tolerations` - Scheduling constraints
+
+| Field | Notes |
+|-------|-------|
+| `model.servedName` | Changes API-facing model name argument |
+| `scaling.replicas` | Can be updated without recreation |
+| `scaling.prefill.*`, `scaling.decode.*` | Worker scaling (disaggregated mode) |
+| `env` | Environment variable changes |
+| `resources` | Memory/CPU/GPU adjustments |
+| `engine.args` | Engine parameter tuning |
+| `engine.contextLength` | Context length adjustment |
+| `engine.trustRemoteCode` | Trust remote code flag |
+| `image` | Rolling update to new container image |
+| `secrets.huggingFaceToken` | Updates secret reference |
+| `podTemplate.metadata` | Updates pod labels/annotations |
+| `nodeSelector`, `tolerations` | Scheduling constraints |
+| `provider.overrides` | Provider-specific configuration |
 
 The controller patches the provider resource in place for config field changes. If the provider operator rejects an update (e.g., due to its own immutable field constraints), the error is surfaced in `ModelDeployment.status`.
 
@@ -879,13 +1452,64 @@ KAITO currently has no supported overrides (aggregated mode only, no separate ro
 
 #### Override Behavior
 
-- **Unknown keys are ignored** - Controller logs a warning but continues
+- **Unknown keys trigger warnings** - Controller logs a warning for any unknown key at any nesting depth (helps catch typos like `replicsa`)
 - **Invalid types cause reconciliation failure** - Error surfaced in `ModelDeployment.status`
 - **Defaults apply when omitted** - Only specify what you need to customize
+
+#### Provider Component Defaults
+
+The following defaults are applied by provider controllers when not overridden:
+
+**Dynamo Defaults:**
+
+| Component | Field | Default Value |
+|-----------|-------|---------------|
+| Frontend | `replicas` | `1` |
+| Frontend | `resources.cpu` | `"2"` |
+| Frontend | `resources.memory` | `"4Gi"` |
+| Frontend | `routerMode` | `"round-robin"` |
+
+**KubeRay Defaults:**
+
+| Component | Field | Default Value |
+|-----------|-------|---------------|
+| Head | `resources.cpu` | `"2"` |
+| Head | `resources.memory` | `"4Gi"` |
+| Head | `rayStartParams` | `{}` |
+
+**KAITO Defaults:**
+
+KAITO uses aggregated mode only and does not have separate frontend/head components. Resource defaults are derived from `spec.resources`.
+
+**Image Defaults:**
+
+Each provider controller manages default container images for supported engines. Users only need to specify `spec.image` to override the default.
+
+| Provider | Engine | Default Image (managed by provider) |
+|----------|--------|-------------------------------------|
+| Dynamo | vllm | `nvcr.io/nvidia/ai-dynamo/vllm-runtime:<version>` |
+| Dynamo | sglang | `nvcr.io/nvidia/ai-dynamo/sglang-runtime:<version>` |
+| Dynamo | trtllm | `nvcr.io/nvidia/ai-dynamo/trtllm-runtime:<version>` |
+| KAITO | vllm | KAITO preset image |
+| KAITO | llamacpp | User must specify (no default) |
+| KubeRay | vllm | `rayproject/ray-ml:<version>` |
 
 ---
 
 ## 5. Implementation Plan
+
+### Prerequisites
+
+**Kubernetes Version:** 1.26+ required for:
+- CEL validation in CRDs
+- Server-side apply improvements
+- ValidatingAdmissionPolicy support
+
+**Webhook TLS:** The validating webhook uses self-signed certificates managed by [cert-controller](https://github.com/open-policy-agent/cert-controller) (from the OPA project). This approach:
+- Automatically generates and rotates TLS certificates
+- No external dependency on cert-manager
+- Certificates stored in Kubernetes secrets
+- Controller handles certificate rotation transparently
 
 ### Phase 1: Controller and All Providers (MVP)
 
@@ -1032,6 +1656,22 @@ kubectl rollout undo deployment/kubefoundry-controller -n kubefoundry-system
 - Controller detects provider CRD versions dynamically (see Section 4.10)
 - Minimum supported Kubernetes version: 1.26+ (required for CEL validation and server-side apply improvements)
 
+### 6.4 Version Compatibility Matrix
+
+| KubeFoundry Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
+|------------------------|------------|----------------|-----------------|------------------|
+| v0.1.x                 | 1.26-1.30  | v0.3.x         | v0.1.x          | v1.1.x           |
+
+**Provider Operator Requirements:**
+
+| Provider | Minimum Version | CRD API Version | Notes |
+|----------|-----------------|-----------------|-------|
+| KAITO    | v0.3.0          | kaito.sh/v1beta1 | Requires GPU operator for GPU workloads |
+| Dynamo   | v0.1.0          | nvidia.com/v1alpha1 | Requires NVIDIA GPU operator |
+| KubeRay  | v1.1.0          | ray.io/v1       | Optional: KubeRay autoscaler for scaling |
+
+> **Note:** This matrix will be updated with each release. Check the [release notes](https://github.com/kubefoundry/kubefoundry/releases) for the latest compatibility information.
+
 ---
 
 ## 7. API Versioning Strategy
@@ -1068,21 +1708,39 @@ The controller includes a validating admission webhook (Phase 1).
 
 ### Validation Rules
 
+**Schema Validation (core webhook):**
+
 | Rule                                                                | Error Message                                                    |
 | ------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `engine: sglang` with `provider: kaito`                             | "KAITO does not support sglang engine"                           |
-| `engine: trtllm` with `provider: kaito`                             | "KAITO does not support trtllm engine"                           |
-| `engine: llamacpp` with `provider: dynamo`                          | "Dynamo does not support llamacpp engine"                        |
-| `gpu.count: 0` with `provider: dynamo`                              | "Dynamo requires GPU (set resources.gpu.count > 0)"              |
-| `gpu.count: 0` with `provider: kuberay`                             | "KubeRay requires GPU (set resources.gpu.count > 0)"             |
-| `mode: disaggregated` with `provider: kaito`                        | "KAITO does not support disaggregated mode"                      |
-| `mode: disaggregated` with `spec.resources`                         | "Disaggregated mode requires per-component resources in scaling" |
+| `engine: vllm` with `gpu.count: 0`                                  | "vLLM engine requires GPU (set resources.gpu.count > 0)"         |
+| `engine: sglang` with `gpu.count: 0`                                | "SGLang engine requires GPU (set resources.gpu.count > 0)"       |
+| `engine: trtllm` with `gpu.count: 0`                                | "TensorRT-LLM engine requires GPU (set resources.gpu.count > 0)" |
+| `mode: disaggregated` with `spec.resources.gpu`                     | "Cannot specify both resources.gpu and scaling.prefill/decode"   |
 | `mode: disaggregated` without `scaling.prefill` or `scaling.decode` | "Disaggregated mode requires scaling.prefill and scaling.decode" |
-| Provider CRD not installed (webhook only)                           | "Provider '{name}' CRD not installed in cluster"                 |
+| `mode: disaggregated` without `scaling.prefill.gpu.count`           | "Disaggregated mode requires scaling.prefill.gpu.count"          |
+| `mode: disaggregated` without `scaling.decode.gpu.count`            | "Disaggregated mode requires scaling.decode.gpu.count"           |
 | Missing `engine.type`                                               | "engine.type is required"                                        |
 | Missing `model.id` when `source: huggingface`                       | "model.id is required when source is huggingface"                |
+| `servedName` specified with `source: custom`                        | Warning: "servedName is ignored for custom source"               |
+| Provider CRD not installed                                          | "Provider '{name}' CRD not installed in cluster"                 |
 
-**Note:** If the webhook is not available (e.g., during initial setup), provider CRD validation occurs at reconciliation time. The controller will accept the resource and retry until the provider CRD is installed, setting `status.phase: Pending` with a descriptive message.
+**Provider Compatibility (validated by provider controllers, not core):**
+
+| Rule                                         | Error Message                                    |
+| -------------------------------------------- | ------------------------------------------------ |
+| `engine: sglang` with `provider: kaito`      | "KAITO does not support sglang engine"           |
+| `engine: trtllm` with `provider: kaito`      | "KAITO does not support trtllm engine"           |
+| `engine: llamacpp` with `provider: dynamo`   | "Dynamo does not support llamacpp engine"        |
+| `engine: llamacpp` with `provider: kuberay`  | "KubeRay does not support llamacpp engine"       |
+| `engine: sglang` with `provider: kuberay`    | "KubeRay does not support sglang engine"         |
+| `engine: trtllm` with `provider: kuberay`    | "KubeRay does not support trtllm engine"         |
+| `gpu.count: 0` with `provider: dynamo`       | "Dynamo requires GPU (set resources.gpu.count > 0)" |
+| `gpu.count: 0` with `provider: kuberay`      | "KubeRay requires GPU (set resources.gpu.count > 0)" |
+| `mode: disaggregated` with `provider: kaito` | "KAITO does not support disaggregated mode"      |
+
+> **Note:** Provider compatibility validation is performed by provider controllers, not the core webhook. This maintains the "core has zero provider knowledge" principle. If a provider rejects a configuration, the error is surfaced in `ModelDeployment.status.conditions` with type `ProviderCompatible: False`.
+
+**Webhook Unavailability:** If the webhook is not available (e.g., during initial setup), schema validation occurs at reconciliation time. The controller will accept the resource and set `status.phase: Pending` with a descriptive message until validation passes.
 
 ---
 
@@ -1236,8 +1894,11 @@ The design handles provider operator unavailability at deletion time (finalizer 
 - `ModelDeployment.status` becomes stale (no status updates from provider)
 - No proactive detection or user notification
 
+**Staleness Definition:** Status is considered stale if the provider resource status has not been updated for **5 minutes**. This threshold balances timely detection against normal reconciliation intervals.
+
 **Mitigation (future):**
 - Health checks for provider operators before reconciliation
+- `StaleStatus` condition when status exceeds staleness threshold
 - Status condition indicating provider operator health
 - Periodic staleness detection for provider resource status
 
@@ -1296,6 +1957,8 @@ Since each inference engine has different parameter names and defaults, the unif
 | TensorRT-LLM | Build-time config   | -             |
 | llama.cpp    | `--ctx-size` / `-c` | Model max     |
 
+> **Note:** For TensorRT-LLM, `engine.contextLength` is **ignored with a warning** since context length must be configured at engine build time, not runtime. Users should ensure their TensorRT-LLM image is built with the desired context length.
+
 ### 15.2 Trust Remote Code
 
 | Engine       | Parameter             | Default |
@@ -1333,11 +1996,173 @@ engine:
 
 ---
 
+## Appendix A: Alternative Architecture - Monolithic Controller
+
+> **Note:** This appendix describes a simpler alternative architecture where all provider knowledge is embedded in a single controller. **This is NOT the recommended approach** — see Section 3 for the recommended plugin architecture. This alternative trades extensibility for simplicity and may be appropriate for teams that don't need third-party providers or custom selection logic.
+
+### A.1 Overview
+
+Instead of separate provider controllers, a single `kubefoundry-controller` contains all provider transformation logic:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     User's Machine                                │
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │              kubefoundry binary (TypeScript)                │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │ │
+│  │  │   Web UI     │  │   CLI        │  │ Controller       │  │ │
+│  │  │              │  │   Commands   │  │ Installer        │  │ │
+│  │  └──────────────┘  └──────────────┘  └──────────────────┘  │ │
+│  └────────────────────────────┬────────────────────────────────┘ │
+└───────────────────────────────┼──────────────────────────────────┘
+                                │ kubeconfig
+                                ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                         K8s Cluster                                │
+│  ┌─────────────────────────────────────────────────────────────┐  │
+│  │              kubefoundry-controller (Go)                     │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │  │
+│  │  │ Reconciler   │  │  Provider    │  │ Status           │   │  │
+│  │  │              │  │  Transformers│  │ Aggregation      │   │  │
+│  │  │              │  │  (embedded)  │  │                  │   │  │
+│  │  └──────────────┘  └──────────────┘  └──────────────────┘   │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                    │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐   │
+│  │ ModelDeployment │  │ Provider CRDs   │  │ Pods/Services   │   │
+│  │ CRDs            │  │ (Dynamo/KAITO)  │  │                 │   │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+### A.2 Data Flow
+
+```
+User Config → ModelDeployment CRD → KubeFoundry Controller → Provider CRD → Provider Operator → Pods/Services
+                     ↓
+              Status Aggregation
+```
+
+### A.3 Controller Structure
+
+All provider logic lives in a single Go controller:
+
+```
+kubefoundry-controller/
+├── api/
+│   └── v1alpha1/
+│       ├── modeldeployment_types.go
+│       ├── modeldeployment_webhook.go
+│       └── zz_generated.deepcopy.go
+├── controllers/
+│   └── modeldeployment_controller.go
+├── pkg/
+│   ├── providers/
+│   │   ├── interface.go
+│   │   ├── dynamo/
+│   │   │   ├── transformer.go      # Embedded KAITO logic
+│   │   │   └── status.go
+│   │   ├── kaito/
+│   │   │   ├── transformer.go      # Embedded Dynamo logic
+│   │   │   └── status.go
+│   │   └── kuberay/
+│   │       ├── transformer.go      # Embedded KubeRay logic
+│   │       └── status.go
+│   └── selection/
+│       └── algorithm.go            # Built-in selection
+├── config/
+│   ├── crd/
+│   ├── rbac/
+│   └── webhook/
+├── main.go
+└── Dockerfile
+```
+
+### A.4 Built-in Provider Selection
+
+The selection algorithm is hardcoded in the controller:
+
+```
+IF gpu.count == 0 OR resources.gpu is omitted:
+    return KAITO
+    reason: "no GPU requested → kaito (only CPU provider)"
+
+IF engine == "trtllm" OR engine == "sglang":
+    return Dynamo
+    reason: "engine={engine} → dynamo (only {engine} provider)"
+
+IF engine == "llamacpp":
+    return KAITO
+    reason: "engine=llamacpp → kaito (only llamacpp provider)"
+
+IF mode == "disaggregated":
+    return Dynamo
+    reason: "mode=disaggregated → dynamo (best disaggregated support)"
+
+DEFAULT:
+    return Dynamo
+    reason: "default → dynamo (GPU inference default)"
+```
+
+### A.5 Installation
+
+Single deployment:
+
+```bash
+# One command installs everything
+kubectl apply -f https://kubefoundry.io/install.yaml
+
+# Or via CLI
+kubefoundry controller install
+```
+
+### A.6 Comparison: Monolithic vs Plugin Architecture
+
+| Aspect                        | Monolithic (This Section)   | Plugin (Section 3)             |
+| ----------------------------- | --------------------------- | ------------------------------ |
+| Provider knowledge in core    | Yes                         | No                             |
+| Adding new provider           | Modify & release controller | Deploy new provider controller |
+| Provider bug blast radius     | All users                   | Only that provider's users     |
+| Independent provider releases | No                          | Yes                            |
+| Provider version pinning      | No                          | Yes (per provider)             |
+| Custom selection logic        | No                          | Yes (replaceable selector)     |
+| Installation complexity       | Single deployment           | Multiple deployments           |
+| Third-party providers         | Requires core changes       | Just deploy controller         |
+
+### A.7 When to Use Monolithic
+
+The monolithic architecture may be appropriate when:
+
+1. **Simplicity is paramount** - You want the easiest possible deployment
+2. **No third-party providers** - You only use KAITO, Dynamo, and KubeRay
+3. **Centralized releases are acceptable** - You're OK waiting for a full controller release to get provider fixes
+4. **No custom selection needed** - The built-in selection algorithm meets your needs
+
+### A.8 Trade-offs
+
+**Advantages:**
+- Simpler installation (single deployment)
+- Fewer moving parts to manage
+- No CRD for provider registration
+- Simpler debugging (one controller to examine)
+
+**Disadvantages:**
+- Tight coupling - all provider code in one repo
+- Blast radius - bug in KAITO transformer affects all users
+- No third-party extensibility without forking
+- Cannot pin individual provider versions
+- Cannot replace selection algorithm
+
+---
+
 ## 16. References
 
+### Kubernetes & Controller Development
 - [Kubernetes Custom Resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
 - [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime)
 - [Kubebuilder Book](https://book.kubebuilder.io/)
+
+### Provider CRD Specifications
 - [KAITO CRD Spec](https://github.com/kaito-project/kaito)
 - [Dynamo CRD Spec](https://github.com/ai-dynamo/dynamo)
 - [KubeRay CRD Spec](https://github.com/ray-project/kuberay)
@@ -1347,3 +2172,13 @@ engine:
 - [SGLang Server Arguments](https://docs.sglang.io/advanced_features/server_arguments.html)
 - [TensorRT-LLM KV Cache Reuse](https://nvidia.github.io/TensorRT-LLM/advanced/kv-cache-reuse.html)
 - [llama.cpp Server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+
+### Plugin Architecture Inspiration (Section 3)
+- [Kubernetes Container Runtime Interface (CRI)](https://kubernetes.io/docs/concepts/architecture/cri/)
+- [containerd CRI Implementation](https://github.com/containerd/containerd)
+
+### Dockershim History & Lessons
+- [Dockershim Deprecation FAQ](https://kubernetes.io/blog/2020/12/02/dockershim-faq/)
+- [Dockershim: The Historical Context](https://kubernetes.io/blog/2022/05/03/dockershim-historical-context/)
+- [Kubernetes is Moving on From Dockershim](https://kubernetes.io/blog/2022/01/07/kubernetes-is-moving-on-from-dockershim/)
+- [cri-dockerd - External Dockershim Adapter](https://github.com/Mirantis/cri-dockerd)
