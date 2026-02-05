@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -31,12 +32,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
 	"github.com/kubefoundry/kubefoundry/controller/internal/controller"
+	"github.com/kubefoundry/kubefoundry/controller/internal/providers/dynamo"
 	webhookv1alpha1 "github.com/kubefoundry/kubefoundry/controller/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
@@ -63,6 +66,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var enableProviderSelector bool
+	var enableDynamoProvider bool
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -83,6 +87,8 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.BoolVar(&enableProviderSelector, "enable-provider-selector", true,
 		"If set, the controller will run provider selection for ModelDeployments without explicit provider.name")
+	flag.BoolVar(&enableDynamoProvider, "enable-dynamo-provider", true,
+		"If set, the Dynamo provider controller will be enabled")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -197,6 +203,31 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Setup Dynamo provider controller
+	if enableDynamoProvider {
+		dynamoReconciler := dynamo.NewDynamoProviderReconciler(mgr.GetClient(), mgr.GetScheme())
+		if err := dynamoReconciler.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "DynamoProvider")
+			os.Exit(1)
+		}
+
+		// Register the Dynamo provider config
+		dynamoConfigManager := dynamo.NewProviderConfigManager(mgr.GetClient())
+		if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+			setupLog.Info("Registering Dynamo provider")
+			if err := dynamoConfigManager.Register(ctx); err != nil {
+				return err
+			}
+			dynamoConfigManager.StartHeartbeat(ctx)
+			<-ctx.Done()
+			return dynamoConfigManager.Unregister(context.Background())
+		})); err != nil {
+			setupLog.Error(err, "unable to add Dynamo provider config manager")
+			os.Exit(1)
+		}
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
