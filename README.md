@@ -1,6 +1,6 @@
-# KubeFoundry
+# KubeAIRunway
 
-<img src="./frontend/public/logo.png" alt="KubeFoundry Logo" width="200">
+<img src="./frontend/public/logo.png" alt="KubeAIRunway Logo" width="200">
 
 A web-based platform for deploying and managing large language models on Kubernetes with support for multiple inference providers.
 
@@ -62,7 +62,7 @@ Open the web UI at **http://localhost:3001**
 ### Option B: Deploy to Kubernetes
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/sozercan/kube-foundry/main/deploy/kubernetes/kubefoundry.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/KubeAIRunway/main/deploy/kubernetes/kubefoundry.yaml
 
 # Access via port-forward
 kubectl port-forward -n kubefoundry-system svc/kubefoundry 3001:80
