@@ -9,9 +9,21 @@ rules:
   resources:
   - inferenceproviderconfigs
   verbs:
+  - create
   - get
   - list
+  - patch
+  - update
   - watch
+- apiGroups:
+  - kubefoundry.kubefoundry.ai
+  resources:
+  - inferenceproviderconfigs/status
+  - modeldeployments/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - kubefoundry.kubefoundry.ai
   resources:
@@ -31,10 +43,14 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - nvidia.com
   resources:
-  - modeldeployments/status
+  - dynamographdeployments
   verbs:
+  - create
+  - delete
   - get
+  - list
   - patch
   - update
+  - watch
