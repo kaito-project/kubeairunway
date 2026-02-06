@@ -1,5 +1,5 @@
 import * as k8s from '@kubernetes/client-node';
-import type { DeploymentConfig, DeploymentStatus, DeploymentPhase, MetricDefinition, MetricsEndpointConfig } from '@kubefoundry/shared';
+import type { DeploymentConfig, DeploymentStatus, DeploymentPhase, MetricDefinition, MetricsEndpointConfig, KaitoResourceType } from '@kubefoundry/shared';
 import type { Provider, CRDConfig, HelmRepo, HelmChart, InstallationStatus, InstallationStep, UninstallResources } from '../types';
 import { kaitoDeploymentConfigSchema, type KaitoDeploymentConfig } from './schema';
 import { aikitService, GGUF_RUNNER_IMAGE } from '../../services/aikit';
@@ -15,12 +15,31 @@ const KAITO_BASE_IMAGE = 'mcr.microsoft.com/aks/kaito/kaito-base:0.1.1';
 const LLAMACPP_PORT = 5000;
 const VLLM_PORT = 8000;
 
+// CRD Constants for both resource types
+const WORKSPACE_CRD = {
+  apiGroup: 'kaito.sh',
+  apiVersion: 'v1beta1',
+  plural: 'workspaces',
+  kind: 'Workspace',
+} as const;
+
+const INFERENCESET_CRD = {
+  apiGroup: 'kaito.sh',
+  apiVersion: 'v1alpha1',
+  plural: 'inferencesets',
+  kind: 'InferenceSet',
+} as const;
+
 /**
  * KAITO Provider
  * Implements the Provider interface for KAITO (Kubernetes AI Toolchain Operator)
- * 
+ *
  * KAITO's key differentiator is CPU-capable inference using GGUF quantized models
  * built with AIKit. This enables running LLMs without GPU nodes.
+ *
+ * Supports two resource types:
+ * - Workspace (v1beta1): Stable, original KAITO API
+ * - InferenceSet (v1alpha1): Newer, more flexible API
  */
 export class KaitoProvider implements Provider {
   id = 'kaito';
@@ -28,13 +47,24 @@ export class KaitoProvider implements Provider {
   description = 'Flexible inference with GGUF (llama.cpp) and vLLM support. Deploy models on CPU or GPU nodes.';
   defaultNamespace = 'kaito-workspace';
 
-  // CRD Constants
+  // Default CRD config (uses Workspace for backward compatibility)
   private static readonly API_GROUP = 'kaito.sh';
   private static readonly API_VERSION = 'v1beta1';
   private static readonly CRD_PLURAL = 'workspaces';
   private static readonly CRD_KIND = 'Workspace';
 
+  /**
+   * Get CRD configuration for a specific resource type
+   */
+  getCRDConfigForResourceType(resourceType: KaitoResourceType): CRDConfig {
+    if (resourceType === 'inferenceset') {
+      return { ...INFERENCESET_CRD };
+    }
+    return { ...WORKSPACE_CRD };
+  }
+
   getCRDConfig(): CRDConfig {
+    // Default to Workspace for backward compatibility
     return {
       apiGroup: KaitoProvider.API_GROUP,
       apiVersion: KaitoProvider.API_VERSION,
@@ -45,31 +75,43 @@ export class KaitoProvider implements Provider {
 
   generateManifest(config: DeploymentConfig): Record<string, unknown> {
     const kaitoConfig = config as KaitoDeploymentConfig;
+    const resourceType = kaitoConfig.kaitoResourceType || 'workspace';
 
     logger.debug(
-      { name: config.name, modelSource: kaitoConfig.modelSource, computeType: kaitoConfig.computeType, ggufRunMode: kaitoConfig.ggufRunMode },
-      'Generating KAITO Workspace manifest'
+      { name: config.name, modelSource: kaitoConfig.modelSource, computeType: kaitoConfig.computeType, ggufRunMode: kaitoConfig.ggufRunMode, resourceType },
+      `Generating KAITO ${resourceType === 'inferenceset' ? 'InferenceSet' : 'Workspace'} manifest`
     );
 
+    // Route based on resource type
+    if (resourceType === 'inferenceset') {
+      return this.generateInferenceSetManifest(kaitoConfig);
+    }
+    return this.generateWorkspaceManifest(kaitoConfig);
+  }
+
+  /**
+   * Generate a Workspace manifest (v1beta1 - stable API)
+   * Note: Workspace API has resource/inference at top level, NOT inside a spec field
+   */
+  private generateWorkspaceManifest(config: KaitoDeploymentConfig): Record<string, unknown> {
     // Route to vLLM manifest generation if modelSource is 'vllm'
-    if (kaitoConfig.modelSource === 'vllm') {
-      return this.generateVllmManifest(kaitoConfig);
+    if (config.modelSource === 'vllm') {
+      return this.generateWorkspaceVllmManifest(config);
     }
 
     // Determine image and args based on run mode
     let containerImage: string;
     let containerArgs: string[];
 
-    if (kaitoConfig.modelSource === 'huggingface' && kaitoConfig.ggufRunMode === 'direct') {
+    if (config.modelSource === 'huggingface' && config.ggufRunMode === 'direct') {
       // Direct run mode - use runner image with huggingface:// URI
-      // Format: huggingface://org/repo/filename.gguf
       containerImage = GGUF_RUNNER_IMAGE;
-      const modelUri = `huggingface://${kaitoConfig.modelId}/${kaitoConfig.ggufFile}`;
+      const modelUri = `huggingface://${config.modelId}/${config.ggufFile}`;
       containerArgs = [modelUri, '--address=:5000'];
       logger.debug({ image: containerImage, args: containerArgs, modelUri }, 'Using direct run mode with runner image');
     } else {
       // Build mode or premade - use the resolved image reference
-      const imageRef = this.getImageRef(kaitoConfig);
+      const imageRef = this.getImageRef(config);
       if (!imageRef) {
         throw new Error('Unable to determine image reference for KAITO deployment');
       }
@@ -80,41 +122,42 @@ export class KaitoProvider implements Provider {
     // Build resource requirements
     const resources: Record<string, Record<string, string | number>> = {};
 
-    if (kaitoConfig.resources?.memory) {
+    if (config.resources?.memory) {
       resources.requests = resources.requests || {};
-      resources.requests.memory = kaitoConfig.resources.memory;
+      resources.requests.memory = config.resources.memory;
     }
 
-    if (kaitoConfig.resources?.cpu) {
+    if (config.resources?.cpu) {
       resources.requests = resources.requests || {};
-      resources.requests.cpu = kaitoConfig.resources.cpu;
+      resources.requests.cpu = config.resources.cpu;
     }
 
-    if (kaitoConfig.computeType === 'gpu' && kaitoConfig.resources?.gpu) {
+    if (config.computeType === 'gpu' && config.resources?.gpu) {
       resources.limits = resources.limits || {};
-      resources.limits['nvidia.com/gpu'] = kaitoConfig.resources.gpu;
+      resources.limits['nvidia.com/gpu'] = config.resources.gpu;
     }
 
-    // Build the workspace manifest
-    // Note: KAITO Workspace API has resource/inference/tuning at top level, NOT inside a spec field
+    // Build the Workspace manifest
+    // Note: Workspace API has resource/inference at top level, NOT inside a spec field
     const manifest: Record<string, unknown> = {
-      apiVersion: `${KaitoProvider.API_GROUP}/${KaitoProvider.API_VERSION}`,
-      kind: KaitoProvider.CRD_KIND,
+      apiVersion: `${WORKSPACE_CRD.apiGroup}/${WORKSPACE_CRD.apiVersion}`,
+      kind: WORKSPACE_CRD.kind,
       metadata: {
-        name: kaitoConfig.name,
-        namespace: kaitoConfig.namespace,
+        name: config.name,
+        namespace: config.namespace,
         labels: {
           'app.kubernetes.io/name': 'kubefoundry',
-          'app.kubernetes.io/instance': kaitoConfig.name,
+          'app.kubernetes.io/instance': config.name,
           'app.kubernetes.io/managed-by': 'kubefoundry',
-          'kubefoundry.io/compute-type': kaitoConfig.computeType,
-          'kubefoundry.io/model-source': kaitoConfig.modelSource,
-          ...(kaitoConfig.modelSource === 'huggingface' && {
-            'kubefoundry.io/run-mode': kaitoConfig.ggufRunMode || 'direct',
+          'kubefoundry.io/compute-type': config.computeType,
+          'kubefoundry.io/model-source': config.modelSource,
+          'kubefoundry.io/resource-type': 'workspace',
+          ...(config.modelSource === 'huggingface' && {
+            'kubefoundry.io/run-mode': config.ggufRunMode || 'direct',
           }),
         },
       },
-      resource: this.buildResourceSpec(kaitoConfig),
+      resource: this.buildWorkspaceResourceSpec(config),
       inference: {
         template: {
           spec: {
@@ -141,12 +184,11 @@ export class KaitoProvider implements Provider {
   }
 
   /**
-   * Generate vLLM manifest for HuggingFace models using kaito-base image
-   * Based on: https://github.com/kaito-project/kaito/blob/main/examples/custom-model-integration/custom-model-deployment.yaml
+   * Generate vLLM Workspace manifest for HuggingFace models using kaito-base image
    */
-  private generateVllmManifest(config: KaitoDeploymentConfig): Record<string, unknown> {
+  private generateWorkspaceVllmManifest(config: KaitoDeploymentConfig): Record<string, unknown> {
     const gpuCount = config.resources?.gpu || 1;
-    
+
     logger.debug(
       { name: config.name, modelId: config.modelId, gpuCount, maxModelLen: config.maxModelLen },
       'Generating vLLM KAITO Workspace manifest'
@@ -170,8 +212,8 @@ export class KaitoProvider implements Provider {
 
     // Build environment variables
     const env: Array<Record<string, unknown>> = [];
-    
-    // Add HF_TOKEN if gated model (hfTokenSecret is set)
+
+    // Add HF_TOKEN if gated model
     if (config.hfTokenSecret) {
       env.push({
         name: 'HF_TOKEN',
@@ -232,15 +274,14 @@ export class KaitoProvider implements Provider {
       ],
     };
 
-    // Add env if we have environment variables
     if (env.length > 0) {
       container.env = env;
     }
 
-    // Build the workspace manifest
+    // Build the Workspace manifest
     const manifest: Record<string, unknown> = {
-      apiVersion: `${KaitoProvider.API_GROUP}/${KaitoProvider.API_VERSION}`,
-      kind: KaitoProvider.CRD_KIND,
+      apiVersion: `${WORKSPACE_CRD.apiGroup}/${WORKSPACE_CRD.apiVersion}`,
+      kind: WORKSPACE_CRD.kind,
       metadata: {
         name: config.name,
         namespace: config.namespace,
@@ -248,11 +289,12 @@ export class KaitoProvider implements Provider {
           'app.kubernetes.io/name': 'kubefoundry',
           'app.kubernetes.io/instance': config.name,
           'app.kubernetes.io/managed-by': 'kubefoundry',
-          'kubefoundry.io/compute-type': 'gpu',  // vLLM always requires GPU
+          'kubefoundry.io/compute-type': 'gpu',
           'kubefoundry.io/model-source': 'vllm',
+          'kubefoundry.io/resource-type': 'workspace',
         },
       },
-      resource: this.buildResourceSpec(config),
+      resource: this.buildWorkspaceResourceSpec(config),
       inference: {
         template: {
           spec: {
@@ -274,15 +316,15 @@ export class KaitoProvider implements Provider {
   }
 
   /**
-   * Build the resource spec for node targeting and scaling
-   * Uses labelSelector for BYO node scenarios (KAITO 0.8.0+)
+   * Build the resource spec for Workspace
+   * Uses labelSelector for BYO nodes, or count/instanceType for provisioning
    */
-  private buildResourceSpec(config: KaitoDeploymentConfig): Record<string, unknown> {
+  private buildWorkspaceResourceSpec(config: KaitoDeploymentConfig): Record<string, unknown> {
     const resourceSpec: Record<string, unknown> = {
       count: config.replicas || 1,
     };
 
-    // If user provided a custom labelSelector, use it
+    // Add labelSelector for node targeting
     if (config.labelSelector && Object.keys(config.labelSelector).length > 0) {
       resourceSpec.labelSelector = {
         matchLabels: config.labelSelector,
@@ -310,10 +352,299 @@ export class KaitoProvider implements Provider {
       }
     }
 
-    // NOTE: preferredNodes removed - deprecated in KAITO 0.8.0
-    // BYO nodes should use labelSelector instead
+    // Add instanceType for non-BYO scenarios
+    if (config.instanceType) {
+      resourceSpec.instanceType = config.instanceType;
+    }
 
     return resourceSpec;
+  }
+
+  /**
+   * Generate an InferenceSet manifest (v1alpha1 - newer API)
+   * InferenceSet structure: spec.template.inference contains the pod template
+   */
+  private generateInferenceSetManifest(config: KaitoDeploymentConfig): Record<string, unknown> {
+    // Route to vLLM manifest generation if modelSource is 'vllm'
+    if (config.modelSource === 'vllm') {
+      return this.generateInferenceSetVllmManifest(config);
+    }
+
+    // Determine image and args based on run mode
+    let containerImage: string;
+    let containerArgs: string[];
+
+    if (config.modelSource === 'huggingface' && config.ggufRunMode === 'direct') {
+      // Direct run mode - use runner image with huggingface:// URI
+      containerImage = GGUF_RUNNER_IMAGE;
+      const modelUri = `huggingface://${config.modelId}/${config.ggufFile}`;
+      containerArgs = [modelUri, '--address=:5000'];
+      logger.debug({ image: containerImage, args: containerArgs, modelUri }, 'Using direct run mode with runner image');
+    } else {
+      // Build mode or premade - use the resolved image reference
+      const imageRef = this.getImageRef(config);
+      if (!imageRef) {
+        throw new Error('Unable to determine image reference for KAITO deployment');
+      }
+      containerImage = imageRef;
+      containerArgs = ['run', '--address=:5000'];
+    }
+
+    // Build resource requirements for container
+    const containerResources: Record<string, Record<string, string | number>> = {};
+
+    if (config.resources?.memory) {
+      containerResources.requests = containerResources.requests || {};
+      containerResources.requests.memory = config.resources.memory;
+    }
+
+    if (config.resources?.cpu) {
+      containerResources.requests = containerResources.requests || {};
+      containerResources.requests.cpu = config.resources.cpu;
+    }
+
+    if (config.computeType === 'gpu' && config.resources?.gpu) {
+      containerResources.limits = containerResources.limits || {};
+      containerResources.limits['nvidia.com/gpu'] = config.resources.gpu;
+    }
+
+    // Build the InferenceSet manifest
+    const manifest: Record<string, unknown> = {
+      apiVersion: `${INFERENCESET_CRD.apiGroup}/${INFERENCESET_CRD.apiVersion}`,
+      kind: INFERENCESET_CRD.kind,
+      metadata: {
+        name: config.name,
+        namespace: config.namespace,
+        labels: {
+          'app.kubernetes.io/name': 'kubefoundry',
+          'app.kubernetes.io/instance': config.name,
+          'app.kubernetes.io/managed-by': 'kubefoundry',
+          'kubefoundry.io/compute-type': config.computeType,
+          'kubefoundry.io/model-source': config.modelSource,
+          'kubefoundry.io/resource-type': 'inferenceset',
+          ...(config.modelSource === 'huggingface' && {
+            'kubefoundry.io/run-mode': config.ggufRunMode || 'direct',
+          }),
+        },
+      },
+      spec: {
+        replicas: config.replicas || 1,
+        labelSelector: this.buildInferenceSetLabelSelector(config),
+        template: {
+          // resource.instanceType is only included for non-BYO scenarios
+          ...this.buildInferenceSetResourceSpec(config),
+          inference: {
+            template: {
+              spec: {
+                containers: [
+                  {
+                    name: 'model',
+                    image: containerImage,
+                    args: containerArgs,
+                    ports: [
+                      {
+                        containerPort: LLAMACPP_PORT,
+                        protocol: 'TCP',
+                      },
+                    ],
+                    ...(Object.keys(containerResources).length > 0 && { resources: containerResources }),
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    return manifest;
+  }
+
+  /**
+   * Generate vLLM InferenceSet manifest for HuggingFace models using kaito-base image
+   */
+  private generateInferenceSetVllmManifest(config: KaitoDeploymentConfig): Record<string, unknown> {
+    const gpuCount = config.resources?.gpu || 1;
+
+    logger.debug(
+      { name: config.name, modelId: config.modelId, gpuCount, maxModelLen: config.maxModelLen },
+      'Generating vLLM KAITO InferenceSet manifest'
+    );
+
+    // Build vLLM command args
+    const vllmArgs: string[] = [
+      '-m',
+      'vllm.entrypoints.openai.api_server',
+      '--model',
+      config.modelId!,
+      '--tensor-parallel-size',
+      gpuCount.toString(),
+      '--trust-remote-code',
+    ];
+
+    // Add optional max-model-len if specified
+    if (config.maxModelLen) {
+      vllmArgs.push('--max-model-len', config.maxModelLen.toString());
+    }
+
+    // Build environment variables
+    const env: Array<Record<string, unknown>> = [];
+
+    // Add HF_TOKEN if gated model
+    if (config.hfTokenSecret) {
+      env.push({
+        name: 'HF_TOKEN',
+        valueFrom: {
+          secretKeyRef: {
+            name: config.hfTokenSecret,
+            key: 'HF_TOKEN',
+          },
+        },
+      });
+    }
+
+    // Build container spec
+    const container: Record<string, unknown> = {
+      name: 'model',
+      image: KAITO_BASE_IMAGE,
+      command: ['python'],
+      args: vllmArgs,
+      ports: [
+        {
+          containerPort: VLLM_PORT,
+          protocol: 'TCP',
+        },
+      ],
+      livenessProbe: {
+        httpGet: {
+          path: '/health',
+          port: VLLM_PORT,
+          scheme: 'HTTP',
+        },
+        initialDelaySeconds: 600,
+        periodSeconds: 10,
+        failureThreshold: 3,
+      },
+      readinessProbe: {
+        httpGet: {
+          path: '/health',
+          port: VLLM_PORT,
+          scheme: 'HTTP',
+        },
+        initialDelaySeconds: 30,
+        periodSeconds: 10,
+        failureThreshold: 3,
+      },
+      resources: {
+        requests: {
+          'nvidia.com/gpu': gpuCount,
+        },
+        limits: {
+          'nvidia.com/gpu': gpuCount,
+        },
+      },
+      volumeMounts: [
+        {
+          name: 'dshm',
+          mountPath: '/dev/shm',
+        },
+      ],
+    };
+
+    if (env.length > 0) {
+      container.env = env;
+    }
+
+    // Build the InferenceSet manifest
+    const manifest: Record<string, unknown> = {
+      apiVersion: `${INFERENCESET_CRD.apiGroup}/${INFERENCESET_CRD.apiVersion}`,
+      kind: INFERENCESET_CRD.kind,
+      metadata: {
+        name: config.name,
+        namespace: config.namespace,
+        labels: {
+          'app.kubernetes.io/name': 'kubefoundry',
+          'app.kubernetes.io/instance': config.name,
+          'app.kubernetes.io/managed-by': 'kubefoundry',
+          'kubefoundry.io/compute-type': 'gpu',
+          'kubefoundry.io/model-source': 'vllm',
+          'kubefoundry.io/resource-type': 'inferenceset',
+        },
+      },
+      spec: {
+        replicas: config.replicas || 1,
+        labelSelector: this.buildInferenceSetLabelSelector(config),
+        template: {
+          ...this.buildInferenceSetResourceSpec(config),
+          inference: {
+            template: {
+              spec: {
+                containers: [container],
+                volumes: [
+                  {
+                    name: 'dshm',
+                    emptyDir: {
+                      medium: 'Memory',
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    return manifest;
+  }
+
+  /**
+   * Build the labelSelector for InferenceSet spec
+   * This is required for InferenceSet and is used to select pods
+   */
+  private buildInferenceSetLabelSelector(config: KaitoDeploymentConfig): Record<string, unknown> {
+    // If user provided a custom labelSelector, use it
+    if (config.labelSelector && Object.keys(config.labelSelector).length > 0) {
+      return {
+        matchLabels: config.labelSelector,
+      };
+    }
+
+    // Default labelSelector based on compute requirements
+    const requiresGPU = config.computeType === 'gpu' || config.modelSource === 'vllm';
+
+    if (requiresGPU) {
+      return {
+        matchLabels: {
+          'nvidia.com/gpu.present': 'true',
+        },
+      };
+    }
+
+    // CPU-only workloads
+    return {
+      matchLabels: {
+        'kubernetes.io/os': 'linux',
+      },
+    };
+  }
+
+  /**
+   * Build the resource spec for InferenceSet template
+   * For BYO nodes, omit instanceType - KAITO will use labelSelector to find nodes
+   */
+  private buildInferenceSetResourceSpec(config: KaitoDeploymentConfig): Record<string, unknown> {
+    // For BYO nodes (no instanceType configured), return empty object
+    if (!config.instanceType) {
+      return {};
+    }
+
+    // For non-BYO scenarios, include resource.instanceType
+    return {
+      resource: {
+        instanceType: config.instanceType,
+      },
+    };
   }
 
   /**
@@ -345,7 +676,22 @@ export class KaitoProvider implements Provider {
   }
 
   parseStatus(raw: unknown): DeploymentStatus {
-    // Note: KAITO Workspace API has resource/inference/tuning at top level, NOT inside a spec field
+    // Detect resource type from the raw object
+    const obj = raw as { apiVersion?: string; kind?: string; metadata?: { labels?: Record<string, string> } };
+    const resourceType = obj.metadata?.labels?.['kubefoundry.io/resource-type'] ||
+                         (obj.kind === 'InferenceSet' ? 'inferenceset' : 'workspace');
+
+    if (resourceType === 'inferenceset' || obj.kind === 'InferenceSet') {
+      return this.parseInferenceSetStatus(raw);
+    }
+    return this.parseWorkspaceStatus(raw);
+  }
+
+  /**
+   * Parse Workspace status (v1beta1)
+   * Note: Workspace API has resource/inference at top level, NOT inside a spec field
+   */
+  private parseWorkspaceStatus(raw: unknown): DeploymentStatus {
     const obj = raw as {
       metadata?: {
         name?: string;
@@ -388,7 +734,6 @@ export class KaitoProvider implements Provider {
 
     // Determine model info from labels or inference spec
     const modelSource = labels['kubefoundry.io/model-source'] || 'unknown';
-    const computeType = labels['kubefoundry.io/compute-type'] || 'cpu';
     const runMode = labels['kubefoundry.io/run-mode'] || '';
     const container = inference.template?.spec?.containers?.[0];
     const imageRef = container?.image || '';
@@ -396,26 +741,21 @@ export class KaitoProvider implements Provider {
 
     // Extract model ID and determine engine based on model source
     let modelId = imageRef;
-    let engine: 'llamacpp' | 'vllm' = 'llamacpp';  // Default to llamacpp
-    
+    let engine: 'llamacpp' | 'vllm' = 'llamacpp';
+
     if (modelSource === 'vllm' || imageRef === KAITO_BASE_IMAGE) {
-      // vLLM mode - extract model from --model arg
       engine = 'vllm';
       const modelArgIdx = containerArgs.findIndex(arg => arg === '--model');
       if (modelArgIdx >= 0 && containerArgs[modelArgIdx + 1]) {
         modelId = containerArgs[modelArgIdx + 1];
       }
     } else if (runMode === 'direct' || imageRef === GGUF_RUNNER_IMAGE) {
-      // For direct mode, extract model name from huggingface:// URI in container args
-      // Format: huggingface://org/repo/filename.gguf
       const hfArg = containerArgs.find(arg => arg.startsWith('huggingface://'));
       if (hfArg) {
-        // Extract the filename from the URI (e.g., "gemma-3-1b-it-Q8_0.gguf")
         const parts = hfArg.replace('huggingface://', '').split('/');
         modelId = parts[parts.length - 1];
       }
     } else if (modelSource === 'premade') {
-      // Try to find the premade model name from the image
       const premadeModel = aikitService.getPremadeModels().find(m => m.image === imageRef);
       if (premadeModel) {
         modelId = premadeModel.modelName;
@@ -423,9 +763,8 @@ export class KaitoProvider implements Provider {
     }
 
     // Map KAITO phase to our DeploymentPhase
-    // KAITO may not set phase directly, so also check conditions
     let phase = this.mapPhase(status.phase);
-    
+
     // If phase is Pending but WorkspaceSucceeded condition is True, it's actually Running
     const workspaceSucceeded = (status.conditions || []).find(c => c.type === 'WorkspaceSucceeded');
     const inferenceReady = (status.conditions || []).find(c => c.type === 'InferenceReady');
@@ -436,13 +775,10 @@ export class KaitoProvider implements Provider {
     // Calculate replica status
     const desiredReplicas = resource.count || 1;
     const workerNodes = status.workerNodes || [];
-    // readyReplicas should be min of workerNodes and desired, or 0 if not running
     const readyReplicas = phase === 'Running' ? Math.min(workerNodes.length || desiredReplicas, desiredReplicas) : 0;
 
     // Determine the service port and name based on engine
-    // KAITO's auto-created service uses port 80 (targeting container port 5000 for llama.cpp)
-    // For vLLM, we create a separate KubeFoundry-managed service on port 8000
-    const servicePort = engine === 'vllm' ? VLLM_PORT : 80;  // KAITO service exposes port 80
+    const servicePort = engine === 'vllm' ? VLLM_PORT : 80;
     const serviceName = engine === 'vllm' ? `${metadata.name}-vllm` : metadata.name;
 
     return {
@@ -450,7 +786,7 @@ export class KaitoProvider implements Provider {
       namespace: metadata.namespace || 'default',
       modelId,
       servedModelName: metadata.name || 'unknown',
-      engine,  // 'vllm' or 'llamacpp' based on model source
+      engine,
       mode: 'aggregated',
       phase,
       provider: this.id,
@@ -466,14 +802,132 @@ export class KaitoProvider implements Provider {
         message: c.message,
         lastTransitionTime: c.lastTransitionTime,
       })),
-      pods: [], // Pods are managed by KAITO
+      pods: [],
       createdAt: metadata.creationTimestamp || new Date().toISOString(),
-      frontendService: `${serviceName}:${servicePort}`, // Use vLLM service name for vLLM deployments
+      frontendService: `${serviceName}:${servicePort}`,
     };
   }
 
   /**
-   * Map KAITO workspace phase to our DeploymentPhase
+   * Parse InferenceSet status (v1alpha1)
+   */
+  private parseInferenceSetStatus(raw: unknown): DeploymentStatus {
+    const obj = raw as {
+      metadata?: {
+        name?: string;
+        namespace?: string;
+        creationTimestamp?: string;
+        labels?: Record<string, string>;
+      };
+      spec?: {
+        replicas?: number;
+        template?: {
+          inference?: {
+            template?: {
+              spec?: {
+                containers?: Array<{
+                  image?: string;
+                  command?: string[];
+                  args?: string[];
+                }>;
+              };
+            };
+          };
+        };
+      };
+      status?: {
+        replicas?: number;
+        readyReplicas?: number;
+        conditions?: Array<{
+          type?: string;
+          status?: string;
+          reason?: string;
+          message?: string;
+          lastTransitionTime?: string;
+        }>;
+      };
+    };
+
+    const metadata = obj.metadata || {};
+    const spec = obj.spec || {};
+    const status = obj.status || {};
+    const labels = metadata.labels || {};
+
+    // Determine model info from labels or spec
+    const modelSource = labels['kubefoundry.io/model-source'] || 'unknown';
+    const runMode = labels['kubefoundry.io/run-mode'] || '';
+    const container = spec.template?.inference?.template?.spec?.containers?.[0];
+    const imageRef = container?.image || '';
+    const containerArgs = container?.args || [];
+
+    // Extract model ID and determine engine based on model source
+    let modelId = imageRef;
+    let engine: 'llamacpp' | 'vllm' = 'llamacpp';
+
+    if (modelSource === 'vllm' || imageRef === KAITO_BASE_IMAGE) {
+      engine = 'vllm';
+      const modelArgIdx = containerArgs.findIndex(arg => arg === '--model');
+      if (modelArgIdx >= 0 && containerArgs[modelArgIdx + 1]) {
+        modelId = containerArgs[modelArgIdx + 1];
+      }
+    } else if (runMode === 'direct' || imageRef === GGUF_RUNNER_IMAGE) {
+      const hfArg = containerArgs.find(arg => arg.startsWith('huggingface://'));
+      if (hfArg) {
+        const parts = hfArg.replace('huggingface://', '').split('/');
+        modelId = parts[parts.length - 1];
+      }
+    } else if (modelSource === 'premade') {
+      const premadeModel = aikitService.getPremadeModels().find(m => m.image === imageRef);
+      if (premadeModel) {
+        modelId = premadeModel.modelName;
+      }
+    }
+
+    // Map phase from conditions - InferenceSet doesn't have a phase field
+    let phase: DeploymentPhase = 'Pending';
+    const readyCondition = (status.conditions || []).find(c => c.type === 'Ready');
+    if (readyCondition?.status === 'True') {
+      phase = 'Running';
+    }
+
+    // Calculate replica status from InferenceSet status
+    const desiredReplicas = spec.replicas || 1;
+    const readyReplicas = status.readyReplicas || 0;
+    const availableReplicas = phase === 'Running' ? readyReplicas : 0;
+
+    // Determine the service port and name based on engine
+    const servicePort = engine === 'vllm' ? VLLM_PORT : 80;
+    const serviceName = engine === 'vllm' ? `${metadata.name}-vllm` : metadata.name;
+
+    return {
+      name: metadata.name || 'unknown',
+      namespace: metadata.namespace || 'default',
+      modelId,
+      servedModelName: metadata.name || 'unknown',
+      engine,
+      mode: 'aggregated',
+      phase,
+      provider: this.id,
+      replicas: {
+        desired: desiredReplicas,
+        ready: readyReplicas,
+        available: availableReplicas,
+      },
+      conditions: (status.conditions || []).map((c) => ({
+        type: c.type || '',
+        status: (c.status as 'True' | 'False' | 'Unknown') || 'Unknown',
+        reason: c.reason,
+        message: c.message,
+        lastTransitionTime: c.lastTransitionTime,
+      })),
+      pods: [],
+      createdAt: metadata.creationTimestamp || new Date().toISOString(),
+      frontendService: `${serviceName}:${servicePort}`,
+    };
+  }
+
+  /**
+   * Map KAITO phase to our DeploymentPhase
    */
   private mapPhase(phase?: string): DeploymentPhase {
     if (!phase) return 'Pending';
@@ -538,7 +992,7 @@ export class KaitoProvider implements Provider {
   getInstallationSteps(): InstallationStep[] {
     const kaitoCrdBaseUrl = `https://raw.githubusercontent.com/kaito-project/kaito/v${KAITO_VERSION}/charts/kaito/workspace/crds`;
     const karpenterCrdBaseUrl = 'https://raw.githubusercontent.com/kubernetes-sigs/karpenter/main/pkg/apis/crds';
-    
+
     return [
       {
         title: 'Add KAITO Helm Repository',
@@ -584,7 +1038,7 @@ export class KaitoProvider implements Provider {
     // Karpenter CRD URLs - KAITO requires these even when Node Auto-Provisioning is disabled
     // This is a workaround for a KAITO bug where informers are registered unconditionally
     const karpenterCrdBaseUrl = 'https://raw.githubusercontent.com/kubernetes-sigs/karpenter/main/pkg/apis/crds';
-    
+
     return [
       {
         name: 'kaito-workspace',
@@ -604,6 +1058,7 @@ export class KaitoProvider implements Provider {
         ],
         values: {
           featureGates: {
+            enableInferenceSetController: true,
             disableNodeAutoProvisioning: true,
           },
           localCSIDriver: {
@@ -806,9 +1261,10 @@ export class KaitoProvider implements Provider {
 
   getUninstallResources(): UninstallResources {
     return {
-      // KAITO CRDs: workspaces.kaito.sh, ragengines.kaito.sh
+      // KAITO CRDs: workspaces.kaito.sh, inferencesets.kaito.sh, ragengines.kaito.sh
       crds: [
-        `${KaitoProvider.CRD_PLURAL}.${KaitoProvider.API_GROUP}`,
+        `${WORKSPACE_CRD.plural}.${WORKSPACE_CRD.apiGroup}`,
+        `${INFERENCESET_CRD.plural}.${INFERENCESET_CRD.apiGroup}`,
         `ragengines.${KaitoProvider.API_GROUP}`,
       ],
       // KAITO operator namespace

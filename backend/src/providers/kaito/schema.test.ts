@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { kaitoDeploymentConfigSchema, kaitoWorkspaceSchema } from './schema';
+import { kaitoDeploymentConfigSchema, kaitoInferenceSetSchema } from './schema';
 
 describe('kaitoDeploymentConfigSchema', () => {
   const validPremadeConfig = {
@@ -310,33 +310,38 @@ describe('kaitoDeploymentConfigSchema', () => {
   });
 });
 
-describe('kaitoWorkspaceSchema', () => {
+describe('kaitoInferenceSetSchema', () => {
   const validManifest = {
-    apiVersion: 'kaito.sh/v1beta1',
-    kind: 'Workspace',
+    apiVersion: 'kaito.sh/v1alpha1',
+    kind: 'InferenceSet',
     metadata: {
       name: 'my-deployment',
       namespace: 'kaito-workspace',
     },
     spec: {
-      resource: {
-        count: 1,
+      replicas: 1,
+      labelSelector: {
+        matchLabels: {
+          'kubernetes.io/os': 'linux',
+        },
       },
-      inference: {
-        template: {
-          spec: {
-            containers: [
-              {
-                name: 'model',
-                image: 'ghcr.io/kaito-project/aikit/llama-3.2:3b',
-                ports: [
-                  {
-                    containerPort: 8080,
-                    protocol: 'TCP',
-                  },
-                ],
-              },
-            ],
+      template: {
+        inference: {
+          template: {
+            spec: {
+              containers: [
+                {
+                  name: 'model',
+                  image: 'ghcr.io/kaito-project/aikit/llama-3.2:3b',
+                  ports: [
+                    {
+                      containerPort: 5000,
+                      protocol: 'TCP',
+                    },
+                  ],
+                },
+              ],
+            },
           },
         },
       },
@@ -344,12 +349,12 @@ describe('kaitoWorkspaceSchema', () => {
   };
 
   it('accepts valid minimal manifest', () => {
-    const result = kaitoWorkspaceSchema.safeParse(validManifest);
+    const result = kaitoInferenceSetSchema.safeParse(validManifest);
     expect(result.success).toBe(true);
   });
 
   it('accepts manifest with labels', () => {
-    const result = kaitoWorkspaceSchema.safeParse({
+    const result = kaitoInferenceSetSchema.safeParse({
       ...validManifest,
       metadata: {
         ...validManifest.metadata,
@@ -362,18 +367,17 @@ describe('kaitoWorkspaceSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts manifest with labelSelector', () => {
-    const result = kaitoWorkspaceSchema.safeParse({
+  it('accepts manifest with resource instanceType', () => {
+    const result = kaitoInferenceSetSchema.safeParse({
       ...validManifest,
       spec: {
         ...validManifest.spec,
-        resource: {
-          count: 2,
-          labelSelector: {
-            matchLabels: {
-              'kubernetes.io/arch': 'amd64',
-            },
+        replicas: 2,
+        template: {
+          resource: {
+            instanceType: 'Standard_NC24ads_A100_v4',
           },
+          inference: validManifest.spec.template.inference,
         },
       },
     });
@@ -381,28 +385,30 @@ describe('kaitoWorkspaceSchema', () => {
   });
 
   it('accepts manifest with container resources', () => {
-    const result = kaitoWorkspaceSchema.safeParse({
+    const result = kaitoInferenceSetSchema.safeParse({
       ...validManifest,
       spec: {
         ...validManifest.spec,
-        inference: {
-          template: {
-            spec: {
-              containers: [
-                {
-                  name: 'model',
-                  image: 'test:latest',
-                  resources: {
-                    requests: {
-                      memory: '8Gi',
-                      cpu: '4',
-                    },
-                    limits: {
-                      'nvidia.com/gpu': '1',
+        template: {
+          inference: {
+            template: {
+              spec: {
+                containers: [
+                  {
+                    name: 'model',
+                    image: 'test:latest',
+                    resources: {
+                      requests: {
+                        memory: '8Gi',
+                        cpu: '4',
+                      },
+                      limits: {
+                        'nvidia.com/gpu': 1,
+                      },
                     },
                   },
-                },
-              ],
+                ],
+              },
             },
           },
         },
@@ -412,7 +418,7 @@ describe('kaitoWorkspaceSchema', () => {
   });
 
   it('rejects invalid apiVersion', () => {
-    const result = kaitoWorkspaceSchema.safeParse({
+    const result = kaitoInferenceSetSchema.safeParse({
       ...validManifest,
       apiVersion: 'wrong/v1',
     });
@@ -420,7 +426,7 @@ describe('kaitoWorkspaceSchema', () => {
   });
 
   it('rejects invalid kind', () => {
-    const result = kaitoWorkspaceSchema.safeParse({
+    const result = kaitoInferenceSetSchema.safeParse({
       ...validManifest,
       kind: 'Deployment',
     });
@@ -428,20 +434,54 @@ describe('kaitoWorkspaceSchema', () => {
   });
 
   it('accepts manifest with container args', () => {
-    const result = kaitoWorkspaceSchema.safeParse({
+    const result = kaitoInferenceSetSchema.safeParse({
       ...validManifest,
       spec: {
         ...validManifest.spec,
-        inference: {
-          template: {
-            spec: {
-              containers: [
-                {
-                  name: 'model',
-                  image: 'test:latest',
-                  args: ['run', '--address=:8080'],
-                },
-              ],
+        template: {
+          inference: {
+            template: {
+              spec: {
+                containers: [
+                  {
+                    name: 'model',
+                    image: 'test:latest',
+                    args: ['run', '--address=:5000'],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts manifest with volumes for vLLM shared memory', () => {
+    const result = kaitoInferenceSetSchema.safeParse({
+      ...validManifest,
+      spec: {
+        ...validManifest.spec,
+        template: {
+          inference: {
+            template: {
+              spec: {
+                containers: [
+                  {
+                    name: 'model',
+                    image: 'test:latest',
+                  },
+                ],
+                volumes: [
+                  {
+                    name: 'dshm',
+                    emptyDir: {
+                      medium: 'Memory',
+                    },
+                  },
+                ],
+              },
             },
           },
         },

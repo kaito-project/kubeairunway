@@ -6,11 +6,11 @@ import type { KaitoDeploymentConfig } from '../providers/kaito/schema';
 
 /**
  * End-to-end tests for the KAITO premade model deployment flow.
- * 
+ *
  * These tests verify the complete flow from:
  * 1. Fetching available premade models
  * 2. Building (resolving) the model image
- * 3. Generating a valid KAITO Workspace manifest
+ * 3. Generating a valid KAITO InferenceSet manifest
  */
 describe('KAITO Premade Model Deployment Flow', () => {
   describe('Complete deployment flow', () => {
@@ -72,6 +72,7 @@ describe('KAITO Premade Model Deployment Flow', () => {
         name: 'test-llama',
         namespace: 'default',
         provider: 'kaito',
+        kaitoResourceType: 'workspace',
         modelSource: 'premade',
         premadeModel: 'llama3.2:3b',
         ggufRunMode: 'direct',
@@ -83,19 +84,19 @@ describe('KAITO Premade Model Deployment Flow', () => {
       const provider = getProvider('kaito');
       expect(provider).toBeDefined();
 
-      // Generate manifest
+      // Generate manifest - default is now Workspace
       const manifest = provider!.generateManifest(config);
       expect(manifest).toBeDefined();
 
       // Manifest is already an object, access directly
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parsed = manifest as any;
-      expect(parsed.kind).toBe('Workspace');
+      expect(parsed.kind).toBe('Workspace');  // Default is now Workspace
       expect(parsed.apiVersion).toBe('kaito.sh/v1beta1');
       expect(parsed.metadata.name).toBe('test-llama');
       expect(parsed.metadata.namespace).toBe('default');
 
-      // Check that inference template uses the correct image
+      // Workspace has inference at top level (not in spec.template)
       const container = parsed.inference.template.spec.containers[0];
       expect(container.image).toBe(premadeModel!.image);
     });
@@ -105,6 +106,7 @@ describe('KAITO Premade Model Deployment Flow', () => {
         name: 'test-invalid',
         namespace: 'default',
         provider: 'kaito',
+        kaitoResourceType: 'workspace',
         modelSource: 'premade',
         premadeModel: 'non-existent-model',
         ggufRunMode: 'direct',
@@ -114,7 +116,7 @@ describe('KAITO Premade Model Deployment Flow', () => {
 
       const provider = getProvider('kaito');
       const result = provider!.validateConfig(config);
-      
+
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
       expect(result.errors[0]).toContain('Unknown premade model');
@@ -149,6 +151,7 @@ describe('KAITO Premade Model Deployment Flow', () => {
         name: 'e2e-test-deployment',
         namespace: 'kaito-workspace',
         provider: 'kaito',
+        kaitoResourceType: 'workspace',
         modelSource: 'premade',
         premadeModel: cpuModel.id,
         ggufRunMode: 'direct',
@@ -163,16 +166,16 @@ describe('KAITO Premade Model Deployment Flow', () => {
       const validation = provider!.validateConfig(config);
       expect(validation.valid).toBe(true);
 
-      // Generate manifest
+      // Generate manifest - default is Workspace
       const manifest = provider!.generateManifest(config);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parsed = manifest as any;
 
-      // Verify complete manifest
+      // Verify complete manifest (Workspace format)
       expect(parsed.kind).toBe('Workspace');
       expect(parsed.apiVersion).toBe('kaito.sh/v1beta1');
       expect(parsed.metadata.name).toBe('e2e-test-deployment');
-      expect(parsed.resource.count).toBe(1);
+      expect(parsed.resource.count).toBe(1);  // Workspace uses resource.count
       expect(parsed.inference.template.spec.containers[0].image).toBe(cpuModel.image);
 
       // Verify kubefoundry labels
@@ -205,6 +208,7 @@ describe('KAITO Premade Model Deployment Flow', () => {
         name: 'custom-llama',
         namespace: 'default',
         provider: 'kaito',
+        kaitoResourceType: 'workspace',
         modelSource: 'huggingface',
         modelId: 'TheBloke/Llama-2-7B-Chat-GGUF',
         ggufFile: 'llama-2-7b-chat.Q4_K_M.gguf',
@@ -224,8 +228,9 @@ describe('KAITO Premade Model Deployment Flow', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parsed = manifest as any;
 
+      // Default is Workspace
       expect(parsed.kind).toBe('Workspace');
-      expect(parsed.resource.count).toBe(2);
+      expect(parsed.resource.count).toBe(2);  // Workspace uses resource.count
       expect(parsed.inference.template.spec.containers[0].image).toBe(config.imageRef);
     });
   });
@@ -236,6 +241,7 @@ describe('KAITO Premade Model Deployment Flow', () => {
         name: 'gpu-llama',
         namespace: 'default',
         provider: 'kaito',
+        kaitoResourceType: 'workspace',
         modelSource: 'premade',
         premadeModel: 'llama3.1:8b',
         ggufRunMode: 'direct',
@@ -251,7 +257,7 @@ describe('KAITO Premade Model Deployment Flow', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parsed = manifest as any;
 
-      // Check GPU resources are included
+      // Workspace has inference at top level (not in spec.template)
       const resources = parsed.inference.template.spec.containers[0].resources;
       expect(resources).toBeDefined();
       expect(resources.limits['nvidia.com/gpu']).toBe(2);
@@ -265,10 +271,174 @@ describe('KAITO Premade Model Deployment Flow', () => {
 
       const data = await settingsRes.json();
       expect(data.providers).toBeDefined();
-      
+
       const kaito = data.providers.find((p: { id: string }) => p.id === 'kaito');
       expect(kaito).toBeDefined();
       expect(kaito.name).toBe('KAITO');
+    });
+  });
+
+  describe('InferenceSet resource type', () => {
+    test('KAITO provider generates valid InferenceSet manifest with premade model', () => {
+      // Get a premade model
+      const premadeModel = aikitService.getPremadeModel('llama3.2:3b');
+      expect(premadeModel).toBeDefined();
+
+      // Create KAITO config with InferenceSet
+      const config: KaitoDeploymentConfig = {
+        name: 'test-llama-inferenceset',
+        namespace: 'default',
+        provider: 'kaito',
+        kaitoResourceType: 'inferenceset',
+        modelSource: 'premade',
+        premadeModel: 'llama3.2:3b',
+        ggufRunMode: 'direct',
+        computeType: 'cpu',
+        replicas: 1,
+      };
+
+      // Get KAITO provider
+      const provider = getProvider('kaito');
+      expect(provider).toBeDefined();
+
+      // Generate manifest - should be InferenceSet
+      const manifest = provider!.generateManifest(config);
+      expect(manifest).toBeDefined();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = manifest as any;
+      expect(parsed.kind).toBe('InferenceSet');
+      expect(parsed.apiVersion).toBe('kaito.sh/v1alpha1');
+      expect(parsed.metadata.name).toBe('test-llama-inferenceset');
+      expect(parsed.metadata.namespace).toBe('default');
+
+      // InferenceSet has spec.template.inference.template structure
+      const container = parsed.spec.template.inference.template.spec.containers[0];
+      expect(container.image).toBe(premadeModel!.image);
+    });
+
+    test('InferenceSet uses spec.replicas instead of resource.count', () => {
+      const config: KaitoDeploymentConfig = {
+        name: 'inferenceset-replicas-test',
+        namespace: 'kaito-workspace',
+        provider: 'kaito',
+        kaitoResourceType: 'inferenceset',
+        modelSource: 'premade',
+        premadeModel: 'llama3.2:3b',
+        ggufRunMode: 'direct',
+        computeType: 'cpu',
+        replicas: 3,
+      };
+
+      const provider = getProvider('kaito');
+      const manifest = provider!.generateManifest(config);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = manifest as any;
+
+      expect(parsed.kind).toBe('InferenceSet');
+      expect(parsed.spec.replicas).toBe(3);
+      // InferenceSet should NOT have resource.count
+      expect(parsed.resource).toBeUndefined();
+    });
+
+    test('InferenceSet includes GPU resources when computeType is gpu', () => {
+      const config: KaitoDeploymentConfig = {
+        name: 'gpu-inferenceset',
+        namespace: 'default',
+        provider: 'kaito',
+        kaitoResourceType: 'inferenceset',
+        modelSource: 'premade',
+        premadeModel: 'llama3.1:8b',
+        ggufRunMode: 'direct',
+        computeType: 'gpu',
+        replicas: 1,
+        resources: {
+          gpu: 2,
+        },
+      };
+
+      const provider = getProvider('kaito');
+      const manifest = provider!.generateManifest(config);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = manifest as any;
+
+      expect(parsed.kind).toBe('InferenceSet');
+      // InferenceSet has spec.template.inference.template structure
+      const resources = parsed.spec.template.inference.template.spec.containers[0].resources;
+      expect(resources).toBeDefined();
+      expect(resources.limits['nvidia.com/gpu']).toBe(2);
+    });
+
+    test('InferenceSet generates manifest with custom image for HuggingFace model', () => {
+      const config: KaitoDeploymentConfig = {
+        name: 'custom-llama-inferenceset',
+        namespace: 'default',
+        provider: 'kaito',
+        kaitoResourceType: 'inferenceset',
+        modelSource: 'huggingface',
+        modelId: 'TheBloke/Llama-2-7B-Chat-GGUF',
+        ggufFile: 'llama-2-7b-chat.Q4_K_M.gguf',
+        ggufRunMode: 'build',
+        imageRef: 'kubefoundry-registry.kubefoundry-system.svc:5000/aikit-thebloke-llama-2-7b-chat-gguf:Q4_K_M',
+        computeType: 'cpu',
+        replicas: 2,
+      };
+
+      const provider = getProvider('kaito');
+      expect(provider).toBeDefined();
+
+      const validation = provider!.validateConfig(config);
+      expect(validation.valid).toBe(true);
+
+      const manifest = provider!.generateManifest(config);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = manifest as any;
+
+      expect(parsed.kind).toBe('InferenceSet');
+      expect(parsed.apiVersion).toBe('kaito.sh/v1alpha1');
+      expect(parsed.spec.replicas).toBe(2);
+      expect(parsed.spec.template.inference.template.spec.containers[0].image).toBe(config.imageRef);
+    });
+
+    test('complete InferenceSet flow: select model -> generate manifest', () => {
+      // Get a premade model with CPU support
+      const cpuModel = aikitService.getPremadeModel('llama3.2:3b');
+      expect(cpuModel).toBeDefined();
+
+      // Create InferenceSet config
+      const config: KaitoDeploymentConfig = {
+        name: 'e2e-inferenceset-deployment',
+        namespace: 'kaito-workspace',
+        provider: 'kaito',
+        kaitoResourceType: 'inferenceset',
+        modelSource: 'premade',
+        premadeModel: 'llama3.2:3b',
+        ggufRunMode: 'direct',
+        computeType: 'cpu',
+        replicas: 1,
+      };
+
+      const provider = getProvider('kaito');
+      expect(provider).toBeDefined();
+
+      // Validate config
+      const validation = provider!.validateConfig(config);
+      expect(validation.valid).toBe(true);
+
+      // Generate manifest
+      const manifest = provider!.generateManifest(config);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parsed = manifest as any;
+
+      // Verify InferenceSet manifest structure
+      expect(parsed.kind).toBe('InferenceSet');
+      expect(parsed.apiVersion).toBe('kaito.sh/v1alpha1');
+      expect(parsed.metadata.name).toBe('e2e-inferenceset-deployment');
+      expect(parsed.spec.replicas).toBe(1);
+      expect(parsed.spec.template.inference.template.spec.containers[0].image).toBe(cpuModel!.image);
+
+      // Verify kubefoundry labels
+      expect(parsed.metadata.labels['app.kubernetes.io/managed-by']).toBe('kubefoundry');
     });
   });
 });

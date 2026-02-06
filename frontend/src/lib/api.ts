@@ -40,6 +40,7 @@ export type {
   DeploymentPhase,
   PodPhase,
   GgufRunMode,
+  KaitoResourceType,
   DeploymentConfig,
   PodStatus,
   DeploymentStatus,
@@ -161,7 +162,7 @@ const INSTALLATION_TIMEOUT_MS = 600000;
 
 // Detect test environment - disable timeout for tests as it can interfere with MSW
 // Check for common test environment indicators
-const isTestEnv = typeof import.meta !== 'undefined' && 
+const isTestEnv = typeof import.meta !== 'undefined' &&
   ((import.meta as { env?: { MODE?: string } }).env?.MODE === 'test' ||
    (import.meta as { env?: { VITEST?: string } }).env?.VITEST === 'true');
 
@@ -263,7 +264,7 @@ export const deploymentsApi = {
     }),
 
   preview: (config: DeploymentConfig) =>
-    request<{ 
+    request<{
       resources: Array<{
         kind: string;
         apiVersion: string;

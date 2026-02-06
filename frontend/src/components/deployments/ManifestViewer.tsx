@@ -47,7 +47,7 @@ type ManifestViewerProps = ManifestViewerPreviewProps | ManifestViewerDeployedPr
  */
 function getResourceBadgeStyle(kind: string): string {
   switch (kind.toLowerCase()) {
-    case 'workspace':
+    case 'inferenceset':
       return 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300';
     case 'rayservice':
       return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300';
@@ -76,20 +76,20 @@ interface TreeNodeProps {
 
 function TreeNode({ name, value, depth = 0, defaultExpanded = false }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(defaultExpanded || depth < 2);
-  
+
   const isObject = value !== null && typeof value === 'object';
   const isArray = Array.isArray(value);
   const entries = isObject ? Object.entries(value as Record<string, unknown>) : [];
-  
+
   const indent = depth * 16;
-  
+
   if (!isObject) {
     return (
       <div className="flex items-start py-0.5" style={{ paddingLeft: `${indent}px` }}>
         <span className="text-blue-600 dark:text-blue-400 font-medium mr-2">{name}:</span>
         <span className={
-          typeof value === 'string' 
-            ? 'text-green-600 dark:text-green-400' 
+          typeof value === 'string'
+            ? 'text-green-600 dark:text-green-400'
             : typeof value === 'number'
             ? 'text-orange-600 dark:text-orange-400'
             : typeof value === 'boolean'
@@ -101,10 +101,10 @@ function TreeNode({ name, value, depth = 0, defaultExpanded = false }: TreeNodeP
       </div>
     );
   }
-  
+
   return (
     <div>
-      <div 
+      <div
         className="flex items-center py-0.5 cursor-pointer hover:bg-muted/50 rounded"
         style={{ paddingLeft: `${indent}px` }}
         onClick={() => setExpanded(!expanded)}
@@ -120,10 +120,10 @@ function TreeNode({ name, value, depth = 0, defaultExpanded = false }: TreeNodeP
         </span>
       </div>
       {expanded && entries.map(([key, val]) => (
-        <TreeNode 
-          key={key} 
-          name={key} 
-          value={val} 
+        <TreeNode
+          key={key}
+          name={key}
+          value={val}
           depth={depth + 1}
           defaultExpanded={depth < 1}
         />
@@ -134,7 +134,7 @@ function TreeNode({ name, value, depth = 0, defaultExpanded = false }: TreeNodeP
 
 /**
  * Unified manifest viewer component
- * 
+ *
  * Works in two modes:
  * - "preview": Shows manifests that will be created (in DeploymentForm)
  * - "deployed": Shows manifests from deployed resources (in DeploymentDetailsPage)
@@ -149,7 +149,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   // For deployed mode, use the hook to fetch resources
-  const deployedQuery = props.mode === 'deployed' 
+  const deployedQuery = props.mode === 'deployed'
     ? useDeploymentManifest(props.deploymentName, props.namespace)
     : null;
 
@@ -160,7 +160,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
     const fetchPreview = async () => {
       setIsPreviewLoading(true);
       setPreviewError(null);
-      
+
       try {
         const result = await deploymentsApi.preview(props.config);
         setResources(result.resources);
@@ -179,7 +179,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
   // Handle deployed mode data
   useEffect(() => {
     if (props.mode !== 'deployed' || !deployedQuery?.data) return;
-    
+
     setResources(deployedQuery.data.resources);
     setSelectedResourceIndex(0);
   }, [props.mode === 'deployed' ? deployedQuery?.data : null]);
@@ -190,11 +190,11 @@ export function ManifestViewer(props: ManifestViewerProps) {
 
   const handleCopy = () => {
     if (!selectedResource) return;
-    
-    const content = viewMode === 'json' 
+
+    const content = viewMode === 'json'
       ? JSON.stringify(selectedResource.manifest, null, 2)
       : YAML.stringify(selectedResource.manifest, { indent: 2 });
-      
+
     navigator.clipboard.writeText(content);
     toast({
       title: 'Copied to clipboard',
@@ -204,11 +204,11 @@ export function ManifestViewer(props: ManifestViewerProps) {
 
   const handleCopyAll = () => {
     if (resources.length === 0) return;
-    
+
     const content = viewMode === 'json'
       ? JSON.stringify(resources.map(r => r.manifest), null, 2)
       : resources.map(r => YAML.stringify(r.manifest, { indent: 2 })).join('---\n');
-      
+
     navigator.clipboard.writeText(content);
     toast({
       title: 'Copied to clipboard',
@@ -237,7 +237,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
 
   return (
     <Card>
-      <CardHeader 
+      <CardHeader
         className={isCollapsible ? "cursor-pointer select-none" : ""}
         onClick={isCollapsible ? () => setIsExpanded(!isExpanded) : undefined}
       >
@@ -254,13 +254,13 @@ export function ManifestViewer(props: ManifestViewerProps) {
               </CardTitle>
             </div>
           </div>
-          
+
           {isCollapsible && (
             <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
           )}
         </div>
       </CardHeader>
-      
+
       {(isExpanded || !isCollapsible) && (
         <CardContent>
           {isLoading ? (
@@ -274,7 +274,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
             <div className="py-4">
               <p className="text-sm text-destructive">{error}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                {props.mode === 'preview' 
+                {props.mode === 'preview'
                   ? 'Complete the configuration to see the manifest preview.'
                   : 'Unable to load the manifest for this deployment.'
                 }
@@ -293,7 +293,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
                       className="h-8"
                       onClick={(e) => { e.stopPropagation(); setSelectedResourceIndex(index); }}
                     >
-                      <Badge 
+                      <Badge
                         variant="secondary"
                         className={`mr-2 ${getResourceBadgeStyle(resource.kind)}`}
                       >
@@ -304,7 +304,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
                   ))}
                 </div>
               )}
-              
+
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-muted-foreground">
                   {selectedResource.apiVersion} • {selectedResource.kind}/{selectedResource.name}
@@ -322,7 +322,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
                   </Button>
                 </div>
               </div>
-              
+
               <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'yaml' | 'json' | 'tree')}>
                 <TabsList>
                   <TabsTrigger value="yaml">
@@ -338,7 +338,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
                     Tree
                   </TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="yaml">
                   <div className="overflow-auto max-h-[500px] rounded-lg text-xs">
                     <SyntaxHighlighter
@@ -350,7 +350,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
                     </SyntaxHighlighter>
                   </div>
                 </TabsContent>
-                
+
                 <TabsContent value="json">
                   <div className="overflow-auto max-h-[500px] rounded-lg text-xs">
                     <SyntaxHighlighter
@@ -362,13 +362,13 @@ export function ManifestViewer(props: ManifestViewerProps) {
                     </SyntaxHighlighter>
                   </div>
                 </TabsContent>
-                
+
                 <TabsContent value="tree">
                   <div className="overflow-auto max-h-[500px] rounded-lg bg-muted p-4 text-sm font-mono">
                     {Object.entries(selectedResource.manifest).map(([key, value]) => (
-                      <TreeNode 
-                        key={key} 
-                        name={key} 
+                      <TreeNode
+                        key={key}
+                        name={key}
                         value={value}
                         defaultExpanded={key === 'metadata' || key === 'spec' || key === 'status'}
                       />

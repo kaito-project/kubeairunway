@@ -6,6 +6,9 @@ export type RouterMode = 'none' | 'kv' | 'round-robin';
 export type DeploymentPhase = 'Pending' | 'Deploying' | 'Running' | 'Failed' | 'Terminating';
 export type PodPhase = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown';
 
+// KAITO resource type - Workspace (v1beta1, stable) or InferenceSet (v1alpha1, newer)
+export type KaitoResourceType = 'workspace' | 'inferenceset';
+
 export interface DeploymentConfig {
   name: string;                  // Kubernetes resource name
   namespace: string;             // Target namespace
@@ -41,6 +44,7 @@ export interface DeploymentConfig {
   imageRef?: string;             // Built/resolved image reference
   computeType?: 'cpu' | 'gpu';   // Compute type for KAITO
   maxModelLen?: number;          // Max model length for vLLM mode
+  kaitoResourceType?: KaitoResourceType;  // KAITO resource type: 'workspace' (stable) or 'inferenceset' (newer)
 }
 
 export interface PodStatus {

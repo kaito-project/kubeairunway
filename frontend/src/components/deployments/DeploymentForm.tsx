@@ -14,7 +14,7 @@ import { useHuggingFaceStatus, useGgufFiles } from '@/hooks/useHuggingFace'
 import { usePremadeModels } from '@/hooks/useAikit'
 import { useToast } from '@/hooks/useToast'
 import { generateDeploymentName, cn } from '@/lib/utils'
-import { type Model, type DetailedClusterCapacity, type AutoscalerDetectionResult, type RuntimeStatus, type PremadeModel, type AIConfiguratorResult, aikitApi, type Engine } from '@/lib/api'
+import { type Model, type DetailedClusterCapacity, type AutoscalerDetectionResult, type RuntimeStatus, type PremadeModel, type AIConfiguratorResult, aikitApi, type Engine, type KaitoResourceType } from '@/lib/api'
 import { ChevronDown, AlertCircle, Rocket, CheckCircle2, Sparkles, AlertTriangle, Server, Cpu, Box, Loader2 } from 'lucide-react'
 import { CapacityWarning } from './CapacityWarning'
 import { AIConfiguratorPanel } from './AIConfiguratorPanel'
@@ -182,6 +182,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
   // KAITO-specific state
   const [kaitoComputeType, setKaitoComputeType] = useState<KaitoComputeType>('cpu')
+  const [kaitoResourceType, setKaitoResourceType] = useState<KaitoResourceType>('workspace')
   const [selectedPremadeModel, setSelectedPremadeModel] = useState<PremadeModel | null>(null)
   const [ggufFile, setGgufFile] = useState<string>('')
   const [ggufRunMode, setGgufRunMode] = useState<GgufRunMode>('direct')
@@ -362,6 +363,9 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       let deployConfig = { ...config }
 
       if (selectedRuntime === 'kaito') {
+        // Add kaitoResourceType to all KAITO deployments
+        deployConfig = { ...deployConfig, kaitoResourceType }
+
         if (isHuggingFaceGgufModel) {
           if (ggufRunMode === 'direct') {
             // Direct run mode - no Docker/build required
@@ -470,7 +474,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         variant: 'destructive',
       })
     }
-  }, [config, createDeployment, navigate, toast, triggerConfetti, selectedRuntime, kaitoComputeType, selectedPremadeModel, isHuggingFaceGgufModel, isVllmModel, model.id, model.gated, ggufFile, ggufRunMode, maxModelLen])
+  }, [config, createDeployment, navigate, toast, triggerConfetti, selectedRuntime, kaitoComputeType, kaitoResourceType, selectedPremadeModel, isHuggingFaceGgufModel, isVllmModel, model.id, model.gated, ggufFile, ggufRunMode, maxModelLen])
 
   const updateConfig = <K extends keyof DeploymentConfig>(
     key: K,
@@ -897,6 +901,63 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       </Card>
       )}
 
+      {/* KAITO Resource Type Selection - show for KAITO runtime with vLLM models */}
+      {selectedRuntime === 'kaito' && isVllmModel && (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Box className="h-5 w-5" />
+            KAITO Resource Type
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup
+            value={kaitoResourceType}
+            onValueChange={(value) => setKaitoResourceType(value as KaitoResourceType)}
+            className="grid gap-3"
+          >
+            <label
+              htmlFor="resource-workspace-vllm"
+              className={cn(
+                "flex items-start space-x-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                kaitoResourceType === 'workspace'
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted-foreground/50"
+              )}
+            >
+              <RadioGroupItem value="workspace" id="resource-workspace-vllm" className="mt-1" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">Workspace</span>
+                  <Badge variant="secondary" className="text-xs">Stable</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Original KAITO resource type (v1beta1). Recommended for most deployments.
+                </p>
+              </div>
+            </label>
+            <label
+              htmlFor="resource-inferenceset-vllm"
+              className={cn(
+                "flex items-start space-x-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                kaitoResourceType === 'inferenceset'
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted-foreground/50"
+              )}
+            >
+              <RadioGroupItem value="inferenceset" id="resource-inferenceset-vllm" className="mt-1" />
+              <div className="flex-1">
+                <span className="font-medium">InferenceSet</span>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Newer KAITO resource type (v1alpha1). Supports flexible replica scaling.
+                </p>
+              </div>
+            </label>
+          </RadioGroup>
+        </CardContent>
+      </Card>
+      )}
+
       {/* KAITO Model Configuration - only show for KAITO runtime with non-vLLM models */}
       {selectedRuntime === 'kaito' && !isVllmModel && (
         <Card>
@@ -935,6 +996,54 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                   ? 'Run inference on CPU nodes - slower but no GPU required'
                   : 'Run inference on GPU nodes - faster performance'}
               </p>
+            </div>
+
+            {/* KAITO Resource Type Selection */}
+            <div className="space-y-3">
+              <Label>Resource Type</Label>
+              <RadioGroup
+                value={kaitoResourceType}
+                onValueChange={(value) => setKaitoResourceType(value as KaitoResourceType)}
+                className="grid gap-3"
+              >
+                <label
+                  htmlFor="resource-workspace"
+                  className={cn(
+                    "flex items-start space-x-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    kaitoResourceType === 'workspace'
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-muted-foreground/50"
+                  )}
+                >
+                  <RadioGroupItem value="workspace" id="resource-workspace" className="mt-1" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Workspace</span>
+                      <Badge variant="secondary" className="text-xs">Stable</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Original KAITO resource type (v1beta1). Recommended for most deployments.
+                    </p>
+                  </div>
+                </label>
+                <label
+                  htmlFor="resource-inferenceset"
+                  className={cn(
+                    "flex items-start space-x-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    kaitoResourceType === 'inferenceset'
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-muted-foreground/50"
+                  )}
+                >
+                  <RadioGroupItem value="inferenceset" id="resource-inferenceset" className="mt-1" />
+                  <div className="flex-1">
+                    <span className="font-medium">InferenceSet</span>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Newer KAITO resource type (v1alpha1). Supports flexible replica scaling.
+                    </p>
+                  </div>
+                </label>
+              </RadioGroup>
             </div>
 
             {/* Run Mode Selection - only for HuggingFace GGUF models */}
@@ -1360,8 +1469,11 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         {(() => {
           // Build preview config with all necessary fields
           let previewConfig = { ...config };
-          
+
           if (selectedRuntime === 'kaito') {
+            // Always include kaitoResourceType for KAITO deployments
+            previewConfig = { ...previewConfig, kaitoResourceType };
+
             if (isHuggingFaceGgufModel) {
               previewConfig = {
                 ...previewConfig,
@@ -1388,9 +1500,9 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               };
             }
           }
-          
+
           return (
-            <ManifestViewer 
+            <ManifestViewer
               mode="preview"
               config={previewConfig}
               provider={selectedRuntime}
