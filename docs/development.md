@@ -167,6 +167,57 @@ bun run build:backend   # Compile TypeScript
 bun run compile         # Build single binary executable
 ```
 
+### Headlamp Plugin
+
+```bash
+cd plugins/headlamp
+bun install             # Install plugin dependencies
+bun run build           # Build plugin
+bun run start           # Development mode with auto-rebuild
+bun run test            # Run tests
+bun run test:watch      # Watch mode for tests
+bun run lint            # Lint code
+bun run tsc             # Type check only
+```
+
+#### Makefile Commands
+
+```bash
+make setup              # Install deps, build, and deploy to Headlamp
+make dev                # Build and deploy for development
+make build              # Build only
+make deploy             # Deploy to Headlamp plugins directory
+make clean              # Remove build artifacts
+```
+
+#### Prerequisites for Headlamp Plugin
+
+- Headlamp Desktop (v0.20+) or Headlamp running in-cluster
+- KubeFoundry backend deployed or running locally
+
+#### Configuring Backend URL
+
+The plugin discovers the backend in this order:
+1. **Plugin Settings**: Configure in Headlamp → Settings → Plugins → KubeFoundry
+2. **In-Cluster**: Auto-discovers `kubefoundry.<namespace>.svc`
+3. **Default**: Falls back to `http://localhost:3001`
+
+#### Testing with Headlamp Desktop
+
+1. Build and deploy the plugin:
+   ```bash
+   cd plugins/headlamp
+   make setup
+   ```
+
+2. Start KubeFoundry backend:
+   ```bash
+   cd ../..
+   bun run dev:backend
+   ```
+
+3. Open Headlamp Desktop - the plugin should appear in the sidebar
+
 ## Kubernetes Setup
 
 ### Create HuggingFace Token Secret
@@ -379,3 +430,29 @@ curl http://localhost:5000/v1/chat/completions \
 - Check CORS_ORIGIN matches frontend URL
 - Verify backend is running on correct port
 - Check browser console for errors
+
+### Headlamp Plugin Issues
+
+#### Plugin not appearing in Headlamp
+- Verify plugin was built: `cd plugins/headlamp && bun run build`
+- Check plugin deployment location:
+  - macOS: `~/.config/Headlamp/plugins/kubefoundry-headlamp-plugin`
+  - Linux: `~/.config/Headlamp/plugins/kubefoundry-headlamp-plugin`
+  - Windows: `%APPDATA%/Headlamp/plugins/kubefoundry-headlamp-plugin`
+- Restart Headlamp after deploying the plugin
+
+#### Plugin can't connect to backend
+- Check backend URL in Headlamp → Settings → Plugins → KubeFoundry
+- Verify backend is running: `curl http://localhost:3001/api/health`
+- For in-cluster deployments, ensure the service is accessible
+- Check browser dev tools (Network tab) for connection errors
+
+#### Plugin shows "Connection Failed" banner
+- The plugin auto-discovers the backend; ensure it's running
+- In-cluster: Deploy KubeFoundry backend to `kubefoundry-system` namespace
+- Local development: Start backend with `bun run dev:backend`
+
+#### Type errors after shared package changes
+- Rebuild the shared package: `cd shared && bun run build`
+- Rebuild the plugin: `cd plugins/headlamp && bun run build`
+- Clear TypeScript cache: `rm -rf plugins/headlamp/node_modules/.cache`

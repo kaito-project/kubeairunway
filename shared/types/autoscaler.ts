@@ -33,6 +33,10 @@ export interface NodePoolInfo {
   nodeCount: number;
   availableGpus: number;
   gpuModel?: string;
+  /** Cloud provider instance type (e.g., Standard_NV36ads_A10_v5) */
+  instanceType?: string;
+  /** Cloud provider region */
+  region?: string;
 }
 
 export interface DetailedClusterCapacity {

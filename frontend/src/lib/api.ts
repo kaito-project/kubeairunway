@@ -678,3 +678,73 @@ export const aiConfiguratorApi = {
       body: JSON.stringify({ gpuProduct }),
     }),
 };
+
+// ============================================================================
+// Cost Estimation API
+// ============================================================================
+
+// Re-export Cost Estimation types from shared
+export type {
+  CostBreakdown,
+  CostEstimate,
+  CostEstimateRequest,
+  CostEstimateResponse,
+  NodePoolCostEstimate,
+  RealtimePricing,
+  GpuPricing,
+  CloudProvider,
+} from '@kubefoundry/shared';
+
+// Import types for internal use
+import type {
+  CostEstimateRequest,
+  CostEstimateResponse,
+  NodePoolCostEstimate,
+} from '@kubefoundry/shared';
+
+export const costsApi = {
+  /** Estimate deployment cost based on GPU configuration */
+  estimate: (input: CostEstimateRequest) =>
+    request<CostEstimateResponse>('/costs/estimate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /** Get cost estimates for all node pools in the cluster */
+  getNodePoolCosts: (gpuCount: number = 1, replicas: number = 1, computeType: 'gpu' | 'cpu' = 'gpu') =>
+    request<{
+      success: boolean;
+      nodePoolCosts: NodePoolCostEstimate[];
+      pricingSource: 'realtime-with-fallback' | 'static';
+      cacheStats: {
+        size: number;
+        ttlMs: number;
+        maxEntries: number;
+      };
+    }>(`/costs/node-pools?gpuCount=${gpuCount}&replicas=${replicas}&computeType=${computeType}`),
+
+  /** Get list of supported GPU models with specifications */
+  getGpuModels: () =>
+    request<{
+      success: boolean;
+      models: Array<{
+        model: string;
+        memoryGb: number;
+        generation: string;
+      }>;
+      note: string;
+    }>('/costs/gpu-models'),
+
+  /** Normalize a GPU model name to our pricing key */
+  normalizeGpu: (label: string) =>
+    request<{
+      success: boolean;
+      originalLabel: string;
+      normalizedModel: string;
+      pricing: {
+        memoryGb: number;
+        generation: string;
+        hourlyRate: { aws?: number; azure?: number; gcp?: number };
+      } | null;
+    }>(`/costs/normalize-gpu?label=${encodeURIComponent(label)}`),
+};

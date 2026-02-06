@@ -183,7 +183,7 @@ export const baseDeploymentConfigSchema = z.object({
   servedModelName: z.string().optional(),
   routerMode: z.enum(['none', 'kv', 'round-robin']).default('none'),
   replicas: z.number().int().min(1).max(10).default(1),
-  hfTokenSecret: z.string().min(1),
+  hfTokenSecret: z.string().min(1).optional(),
   contextLength: z.number().int().positive().optional(),
   enforceEager: z.boolean().default(true),
   enablePrefixCaching: z.boolean().default(false),

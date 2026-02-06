@@ -19,6 +19,7 @@ import { ChevronDown, AlertCircle, Rocket, CheckCircle2, Sparkles, AlertTriangle
 import { CapacityWarning } from './CapacityWarning'
 import { AIConfiguratorPanel } from './AIConfiguratorPanel'
 import { ManifestViewer } from './ManifestViewer'
+import { CostEstimate } from './CostEstimate'
 import { calculateGpuRecommendation, type GpuRecommendation } from '@/lib/gpu-recommendations'
 
 // Reusable GPU per Replica field component
@@ -1508,6 +1509,32 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             />
           );
         })()}
+        {/* Cost Estimate - show for GPU and CPU deployments */}
+        {(selectedRuntime === 'kaito') && (
+          <CostEstimate
+            nodePools={detailedCapacity?.nodePools}
+            gpuCount={config.mode === 'disaggregated' 
+              ? Math.max(config.prefillGpus || 1, config.decodeGpus || 1)
+              : (config.resources?.gpu || gpuRecommendation.recommendedGpus || 1)}
+            replicas={config.mode === 'disaggregated'
+              ? (config.prefillReplicas || 1) + (config.decodeReplicas || 1)
+              : config.replicas}
+            computeType={kaitoComputeType === 'cpu' && !isVllmModel ? 'cpu' : 'gpu'}
+          />
+        )}
+        {/* Cost Estimate for non-KAITO runtimes (always GPU) */}
+        {selectedRuntime !== 'kaito' && detailedCapacity && detailedCapacity.nodePools.length > 0 && (
+          <CostEstimate
+            nodePools={detailedCapacity.nodePools}
+            gpuCount={config.mode === 'disaggregated' 
+              ? Math.max(config.prefillGpus || 1, config.decodeGpus || 1)
+              : (config.resources?.gpu || gpuRecommendation.recommendedGpus || 1)}
+            replicas={config.mode === 'disaggregated'
+              ? (config.prefillReplicas || 1) + (config.decodeReplicas || 1)
+              : config.replicas}
+            computeType="gpu"
+          />
+        )}
 
       {/* Submit Button */}
       <div className="flex gap-4">

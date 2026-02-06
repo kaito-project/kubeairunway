@@ -171,10 +171,10 @@ describe('kuberayDeploymentConfigSchema', () => {
       expect(result.success).toBe(false);
     });
 
-    it('rejects missing required fields', () => {
+    it('accepts missing hfTokenSecret (optional for non-gated models)', () => {
       const { hfTokenSecret, ...configWithoutToken } = validConfig;
       const result = kuberayDeploymentConfigSchema.safeParse(configWithoutToken);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
   });
 });

@@ -329,6 +329,27 @@ export class KaitoProvider implements Provider {
       resourceSpec.labelSelector = {
         matchLabels: config.labelSelector,
       };
+    } else {
+      // Determine default labelSelector based on compute requirements
+      // vLLM always requires GPU
+      const requiresGPU = config.computeType === 'gpu' || config.modelSource === 'vllm';
+
+      if (requiresGPU) {
+        // GPU workloads: use NVIDIA GPU Feature Discovery label
+        // This label is published by NVIDIA GFD on nodes with NVIDIA GPUs
+        resourceSpec.labelSelector = {
+          matchLabels: {
+            'nvidia.com/vgpu.present': 'true',
+          },
+        };
+      } else {
+        // CPU-only workloads: use basic Linux node selector
+        resourceSpec.labelSelector = {
+          matchLabels: {
+            'kubernetes.io/os': 'linux',
+          },
+        };
+      }
     }
 
     // Add instanceType for non-BYO scenarios

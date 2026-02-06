@@ -117,6 +117,15 @@ describe('HelmService - HelmRelease Structure', () => {
 
 describe('HelmService - Command Building Logic', () => {
   // Test the logic for building helm commands (mirrors actual helm.ts behavior)
+  // Helper to convert values to --set-json args (mirrors helm.ts valuesToSetJsonArgs)
+  function valuesToSetJsonArgs(values: Record<string, unknown>): string[] {
+    const args: string[] = [];
+    for (const [key, value] of Object.entries(values)) {
+      args.push('--set-json', `${key}=${JSON.stringify(value)}`);
+    }
+    return args;
+  }
+
   function buildInstallCommand(chart: HelmChart): string[] {
     const args = ['upgrade', chart.name, chart.chart, '--install'];
     args.push('--namespace', chart.namespace);
@@ -130,7 +139,7 @@ describe('HelmService - Command Building Logic', () => {
     }
 
     if (chart.values) {
-      args.push('--set-json', JSON.stringify(chart.values));
+      args.push(...valuesToSetJsonArgs(chart.values));
     }
 
     return args;
@@ -205,10 +214,10 @@ describe('HelmService - Command Building Logic', () => {
 
     const args = buildInstallCommand(chart);
     expect(args).toContain('--set-json');
+    // New format: --set-json 'key={"nested":"value"}'
     const setJsonIndex = args.indexOf('--set-json');
-    const valuesJson = args[setJsonIndex + 1];
-    const parsedValues = JSON.parse(valuesJson);
-    expect(parsedValues.featureGates.disableNodeAutoProvisioning).toBe(true);
+    const valuesArg = args[setJsonIndex + 1];
+    expect(valuesArg).toBe('featureGates={"disableNodeAutoProvisioning":true}');
   });
 
   test('handles nested values object correctly', () => {
@@ -228,14 +237,25 @@ describe('HelmService - Command Building Logic', () => {
     };
 
     const args = buildInstallCommand(chart);
-    expect(args).toContain('--set-json');
-    const setJsonIndex = args.indexOf('--set-json');
-    const valuesJson = args[setJsonIndex + 1];
-    const parsedValues = JSON.parse(valuesJson);
-    expect(parsedValues.level1.level2.level3).toBe('deep-value');
-    expect(parsedValues.level1.simple).toBe(123);
-    // Arrays are passed through (user choice 1A was skip arrays, but JSON.stringify handles them)
-    expect(parsedValues.array).toEqual([1, 2, 3]);
+    // Should have two --set-json entries (one per top-level key)
+    const setJsonIndices = args.reduce<number[]>((indices, arg, i) => {
+      if (arg === '--set-json') indices.push(i);
+      return indices;
+    }, []);
+    expect(setJsonIndices.length).toBe(2);
+    
+    // Check level1 value
+    const level1Arg = args.find(arg => arg.startsWith('level1='));
+    expect(level1Arg).toBeDefined();
+    const level1Value = JSON.parse(level1Arg!.split('=').slice(1).join('='));
+    expect(level1Value.level2.level3).toBe('deep-value');
+    expect(level1Value.simple).toBe(123);
+    
+    // Check array value
+    const arrayArg = args.find(arg => arg.startsWith('array='));
+    expect(arrayArg).toBeDefined();
+    const arrayValue = JSON.parse(arrayArg!.split('=').slice(1).join('='));
+    expect(arrayValue).toEqual([1, 2, 3]);
   });
 });
 

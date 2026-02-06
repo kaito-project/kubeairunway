@@ -19,7 +19,7 @@ export interface DeploymentConfig {
   servedModelName?: string;      // Custom model name for API
   routerMode: RouterMode;
   replicas: number;              // Number of worker replicas (aggregated mode)
-  hfTokenSecret: string;         // K8s secret name for HF_TOKEN
+  hfTokenSecret?: string;        // K8s secret name for HF_TOKEN (optional for non-gated models)
   contextLength?: number;        // Optional context length override
   enforceEager: boolean;         // Enforce eager mode for quick deployment
   enablePrefixCaching: boolean;  // Enable prefix caching

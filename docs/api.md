@@ -1129,6 +1129,218 @@ Normalize a GPU product string to AI Configurator format.
 - Useful for converting Kubernetes node GPU labels to AI Configurator expected format
 - Handles various formats: NVIDIA prefixes, SXM/PCIe variants, Tesla prefixes
 
+## Cost Estimation
+
+Endpoints for real-time cloud pricing and cost estimation for GPU node pools.
+
+### POST /costs/estimate
+Estimate deployment cost based on GPU configuration (static estimate).
+
+**Request Body:**
+```json
+{
+  "gpuType": "A100-80GB",
+  "gpuCount": 1,
+  "replicas": 1,
+  "hoursPerMonth": 730
+}
+```
+
+**Required Fields:**
+- `gpuType` - GPU model name (e.g., "A100-80GB", "H100", "T4")
+- `gpuCount` - Number of GPUs per replica (minimum: 1)
+- `replicas` - Number of replicas (minimum: 1)
+
+**Optional Fields:**
+- `hoursPerMonth` - Hours per month for cost calculation (1-744, default: 730)
+
+**Response:**
+```json
+{
+  "success": true,
+  "breakdown": {
+    "totalGpus": 1,
+    "gpuModel": "A100-80GB",
+    "normalizedGpuModel": "A100-80GB",
+    "perGpu": { "hourly": 0, "monthly": 0 },
+    "estimate": {
+      "hourly": 0,
+      "monthly": 0,
+      "currency": "USD",
+      "source": "static",
+      "confidence": "low"
+    },
+    "notes": ["Use real-time pricing via /costs/node-pools for accurate cloud pricing"]
+  }
+}
+```
+
+**Notes:**
+- Static pricing is deprecated; use `/costs/node-pools` for real-time cloud pricing
+- Returns `confidence: "low"` to indicate static estimates should not be relied upon
+
+### GET /costs/node-pools
+Get cost estimates for all node pools using real-time cloud pricing.
+
+**Query Parameters:**
+- `gpuCount` (optional) - Number of GPUs per deployment (default: 1)
+- `replicas` (optional) - Number of replicas (default: 1)
+- `realtime` (optional) - Enable real-time pricing, set to "false" for static (default: true)
+- `computeType` (optional) - Filter by "gpu" or "cpu" (default: "gpu")
+
+**Response:**
+```json
+{
+  "success": true,
+  "nodePoolCosts": [
+    {
+      "poolName": "gpu",
+      "gpuModel": "A100-80GB",
+      "availableGpus": 4,
+      "costBreakdown": {
+        "totalGpus": 1,
+        "gpuModel": "A100-80GB",
+        "normalizedGpuModel": "A100-80GB",
+        "perGpu": { "hourly": 0, "monthly": 0 },
+        "estimate": {
+          "hourly": 3.5,
+          "monthly": 2555,
+          "currency": "USD",
+          "source": "cloud-api",
+          "confidence": "high"
+        },
+        "notes": ["Real-time pricing from AZURE"]
+      },
+      "realtimePricing": {
+        "instanceType": "Standard_NC24ads_A100_v4",
+        "hourlyPrice": 3.5,
+        "monthlyPrice": 2555,
+        "currency": "USD",
+        "region": "eastus",
+        "source": "realtime"
+      }
+    }
+  ],
+  "pricingSource": "realtime-with-fallback",
+  "cacheStats": {
+    "size": 5,
+    "ttlMs": 3600000,
+    "maxEntries": 1000
+  }
+}
+```
+
+**Notes:**
+- Fetches real-time pricing from Azure Retail Prices API
+- Falls back to static estimates if cloud pricing unavailable
+- Pricing is cached for 1 hour to reduce API calls
+- AWS and GCP pricing not yet implemented
+
+### GET /costs/instance-price
+Get real-time pricing for a specific instance type.
+
+**Query Parameters:**
+- `instanceType` (required) - Cloud instance type (e.g., "Standard_NC24ads_A100_v4")
+- `region` (optional) - Cloud region (e.g., "eastus")
+
+**Response (success):**
+```json
+{
+  "success": true,
+  "price": {
+    "instanceType": "Standard_NC24ads_A100_v4",
+    "provider": "azure",
+    "region": "eastus",
+    "hourlyPrice": 3.5,
+    "currency": "USD",
+    "priceType": "ondemand",
+    "gpuCount": 1,
+    "gpuModel": "A100-80GB",
+    "lastUpdated": "2025-01-01T00:00:00.000Z"
+  },
+  "cached": false
+}
+```
+
+**Response (provider not detected):**
+```json
+{
+  "success": false,
+  "error": "Could not detect cloud provider for instance type: unknown-instance"
+}
+```
+
+**Response (pricing not found):**
+```json
+{
+  "success": false,
+  "error": "Price not found",
+  "provider": "azure"
+}
+```
+
+**Provider Detection:**
+- Azure: Instance types starting with `Standard_` or `Basic_`
+- AWS: Instance types with format like `p4d.24xlarge`, `g5.xlarge` (not yet implemented)
+- GCP: Instance types like `n1-standard-4`, `a2-highgpu-1g` (not yet implemented)
+
+### GET /costs/gpu-models
+Get list of supported GPU models with specifications.
+
+**Response:**
+```json
+{
+  "success": true,
+  "models": [
+    {
+      "model": "A100-80GB",
+      "memoryGb": 80,
+      "generation": "Ampere"
+    },
+    {
+      "model": "H100-80GB",
+      "memoryGb": 80,
+      "generation": "Hopper"
+    },
+    {
+      "model": "T4",
+      "memoryGb": 16,
+      "generation": "Turing"
+    }
+  ],
+  "note": "For actual pricing, use /costs/node-pools or /costs/instance-price for real-time cloud provider pricing"
+}
+```
+
+**Notes:**
+- Returns GPU specifications only (memory, generation)
+- For real-time pricing, use `/costs/node-pools` or `/costs/instance-price` endpoints
+- GPU models are used for normalization and capacity planning
+```
+
+### GET /costs/normalize-gpu
+Normalize a GPU label to a standard GPU model name.
+
+**Query Parameters:**
+- `label` (required) - GPU label from Kubernetes node (e.g., "NVIDIA-A100-SXM4-80GB")
+
+**Response:**
+```json
+{
+  "success": true,
+  "originalLabel": "NVIDIA-A100-SXM4-80GB",
+  "normalizedModel": "A100-80GB",
+  "gpuInfo": {
+    "memoryGb": 80,
+    "generation": "Ampere"
+  }
+}
+```
+
+**Notes:**
+- Handles various GPU label formats: NVIDIA prefixes, SXM/PCIe variants, Tesla prefixes
+- Returns GPU specifications when available
+
 ## Error Responses
 
 All endpoints return errors in this format:
