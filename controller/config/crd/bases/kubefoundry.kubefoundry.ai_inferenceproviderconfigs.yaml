@@ -88,6 +88,86 @@ spec:
               documentation:
                 description: documentation is a URL to the provider documentation
                 type: string
+              installation:
+                description: installation defines how to install the provider's upstream
+                  components
+                properties:
+                  defaultNamespace:
+                    description: defaultNamespace is the default namespace for the
+                      provider's workloads
+                    type: string
+                  description:
+                    description: description is a human-readable description of the
+                      provider
+                    type: string
+                  helmCharts:
+                    description: helmCharts are the Helm charts to install
+                    items:
+                      description: HelmChart defines a Helm chart to install
+                      properties:
+                        chart:
+                          description: chart is the chart reference (e.g. "repo/chart"
+                            or a URL)
+                          type: string
+                        createNamespace:
+                          description: createNamespace indicates whether to create
+                            the namespace if it doesn't exist
+                          type: boolean
+                        name:
+                          description: name is the release name for the Helm chart
+                          type: string
+                        namespace:
+                          description: namespace is the Kubernetes namespace to install
+                            into
+                          type: string
+                        version:
+                          description: version is the chart version to install
+                          type: string
+                      required:
+                      - chart
+                      - name
+                      - namespace
+                      type: object
+                    type: array
+                  helmRepos:
+                    description: helmRepos are the Helm repositories needed for installation
+                    items:
+                      description: HelmRepo defines a Helm repository needed for installation
+                      properties:
+                        name:
+                          description: name is the local name for the Helm repository
+                          type: string
+                        url:
+                          description: url is the Helm repository URL
+                          type: string
+                      required:
+                      - name
+                      - url
+                      type: object
+                    type: array
+                  steps:
+                    description: steps are the ordered installation steps with commands
+                    items:
+                      description: InstallationStep defines a step in the provider
+                        installation process
+                      properties:
+                        command:
+                          description: command is the shell command to run for this
+                            step
+                          type: string
+                        description:
+                          description: description is a detailed explanation of what
+                            this step does
+                          type: string
+                        title:
+                          description: title is a short description of this step
+                          type: string
+                      required:
+                      - description
+                      - title
+                      type: object
+                    type: array
+                type: object
               selectionRules:
                 description: |-
                   selectionRules defines rules for auto-selecting this provider

@@ -82,6 +82,39 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 				Priority:  100,
 			},
 		},
+		Installation: &kubefoundryv1alpha1.InstallationInfo{
+			Description:      "Kubernetes AI Toolchain Operator for simplified model deployment",
+			DefaultNamespace: "kaito-workspace",
+			HelmRepos: []kubefoundryv1alpha1.HelmRepo{
+				{Name: "kaito", URL: "https://kaito-project.github.io/kaito/charts/kaito"},
+			},
+			HelmCharts: []kubefoundryv1alpha1.HelmChart{
+				{
+					Name:            "kaito-workspace",
+					Chart:           "kaito/workspace",
+					Version:         "0.8.0",
+					Namespace:       "kaito-workspace",
+					CreateNamespace: true,
+				},
+			},
+			Steps: []kubefoundryv1alpha1.InstallationStep{
+				{
+					Title:       "Add KAITO Helm Repository",
+					Command:     "helm repo add kaito https://kaito-project.github.io/kaito/charts/kaito",
+					Description: "Add the KAITO Helm repository.",
+				},
+				{
+					Title:       "Update Helm Repositories",
+					Command:     "helm repo update",
+					Description: "Update local Helm repository cache.",
+				},
+				{
+					Title:       "Install KAITO Workspace Operator",
+					Command:     "helm upgrade --install kaito-workspace kaito/workspace --version 0.8.0 -n kaito-workspace --create-namespace --set featureGates.disableNodeAutoProvisioning=true --wait",
+					Description: "Install the KAITO workspace operator v0.8.0 with Node Auto-Provisioning disabled (BYO nodes mode).",
+				},
+			},
+		},
 		Documentation: ProviderDocumentation,
 	}
 }

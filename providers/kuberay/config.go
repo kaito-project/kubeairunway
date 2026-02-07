@@ -77,6 +77,39 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 				Priority:  80,
 			},
 		},
+		Installation: &kubefoundryv1alpha1.InstallationInfo{
+			Description:      "Ray Serve via KubeRay for distributed Ray-based model serving with vLLM",
+			DefaultNamespace: "ray-system",
+			HelmRepos: []kubefoundryv1alpha1.HelmRepo{
+				{Name: "kuberay", URL: "https://ray-project.github.io/kuberay-helm/"},
+			},
+			HelmCharts: []kubefoundryv1alpha1.HelmChart{
+				{
+					Name:            "kuberay-operator",
+					Chart:           "kuberay/kuberay-operator",
+					Version:         "1.3.0",
+					Namespace:       "ray-system",
+					CreateNamespace: true,
+				},
+			},
+			Steps: []kubefoundryv1alpha1.InstallationStep{
+				{
+					Title:       "Add KubeRay Helm Repository",
+					Command:     "helm repo add kuberay https://ray-project.github.io/kuberay-helm/",
+					Description: "Add the KubeRay Helm repository.",
+				},
+				{
+					Title:       "Update Helm Repositories",
+					Command:     "helm repo update",
+					Description: "Update local Helm repository cache.",
+				},
+				{
+					Title:       "Install KubeRay Operator",
+					Command:     "helm upgrade --install kuberay-operator kuberay/kuberay-operator --version 1.3.0 -n ray-system --create-namespace --wait",
+					Description: "Install the KubeRay operator v1.3.0.",
+				},
+			},
+		},
 		Documentation: ProviderDocumentation,
 	}
 }

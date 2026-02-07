@@ -400,25 +400,12 @@ class KubernetesService {
    * Returns installation and health status for each runtime.
    */
   async getRuntimesStatus(): Promise<RuntimeStatus[]> {
-    const { getAllProviders } = await import('../providers/registry');
-    const knownProviders = getAllProviders();
-
-    // Start with all known providers as not installed
-    const runtimeMap = new Map<string, RuntimeStatus>();
-    for (const provider of knownProviders) {
-      runtimeMap.set(provider.id, {
-        id: provider.id,
-        name: provider.name,
-        installed: false,
-        healthy: false,
-        message: 'Not installed',
-      });
-    }
+    const runtimes: RuntimeStatus[] = [];
 
     // Check if KubeFoundry controller is installed by checking for the CRD
     const crdStatus = await this.checkCRDInstallation();
 
-    // Merge live InferenceProviderConfig data
+    // List InferenceProviderConfig resources to discover registered providers
     if (crdStatus.installed) {
       try {
         const response = await withRetry(
@@ -434,10 +421,12 @@ class KubernetesService {
         for (const item of items) {
           const name = item.metadata?.name || 'unknown';
           const status = item.status || {};
-          const existing = runtimeMap.get(name);
-          const displayName = existing?.name || name.charAt(0).toUpperCase() + name.slice(1);
+          const installation = item.spec?.installation || {};
+          const displayName = installation.description
+            ? name.charAt(0).toUpperCase() + name.slice(1)
+            : name.charAt(0).toUpperCase() + name.slice(1);
 
-          runtimeMap.set(name, {
+          runtimes.push({
             id: name,
             name: displayName,
             installed: true,
@@ -454,7 +443,28 @@ class KubernetesService {
       }
     }
 
-    return Array.from(runtimeMap.values());
+    return runtimes;
+  }
+
+  /**
+   * Get a specific InferenceProviderConfig by name from the cluster.
+   * Returns the full CRD object or null if not found.
+   */
+  async getInferenceProviderConfig(name: string): Promise<any | null> {
+    try {
+      const response = await withRetry(
+        () => this.customObjectsApi.getClusterCustomObject(
+          MODEL_DEPLOYMENT_CRD.apiGroup,
+          MODEL_DEPLOYMENT_CRD.apiVersion,
+          'inferenceproviderconfigs',
+          name
+        ),
+        { operationName: `getInferenceProviderConfig:${name}`, maxRetries: 1 }
+      );
+      return (response as any).body || response;
+    } catch {
+      return null;
+    }
   }
 
   /**

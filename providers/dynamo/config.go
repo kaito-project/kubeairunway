@@ -94,6 +94,38 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 				Priority:  50,
 			},
 		},
+		Installation: &kubefoundryv1alpha1.InstallationInfo{
+			Description:      "NVIDIA Dynamo for high-performance GPU inference",
+			DefaultNamespace: "dynamo-system",
+			HelmRepos: []kubefoundryv1alpha1.HelmRepo{
+				{Name: "nvidia-ai-dynamo", URL: "https://helm.ngc.nvidia.com/nvidia/ai-dynamo"},
+			},
+			HelmCharts: []kubefoundryv1alpha1.HelmChart{
+				{
+					Name:      "dynamo-crds",
+					Chart:     "https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-crds-0.7.1.tgz",
+					Namespace: "default",
+				},
+				{
+					Name:            "dynamo-platform",
+					Chart:           "https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-0.7.1.tgz",
+					Namespace:       "dynamo-system",
+					CreateNamespace: true,
+				},
+			},
+			Steps: []kubefoundryv1alpha1.InstallationStep{
+				{
+					Title:       "Install Dynamo CRDs",
+					Command:     "helm fetch https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-crds-0.7.1.tgz && helm install dynamo-crds dynamo-crds-0.7.1.tgz --namespace default",
+					Description: "Install the Dynamo Custom Resource Definitions v0.7.1.",
+				},
+				{
+					Title:       "Install Dynamo Platform",
+					Command:     "helm fetch https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-0.7.1.tgz && helm install dynamo-platform dynamo-platform-0.7.1.tgz --namespace dynamo-system --create-namespace",
+					Description: "Install the Dynamo platform operator v0.7.1.",
+				},
+			},
+		},
 		Documentation: ProviderDocumentation,
 	}
 }

@@ -39,6 +39,78 @@ type ProviderCapabilities struct {
 	GPUSupport bool `json:"gpuSupport,omitempty"`
 }
 
+// HelmRepo defines a Helm repository needed for installation
+type HelmRepo struct {
+	// name is the local name for the Helm repository
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// url is the Helm repository URL
+	// +kubebuilder:validation:Required
+	URL string `json:"url"`
+}
+
+// HelmChart defines a Helm chart to install
+type HelmChart struct {
+	// name is the release name for the Helm chart
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// chart is the chart reference (e.g. "repo/chart" or a URL)
+	// +kubebuilder:validation:Required
+	Chart string `json:"chart"`
+
+	// version is the chart version to install
+	// +optional
+	Version string `json:"version,omitempty"`
+
+	// namespace is the Kubernetes namespace to install into
+	// +kubebuilder:validation:Required
+	Namespace string `json:"namespace"`
+
+	// createNamespace indicates whether to create the namespace if it doesn't exist
+	// +optional
+	CreateNamespace bool `json:"createNamespace,omitempty"`
+}
+
+// InstallationStep defines a step in the provider installation process
+type InstallationStep struct {
+	// title is a short description of this step
+	// +kubebuilder:validation:Required
+	Title string `json:"title"`
+
+	// command is the shell command to run for this step
+	// +optional
+	Command string `json:"command,omitempty"`
+
+	// description is a detailed explanation of what this step does
+	// +kubebuilder:validation:Required
+	Description string `json:"description"`
+}
+
+// InstallationInfo defines how to install the provider's upstream components
+type InstallationInfo struct {
+	// description is a human-readable description of the provider
+	// +optional
+	Description string `json:"description,omitempty"`
+
+	// defaultNamespace is the default namespace for the provider's workloads
+	// +optional
+	DefaultNamespace string `json:"defaultNamespace,omitempty"`
+
+	// helmRepos are the Helm repositories needed for installation
+	// +optional
+	HelmRepos []HelmRepo `json:"helmRepos,omitempty"`
+
+	// helmCharts are the Helm charts to install
+	// +optional
+	HelmCharts []HelmChart `json:"helmCharts,omitempty"`
+
+	// steps are the ordered installation steps with commands
+	// +optional
+	Steps []InstallationStep `json:"steps,omitempty"`
+}
+
 // SelectionRule defines a rule for auto-selecting this provider
 type SelectionRule struct {
 	// condition is a CEL expression that evaluates to true when this rule matches
@@ -68,6 +140,10 @@ type InferenceProviderConfigSpec struct {
 	// Conditions use CEL (Common Expression Language)
 	// +optional
 	SelectionRules []SelectionRule `json:"selectionRules,omitempty"`
+
+	// installation defines how to install the provider's upstream components
+	// +optional
+	Installation *InstallationInfo `json:"installation,omitempty"`
 
 	// documentation is a URL to the provider documentation
 	// +optional
