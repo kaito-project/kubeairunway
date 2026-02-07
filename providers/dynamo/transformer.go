@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
-	"github.com/kubefoundry/kubefoundry/controller/internal/providers"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -460,6 +459,13 @@ func (t *Transformer) buildEngineArgs(md *kubefoundryv1alpha1.ModelDeployment) s
 	return strings.Join(args, " ")
 }
 
+// defaultImages contains the default container images for each engine type
+var defaultImages = map[kubefoundryv1alpha1.EngineType]string{
+	kubefoundryv1alpha1.EngineTypeVLLM:   "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1",
+	kubefoundryv1alpha1.EngineTypeSGLang: "nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.7.1",
+	kubefoundryv1alpha1.EngineTypeTRTLLM: "nvcr.io/nvidia/ai-dynamo/trtllm-runtime:0.7.1",
+}
+
 // getImage returns the container image to use
 func (t *Transformer) getImage(md *kubefoundryv1alpha1.ModelDeployment) string {
 	// Use custom image if specified
@@ -468,10 +474,8 @@ func (t *Transformer) getImage(md *kubefoundryv1alpha1.ModelDeployment) string {
 	}
 
 	// Use default image for engine type
-	if images, ok := providers.DefaultImages[providers.ProviderDynamo]; ok {
-		if image, ok := images[md.Spec.Engine.Type]; ok && image != "" {
-			return image
-		}
+	if image, ok := defaultImages[md.Spec.Engine.Type]; ok && image != "" {
+		return image
 	}
 
 	// Fallback to vLLM default

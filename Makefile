@@ -1,8 +1,14 @@
 .PHONY: install dev dev-frontend dev-backend build compile lint test clean help
 .PHONY: controller-build controller-docker-build controller-install controller-deploy controller-generate
+.PHONY: kaito-provider-build kaito-provider-docker-build kaito-provider-deploy
+.PHONY: dynamo-provider-build dynamo-provider-docker-build dynamo-provider-deploy
 
 # Controller image
 CONTROLLER_IMG ?= ghcr.io/kubefoundry/kubefoundry-controller:latest
+
+# Provider images
+KAITO_PROVIDER_IMG ?= ghcr.io/kubefoundry/kaito-provider:latest
+DYNAMO_PROVIDER_IMG ?= ghcr.io/kubefoundry/dynamo-provider:latest
 
 # Default target
 help:
@@ -31,6 +37,14 @@ help:
 	@echo "  controller-install     Install CRDs into cluster"
 	@echo "  controller-deploy      Deploy controller to cluster"
 	@echo "  controller-generate    Generate CRD manifests and code"
+	@echo ""
+	@echo "Provider Targets:"
+	@echo "  kaito-provider-build          Build the KAITO provider binary"
+	@echo "  kaito-provider-docker-build   Build KAITO provider Docker image"
+	@echo "  kaito-provider-deploy         Deploy KAITO provider to cluster"
+	@echo "  dynamo-provider-build         Build the Dynamo provider binary"
+	@echo "  dynamo-provider-docker-build  Build Dynamo provider Docker image"
+	@echo "  dynamo-provider-deploy        Deploy Dynamo provider to cluster"
 	@echo ""
 	@echo "  help                   Show this help message"
 
@@ -106,7 +120,7 @@ controller-build:
 
 # Build controller Docker image
 controller-docker-build:
-	cd controller && docker build -t $(CONTROLLER_IMG) .
+	docker build -f controller/Dockerfile -t $(CONTROLLER_IMG) .
 	@echo "✅ Controller image built: $(CONTROLLER_IMG)"
 
 # Generate CRD manifests and deep copy code
@@ -142,3 +156,37 @@ controller-run:
 controller-test:
 	cd controller && go test ./... -coverprofile cover.out
 	@echo "✅ Controller tests completed"
+
+# ==================== Provider Targets ====================
+
+# Build the KAITO provider binary
+kaito-provider-build:
+	cd providers/kaito && go build -o bin/provider ./cmd/main.go
+	@echo "✅ KAITO provider built"
+
+# Build the Dynamo provider binary
+dynamo-provider-build:
+	cd providers/dynamo && go build -o bin/provider ./cmd/main.go
+	@echo "✅ Dynamo provider built"
+
+# Build KAITO provider Docker image
+kaito-provider-docker-build:
+	docker build -f providers/kaito/Dockerfile -t $(KAITO_PROVIDER_IMG) .
+	@echo "✅ KAITO provider image built: $(KAITO_PROVIDER_IMG)"
+
+# Build Dynamo provider Docker image
+dynamo-provider-docker-build:
+	docker build -f providers/dynamo/Dockerfile -t $(DYNAMO_PROVIDER_IMG) .
+	@echo "✅ Dynamo provider image built: $(DYNAMO_PROVIDER_IMG)"
+
+# Deploy KAITO provider to the K8s cluster
+kaito-provider-deploy:
+	cd providers/kaito/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(KAITO_PROVIDER_IMG)
+	kustomize build providers/kaito/config/default | kubectl apply -f -
+	@echo "✅ KAITO provider deployed"
+
+# Deploy Dynamo provider to the K8s cluster
+dynamo-provider-deploy:
+	cd providers/dynamo/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(DYNAMO_PROVIDER_IMG)
+	kustomize build providers/dynamo/config/default | kubectl apply -f -
+	@echo "✅ Dynamo provider deployed"

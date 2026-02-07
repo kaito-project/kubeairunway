@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubefoundry-dynamo-provider-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubefoundry-dynamo-provider-role
+subjects:
+- kind: ServiceAccount
+  name: kubefoundry-dynamo-provider
+  namespace: kubefoundry-system

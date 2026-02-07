@@ -18,8 +18,11 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -249,7 +252,6 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 }
 
 // runSelectionAlgorithm implements the provider selection algorithm
-// This is a simplified version - full CEL evaluation would be added for production
 func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha1.ModelDeployment, providers []kubefoundryv1alpha1.InferenceProviderConfig) (string, string) {
 	spec := &md.Spec
 
@@ -259,9 +261,11 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha
 		hasGPU = true
 	}
 	if spec.Serving != nil && spec.Serving.Mode == kubefoundryv1alpha1.ServingModeDisaggregated {
-		// Disaggregated mode always uses GPU
 		hasGPU = true
 	}
+
+	// Convert spec to map for CEL evaluation
+	specMap := specToMap(spec)
 
 	// Build candidate list with scores
 	type candidate struct {
@@ -314,12 +318,14 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha
 		}
 
 		// This provider is compatible
-		// Calculate priority from selection rules
+		// Evaluate CEL selection rules to calculate priority
 		priority := int32(0)
 		for _, rule := range pc.Spec.SelectionRules {
-			// TODO: Evaluate CEL condition
-			// For now, just use the priority if there are rules
-			if rule.Priority > priority {
+			matched, err := evaluateCEL(rule.Condition, specMap)
+			if err != nil {
+				continue // skip rules that fail to evaluate
+			}
+			if matched && rule.Priority > priority {
 				priority = rule.Priority
 			}
 		}
@@ -336,10 +342,10 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha
 		return "", ""
 	}
 
-	// Select highest priority candidate
+	// Select highest priority candidate; use name as stable tiebreaker
 	best := candidates[0]
 	for _, c := range candidates[1:] {
-		if c.priority > best.priority {
+		if c.priority > best.priority || (c.priority == best.priority && c.name < best.name) {
 			best = c
 		}
 	}
@@ -366,4 +372,50 @@ func (r *ModelDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&kubefoundryv1alpha1.ModelDeployment{}).
 		Named("modeldeployment").
 		Complete(r)
+}
+
+// specToMap converts a ModelDeploymentSpec to a map for CEL evaluation
+func specToMap(spec *kubefoundryv1alpha1.ModelDeploymentSpec) map[string]any {
+	data, err := json.Marshal(spec)
+	if err != nil {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return map[string]any{}
+	}
+	return m
+}
+
+// evaluateCEL evaluates a CEL expression against the spec map
+func evaluateCEL(expression string, specMap map[string]any) (bool, error) {
+	env, err := cel.NewEnv(
+		cel.Variable("spec", cel.DynType),
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to create CEL environment: %w", err)
+	}
+
+	ast, issues := env.Compile(expression)
+	if issues != nil && issues.Err() != nil {
+		return false, fmt.Errorf("failed to compile CEL expression %q: %w", expression, issues.Err())
+	}
+
+	prg, err := env.Program(ast)
+	if err != nil {
+		return false, fmt.Errorf("failed to create CEL program: %w", err)
+	}
+
+	out, _, err := prg.Eval(map[string]any{
+		"spec": specMap,
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+	}
+
+	if out.Type() != types.BoolType {
+		return false, fmt.Errorf("CEL expression did not return bool, got %s", out.Type())
+	}
+
+	return out.Value().(bool), nil
 }

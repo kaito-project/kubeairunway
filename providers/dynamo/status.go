@@ -20,9 +20,20 @@ import (
 	"fmt"
 
 	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
-	"github.com/kubefoundry/kubefoundry/controller/internal/providers"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+// ProviderStatusResult contains the status fields extracted from an upstream resource.
+// Defined locally to avoid importing the controller's internal providers package,
+// keeping this provider self-contained for out-of-tree use.
+type ProviderStatusResult struct {
+	Phase        kubefoundryv1alpha1.DeploymentPhase
+	Message      string
+	Replicas     *kubefoundryv1alpha1.ReplicaStatus
+	Endpoint     *kubefoundryv1alpha1.EndpointStatus
+	ResourceName string
+	ResourceKind string
+}
 
 // DynamoState represents the state of a DynamoGraphDeployment
 type DynamoState string
@@ -47,12 +58,12 @@ func NewStatusTranslator() *StatusTranslator {
 }
 
 // TranslateStatus converts DynamoGraphDeployment status to ModelDeployment status fields
-func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) (*providers.ProviderStatusResult, error) {
+func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) (*ProviderStatusResult, error) {
 	if upstream == nil {
 		return nil, fmt.Errorf("upstream resource is nil")
 	}
 
-	result := &providers.ProviderStatusResult{
+	result := &ProviderStatusResult{
 		ResourceName: upstream.GetName(),
 		ResourceKind: DynamoGraphDeploymentKind,
 		Phase:        kubefoundryv1alpha1.DeploymentPhasePending,
