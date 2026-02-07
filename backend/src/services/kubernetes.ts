@@ -388,45 +388,7 @@ class KubernetesService {
     // Check if KubeFoundry controller is installed by checking for the CRD
     const crdStatus = await this.checkCRDInstallation();
 
-    const kubefoundryStatus: RuntimeStatus = {
-      id: 'kubefoundry',
-      name: 'KubeFoundry',
-      installed: crdStatus.installed,
-      healthy: crdStatus.installed,
-      message: crdStatus.message,
-    };
-
-    // Check for controller pods
-    if (crdStatus.installed) {
-      try {
-        const pods = await withRetry(
-          () => this.coreV1Api.listNamespacedPod(
-            'kubefoundry-system',
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            'app.kubernetes.io/name=kubefoundry'
-          ),
-          { operationName: 'checkControllerPods', maxRetries: 1 }
-        );
-
-        const runningPods = pods.body.items.filter(
-          (pod) => pod.status?.phase === 'Running'
-        );
-
-        kubefoundryStatus.healthy = runningPods.length > 0;
-        if (runningPods.length === 0) {
-          kubefoundryStatus.message = 'CRD found but controller not running';
-        }
-      } catch {
-        // Namespace might not exist
-        kubefoundryStatus.healthy = false;
-        kubefoundryStatus.message = 'CRD found but controller namespace not accessible';
-      }
-    }
-
-    const runtimes: RuntimeStatus[] = [kubefoundryStatus];
+    const runtimes: RuntimeStatus[] = [];
 
     // List InferenceProviderConfig resources to discover registered providers
     if (crdStatus.installed) {
