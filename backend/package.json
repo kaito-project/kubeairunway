@@ -27,7 +27,8 @@
     "hono": "^4.10.7",
     "js-yaml": "^4.1.1",
     "pino": "^10.1.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@kubefoundry/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",
