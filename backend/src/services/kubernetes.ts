@@ -381,16 +381,44 @@ class KubernetesService {
   }
 
   /**
+   * Check if a specific CRD exists in the cluster
+   */
+  async checkCRDExists(crdName: string): Promise<boolean> {
+    try {
+      await withRetry(
+        () => this.apiExtensionsApi.readCustomResourceDefinition(crdName),
+        { operationName: `checkCRDExists:${crdName}`, maxRetries: 1 }
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Get status of all runtimes (providers) in the cluster.
    * Returns installation and health status for each runtime.
    */
   async getRuntimesStatus(): Promise<RuntimeStatus[]> {
+    const { getAllProviders } = await import('../providers/registry');
+    const knownProviders = getAllProviders();
+
+    // Start with all known providers as not installed
+    const runtimeMap = new Map<string, RuntimeStatus>();
+    for (const provider of knownProviders) {
+      runtimeMap.set(provider.id, {
+        id: provider.id,
+        name: provider.name,
+        installed: false,
+        healthy: false,
+        message: 'Not installed',
+      });
+    }
+
     // Check if KubeFoundry controller is installed by checking for the CRD
     const crdStatus = await this.checkCRDInstallation();
 
-    const runtimes: RuntimeStatus[] = [];
-
-    // List InferenceProviderConfig resources to discover registered providers
+    // Merge live InferenceProviderConfig data
     if (crdStatus.installed) {
       try {
         const response = await withRetry(
@@ -406,9 +434,10 @@ class KubernetesService {
         for (const item of items) {
           const name = item.metadata?.name || 'unknown';
           const status = item.status || {};
-          const displayName = name.charAt(0).toUpperCase() + name.slice(1);
+          const existing = runtimeMap.get(name);
+          const displayName = existing?.name || name.charAt(0).toUpperCase() + name.slice(1);
 
-          runtimes.push({
+          runtimeMap.set(name, {
             id: name,
             name: displayName,
             installed: true,
@@ -425,7 +454,7 @@ class KubernetesService {
       }
     }
 
-    return runtimes;
+    return Array.from(runtimeMap.values());
   }
 
   /**
