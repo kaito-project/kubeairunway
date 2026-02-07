@@ -1,0 +1,4 @@
+namespace: kubefoundry-system
+resources:
+- ../rbac
+- ../manager

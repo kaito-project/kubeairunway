@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubefoundry-kuberay-provider-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubefoundry-kuberay-provider-role
+subjects:
+- kind: ServiceAccount
+  name: kubefoundry-kuberay-provider
+  namespace: kubefoundry-system

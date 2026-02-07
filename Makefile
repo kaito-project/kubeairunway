@@ -2,6 +2,7 @@
 .PHONY: controller-build controller-docker-build controller-install controller-deploy controller-generate
 .PHONY: kaito-provider-build kaito-provider-docker-build kaito-provider-deploy
 .PHONY: dynamo-provider-build dynamo-provider-docker-build dynamo-provider-deploy
+.PHONY: kuberay-provider-build kuberay-provider-docker-build kuberay-provider-deploy
 
 # Controller image
 CONTROLLER_IMG ?= ghcr.io/kubefoundry/kubefoundry-controller:latest
@@ -9,6 +10,7 @@ CONTROLLER_IMG ?= ghcr.io/kubefoundry/kubefoundry-controller:latest
 # Provider images
 KAITO_PROVIDER_IMG ?= ghcr.io/kubefoundry/kaito-provider:latest
 DYNAMO_PROVIDER_IMG ?= ghcr.io/kubefoundry/dynamo-provider:latest
+KUBERAY_PROVIDER_IMG ?= ghcr.io/kubefoundry/kuberay-provider:latest
 
 # Default target
 help:
@@ -45,6 +47,9 @@ help:
 	@echo "  dynamo-provider-build         Build the Dynamo provider binary"
 	@echo "  dynamo-provider-docker-build  Build Dynamo provider Docker image"
 	@echo "  dynamo-provider-deploy        Deploy Dynamo provider to cluster"
+	@echo "  kuberay-provider-build        Build the KubeRay provider binary"
+	@echo "  kuberay-provider-docker-build Build KubeRay provider Docker image"
+	@echo "  kuberay-provider-deploy       Deploy KubeRay provider to cluster"
 	@echo ""
 	@echo "  help                   Show this help message"
 
@@ -190,3 +195,19 @@ dynamo-provider-deploy:
 	cd providers/dynamo/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(DYNAMO_PROVIDER_IMG)
 	kustomize build providers/dynamo/config/default | kubectl apply -f -
 	@echo "✅ Dynamo provider deployed"
+
+# Build KubeRay provider binary
+kuberay-provider-build:
+	cd providers/kuberay && go build -o bin/provider ./cmd/main.go
+	@echo "✅ KubeRay provider built"
+
+# Build KubeRay provider Docker image
+kuberay-provider-docker-build:
+	docker build -f providers/kuberay/Dockerfile -t $(KUBERAY_PROVIDER_IMG) .
+	@echo "✅ KubeRay provider image built: $(KUBERAY_PROVIDER_IMG)"
+
+# Deploy KubeRay provider to the K8s cluster
+kuberay-provider-deploy:
+	cd providers/kuberay/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(KUBERAY_PROVIDER_IMG)
+	kustomize build providers/kuberay/config/default | kubectl apply -f -
+	@echo "✅ KubeRay provider deployed"
