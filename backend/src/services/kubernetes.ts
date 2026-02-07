@@ -426,7 +426,44 @@ class KubernetesService {
       }
     }
 
-    return [kubefoundryStatus];
+    const runtimes: RuntimeStatus[] = [kubefoundryStatus];
+
+    // List InferenceProviderConfig resources to discover registered providers
+    if (crdStatus.installed) {
+      try {
+        const response = await withRetry(
+          () => this.customObjectsApi.listClusterCustomObject(
+            MODEL_DEPLOYMENT_CRD.apiGroup,
+            MODEL_DEPLOYMENT_CRD.apiVersion,
+            'inferenceproviderconfigs'
+          ),
+          { operationName: 'listInferenceProviderConfigs', maxRetries: 1 }
+        );
+
+        const items = (response.body as any)?.items || [];
+        for (const item of items) {
+          const name = item.metadata?.name || 'unknown';
+          const status = item.status || {};
+          const displayName = name.charAt(0).toUpperCase() + name.slice(1);
+
+          runtimes.push({
+            id: name,
+            name: displayName,
+            installed: true,
+            healthy: status.ready === true,
+            version: status.version,
+            message: status.ready ? 'Provider ready' : 'Provider not ready',
+          });
+        }
+      } catch (error: any) {
+        const statusCode = error?.statusCode || error?.response?.statusCode;
+        if (statusCode !== 404) {
+          logger.warn({ error: error?.message || error }, 'Failed to list InferenceProviderConfigs');
+        }
+      }
+    }
+
+    return runtimes;
   }
 
   /**
