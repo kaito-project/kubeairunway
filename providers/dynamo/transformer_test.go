@@ -60,16 +60,18 @@ func TestTransformAggregated(t *testing.T) {
 		t.Errorf("expected apiVersion 'nvidia.com/v1alpha1', got %s", dgd.GetAPIVersion())
 	}
 
-	// Check owner references
-	ownerRefs := dgd.GetOwnerReferences()
-	if len(ownerRefs) != 1 {
-		t.Fatalf("expected 1 owner reference, got %d", len(ownerRefs))
+	// Check namespace
+	if dgd.GetNamespace() != DynamoNamespace {
+		t.Errorf("expected namespace %q, got %q", DynamoNamespace, dgd.GetNamespace())
 	}
 
 	// Check labels
 	labels := dgd.GetLabels()
 	if labels["kubefoundry.ai/managed-by"] != "kubefoundry" {
 		t.Errorf("expected managed-by label 'kubefoundry'")
+	}
+	if labels["kubefoundry.ai/deployment-namespace"] != "default" {
+		t.Errorf("expected deployment-namespace label 'default'")
 	}
 	if labels["kubefoundry.ai/engine-type"] != "vllm" {
 		t.Errorf("expected engine-type label 'vllm'")

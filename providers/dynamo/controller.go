@@ -314,7 +314,7 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubef
 
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      md.Name,
-		Namespace: md.Namespace,
+		Namespace: DynamoNamespace,
 	}, dgd)
 
 	if err == nil {

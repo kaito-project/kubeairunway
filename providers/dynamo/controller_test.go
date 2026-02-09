@@ -335,7 +335,7 @@ func TestReconcileSuccessfulCreate(t *testing.T) {
 
 	dgd := &unstructured.Unstructured{}
 	setDGDGVK(dgd)
-	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, dgd)
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: DynamoNamespace}, dgd)
 	if err != nil {
 		t.Fatalf("expected DynamoGraphDeployment to be created: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 	dgd := &unstructured.Unstructured{}
 	setDGDGVK(dgd)
 	dgd.SetName("test")
-	dgd.SetNamespace("default")
+	dgd.SetNamespace(DynamoNamespace)
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, dgd).WithStatusSubresource(md).Build()
 	r := NewDynamoProviderReconciler(c, scheme)

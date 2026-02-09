@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -34,6 +33,9 @@ const (
 	DynamoAPIVersion = "v1alpha1"
 	// DynamoGraphDeploymentKind is the kind for DynamoGraphDeployment
 	DynamoGraphDeploymentKind = "DynamoGraphDeployment"
+
+	// DynamoNamespace is the namespace where DynamoGraphDeployments are created
+	DynamoNamespace = "dynamo-system"
 
 	// Default component settings
 	DefaultFrontendReplicas = 1
@@ -92,26 +94,15 @@ func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.Mod
 	dgd.SetAPIVersion(fmt.Sprintf("%s/%s", DynamoAPIGroup, DynamoAPIVersion))
 	dgd.SetKind(DynamoGraphDeploymentKind)
 	dgd.SetName(md.Name)
-	dgd.SetNamespace(md.Namespace)
+	dgd.SetNamespace(DynamoNamespace)
 
-	// Set owner reference
-	dgd.SetOwnerReferences([]metav1.OwnerReference{
-		{
-			APIVersion:         md.APIVersion,
-			Kind:               md.Kind,
-			Name:               md.Name,
-			UID:                md.UID,
-			Controller:         boolPtr(true),
-			BlockOwnerDeletion: boolPtr(true),
-		},
-	})
-
-	// Add labels
+	// Add labels (owner reference cannot cross namespaces, so we track the source via labels)
 	labels := map[string]string{
-		"kubefoundry.ai/managed-by":  "kubefoundry",
-		"kubefoundry.ai/deployment":  md.Name,
-		"kubefoundry.ai/model-id":    sanitizeLabelValue(md.Spec.Model.ID),
-		"kubefoundry.ai/engine-type": string(md.Spec.Engine.Type),
+		"kubefoundry.ai/managed-by":          "kubefoundry",
+		"kubefoundry.ai/deployment":          md.Name,
+		"kubefoundry.ai/deployment-namespace": md.Namespace,
+		"kubefoundry.ai/model-id":            sanitizeLabelValue(md.Spec.Model.ID),
+		"kubefoundry.ai/engine-type":         string(md.Spec.Engine.Type),
 	}
 	dgd.SetLabels(labels)
 
