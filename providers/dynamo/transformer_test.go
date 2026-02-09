@@ -631,3 +631,39 @@ func TestBuildPrefillWorkerWithCustomGPUType(t *testing.T) {
 		t.Errorf("expected memory=32Gi, got %v", limits["memory"])
 	}
 }
+
+func TestApplyOverridesEscapeHatch(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+
+	// Set overrides with both typed fields and arbitrary escape hatch fields
+	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+		Name: "dynamo",
+		Overrides: &runtime.RawExtension{
+			Raw: []byte(`{
+				"routerMode": "kv",
+				"spec": {
+					"customField": "customValue"
+				}
+			}`),
+		},
+	}
+
+	results, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	dgd := results[0]
+
+	// Verify the escape hatch field was merged into the output
+	customField, found, _ := unstructured.NestedString(dgd.Object, "spec", "customField")
+	if !found || customField != "customValue" {
+		t.Errorf("expected customField 'customValue', got %q (found=%v)", customField, found)
+	}
+
+	// Verify existing spec fields are preserved (backendFramework should still be set)
+	framework, found, _ := unstructured.NestedString(dgd.Object, "spec", "backendFramework")
+	if !found || framework == "" {
+		t.Error("expected backendFramework to be preserved after override merge")
+	}
+}

@@ -125,6 +125,11 @@ func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.Mod
 		return nil, fmt.Errorf("failed to set spec: %w", err)
 	}
 
+	// Apply escape hatch overrides last so they can override any field
+	if err := applyOverrides(dgd, md); err != nil {
+		return nil, fmt.Errorf("failed to apply provider overrides: %w", err)
+	}
+
 	return []*unstructured.Unstructured{dgd}, nil
 }
 
@@ -537,4 +542,37 @@ func sanitizeLabelValue(value string) string {
 // boolPtr returns a pointer to a bool
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+// applyOverrides deep-merges spec.provider.overrides into the unstructured object.
+// This is the escape hatch that lets users set arbitrary fields on the provider CRD.
+func applyOverrides(obj *unstructured.Unstructured, md *kubefoundryv1alpha1.ModelDeployment) error {
+	if md.Spec.Provider == nil || md.Spec.Provider.Overrides == nil {
+		return nil
+	}
+
+	var overrides map[string]interface{}
+	if err := json.Unmarshal(md.Spec.Provider.Overrides.Raw, &overrides); err != nil {
+		return fmt.Errorf("failed to unmarshal overrides: %w", err)
+	}
+
+	obj.Object = deepMerge(obj.Object, overrides)
+	return nil
+}
+
+// deepMerge recursively merges src into dst.
+// For maps, values are merged recursively. For all other types, src overwrites dst.
+func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
+	for key, srcVal := range src {
+		if dstVal, exists := dst[key]; exists {
+			srcMap, srcOk := srcVal.(map[string]interface{})
+			dstMap, dstOk := dstVal.(map[string]interface{})
+			if srcOk && dstOk {
+				dst[key] = deepMerge(dstMap, srcMap)
+				continue
+			}
+		}
+		dst[key] = srcVal
+	}
+	return dst
 }

@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -455,5 +456,75 @@ func TestBuildEnvVarsEmpty(t *testing.T) {
 	result := tr.buildEnvVars(md)
 	if len(result) != 0 {
 		t.Errorf("expected empty env vars, got %d", len(result))
+	}
+}
+
+func TestApplyOverrides(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+
+	// No overrides - should succeed without changes
+	results, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ws := results[0]
+
+	resource, _, _ := unstructured.NestedMap(ws.Object, "resource")
+	if resource == nil {
+		t.Fatal("expected resource to be set")
+	}
+
+	// With overrides - should merge into workspace
+	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+		Overrides: &runtime.RawExtension{
+			Raw: []byte(`{
+				"resource": {
+					"labelSelector": {"matchLabels": {"custom": "label"}}
+				},
+				"inference": {
+					"preset": {"accessMode": "private"}
+				}
+			}`),
+		},
+	}
+
+	results, err = tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ws = results[0]
+
+	// Verify overrides were merged
+	accessMode, found, _ := unstructured.NestedString(ws.Object, "inference", "preset", "accessMode")
+	if !found || accessMode != "private" {
+		t.Errorf("expected accessMode 'private', got %q (found=%v)", accessMode, found)
+	}
+
+	// Verify existing fields are preserved (resource.count should still be set)
+	count, found, _ := unstructured.NestedInt64(ws.Object, "resource", "count")
+	if !found || count == 0 {
+		t.Error("expected resource.count to be preserved after override merge")
+	}
+
+	// Verify override was merged into resource
+	customLabel, found, _ := unstructured.NestedString(ws.Object, "resource", "labelSelector", "matchLabels", "custom")
+	if !found || customLabel != "label" {
+		t.Errorf("expected custom label 'label', got %q (found=%v)", customLabel, found)
+	}
+}
+
+func TestApplyOverridesInvalidJSON(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+		Overrides: &runtime.RawExtension{
+			Raw: []byte("not valid json"),
+		},
+	}
+
+	_, err := tr.Transform(context.Background(), md)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON overrides")
 	}
 }
