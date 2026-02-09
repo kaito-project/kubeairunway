@@ -279,17 +279,21 @@ func TestBuildResourceLimits(t *testing.T) {
 		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 4, Type: "nvidia.com/gpu"},
 	})
 	limits, _ = result["limits"].(map[string]interface{})
-	if limits["nvidia.com/gpu"] != "4" {
-		t.Errorf("expected gpu limit 4, got %v", limits["nvidia.com/gpu"])
+	if limits["gpu"] != "4" {
+		t.Errorf("expected gpu limit 4, got %v", limits["gpu"])
+	}
+	requests, _ := result["requests"].(map[string]interface{})
+	if requests["gpu"] != "4" {
+		t.Errorf("expected gpu request 4, got %v", requests["gpu"])
 	}
 
-	// With custom GPU type
+	// With custom GPU type (Dynamo always uses 'gpu' key)
 	result = tr.buildResourceLimits(&kubefoundryv1alpha1.ResourceSpec{
 		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
 	})
 	limits, _ = result["limits"].(map[string]interface{})
-	if limits["amd.com/gpu"] != "2" {
-		t.Errorf("expected amd gpu limit 2, got %v", limits["amd.com/gpu"])
+	if limits["gpu"] != "2" {
+		t.Errorf("expected gpu limit 2, got %v", limits["gpu"])
 	}
 
 	// With memory and CPU
@@ -626,8 +630,8 @@ func TestBuildPrefillWorkerWithCustomGPUType(t *testing.T) {
 	worker := tr.buildPrefillWorker(md, "img")
 	resources, _ := worker["resources"].(map[string]interface{})
 	limits, _ := resources["limits"].(map[string]interface{})
-	if limits["amd.com/gpu"] != "2" {
-		t.Errorf("expected amd.com/gpu=2, got %v", limits["amd.com/gpu"])
+	if limits["gpu"] != "2" {
+		t.Errorf("expected gpu=2, got %v", limits["gpu"])
 	}
 	if limits["memory"] != "32Gi" {
 		t.Errorf("expected memory=32Gi, got %v", limits["memory"])

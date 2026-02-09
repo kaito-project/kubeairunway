@@ -275,21 +275,22 @@ func (t *Transformer) buildAggregatedWorker(md *kubefoundryv1alpha1.ModelDeploym
 func (t *Transformer) buildPrefillWorker(md *kubefoundryv1alpha1.ModelDeployment, image string) map[string]interface{} {
 	prefillSpec := md.Spec.Scaling.Prefill
 
-	// Build resource limits from component spec
-	resources := map[string]interface{}{
-		"limits": map[string]interface{}{},
-	}
-	limits := resources["limits"].(map[string]interface{})
+	// Build resource limits and requests from component spec
+	limits := map[string]interface{}{}
+	requests := map[string]interface{}{}
 
 	if prefillSpec.GPU != nil && prefillSpec.GPU.Count > 0 {
-		gpuType := "nvidia.com/gpu"
-		if prefillSpec.GPU.Type != "" {
-			gpuType = prefillSpec.GPU.Type
-		}
-		limits[gpuType] = fmt.Sprintf("%d", prefillSpec.GPU.Count)
+		gpuCount := fmt.Sprintf("%d", prefillSpec.GPU.Count)
+		limits["gpu"] = gpuCount
+		requests["gpu"] = gpuCount
 	}
 	if prefillSpec.Memory != "" {
 		limits["memory"] = prefillSpec.Memory
+	}
+
+	resources := map[string]interface{}{
+		"limits":   limits,
+		"requests": requests,
 	}
 
 	// Build engine arguments with prefill flag
@@ -325,21 +326,22 @@ func (t *Transformer) buildPrefillWorker(md *kubefoundryv1alpha1.ModelDeployment
 func (t *Transformer) buildDecodeWorker(md *kubefoundryv1alpha1.ModelDeployment, image string) map[string]interface{} {
 	decodeSpec := md.Spec.Scaling.Decode
 
-	// Build resource limits from component spec
-	resources := map[string]interface{}{
-		"limits": map[string]interface{}{},
-	}
-	limits := resources["limits"].(map[string]interface{})
+	// Build resource limits and requests from component spec
+	limits := map[string]interface{}{}
+	requests := map[string]interface{}{}
 
 	if decodeSpec.GPU != nil && decodeSpec.GPU.Count > 0 {
-		gpuType := "nvidia.com/gpu"
-		if decodeSpec.GPU.Type != "" {
-			gpuType = decodeSpec.GPU.Type
-		}
-		limits[gpuType] = fmt.Sprintf("%d", decodeSpec.GPU.Count)
+		gpuCount := fmt.Sprintf("%d", decodeSpec.GPU.Count)
+		limits["gpu"] = gpuCount
+		requests["gpu"] = gpuCount
 	}
 	if decodeSpec.Memory != "" {
 		limits["memory"] = decodeSpec.Memory
+	}
+
+	resources := map[string]interface{}{
+		"limits":   limits,
+		"requests": requests,
 	}
 
 	// Build engine arguments (decode workers don't need special flags)
@@ -371,24 +373,22 @@ func (t *Transformer) buildDecodeWorker(md *kubefoundryv1alpha1.ModelDeployment,
 	return worker
 }
 
-// buildResourceLimits creates resource limits from ResourceSpec
+// buildResourceLimits creates resource limits and requests from ResourceSpec
 func (t *Transformer) buildResourceLimits(spec *kubefoundryv1alpha1.ResourceSpec) map[string]interface{} {
-	resources := map[string]interface{}{
-		"limits": map[string]interface{}{},
-	}
+	limits := map[string]interface{}{}
+	requests := map[string]interface{}{}
 
 	if spec == nil {
-		return resources
+		return map[string]interface{}{
+			"limits":   limits,
+			"requests": requests,
+		}
 	}
 
-	limits := resources["limits"].(map[string]interface{})
-
 	if spec.GPU != nil && spec.GPU.Count > 0 {
-		gpuType := "nvidia.com/gpu"
-		if spec.GPU.Type != "" {
-			gpuType = spec.GPU.Type
-		}
-		limits[gpuType] = fmt.Sprintf("%d", spec.GPU.Count)
+		gpuCount := fmt.Sprintf("%d", spec.GPU.Count)
+		limits["gpu"] = gpuCount
+		requests["gpu"] = gpuCount
 	}
 
 	if spec.Memory != "" {
@@ -399,7 +399,10 @@ func (t *Transformer) buildResourceLimits(spec *kubefoundryv1alpha1.ResourceSpec
 		limits["cpu"] = spec.CPU
 	}
 
-	return resources
+	return map[string]interface{}{
+		"limits":   limits,
+		"requests": requests,
+	}
 }
 
 // buildEngineArgs constructs the engine command line arguments
