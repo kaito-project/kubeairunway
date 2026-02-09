@@ -673,3 +673,287 @@ func TestApplyOverridesEscapeHatch(t *testing.T) {
 		t.Error("expected backendFramework to be preserved after override merge")
 	}
 }
+
+func TestTransformAggregatedNoGPU(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = &kubefoundryv1alpha1.ResourceSpec{
+		Memory: "16Gi",
+		CPU:    "4",
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	res, _ := worker["resources"].(map[string]interface{})
+	limits, _ := res["limits"].(map[string]interface{})
+	requests, _ := res["requests"].(map[string]interface{})
+
+	if _, ok := limits["gpu"]; ok {
+		t.Error("expected no gpu in limits when GPU not specified")
+	}
+	if _, ok := requests["gpu"]; ok {
+		t.Error("expected no gpu in requests when GPU not specified")
+	}
+	if limits["memory"] != "16Gi" {
+		t.Errorf("expected memory=16Gi, got %v", limits["memory"])
+	}
+	if limits["cpu"] != "4" {
+		t.Errorf("expected cpu=4, got %v", limits["cpu"])
+	}
+}
+
+func TestTransformAggregatedNilResources(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = nil
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	res, _ := worker["resources"].(map[string]interface{})
+	limits, _ := res["limits"].(map[string]interface{})
+	if len(limits) != 0 {
+		t.Errorf("expected empty limits for nil resources, got %v", limits)
+	}
+}
+
+func TestTransformAggregatedGPUCount0(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = &kubefoundryv1alpha1.ResourceSpec{
+		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 0},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	res, _ := worker["resources"].(map[string]interface{})
+	limits, _ := res["limits"].(map[string]interface{})
+	if _, ok := limits["gpu"]; ok {
+		t.Error("expected no gpu in limits when count is 0")
+	}
+}
+
+func TestTransformSGLangEngine(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	if spec["backendFramework"] != "sglang" {
+		t.Errorf("expected backendFramework 'sglang', got %v", spec["backendFramework"])
+	}
+
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	eps, _ := worker["extraPodSpec"].(map[string]interface{})
+	mc, _ := eps["mainContainer"].(map[string]interface{})
+	argsSlice, _ := mc["args"].([]interface{})
+	if len(argsSlice) == 0 {
+		t.Fatal("expected engine args")
+	}
+	if !containsSubstring(argsSlice[0].(string), "dynamo.sglang") {
+		t.Errorf("expected sglang runner in args, got %v", argsSlice[0])
+	}
+}
+
+func TestTransformTRTLLMEngine(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeTRTLLM
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	if spec["backendFramework"] != "trtllm" {
+		t.Errorf("expected backendFramework 'trtllm', got %v", spec["backendFramework"])
+	}
+}
+
+func TestTransformWithCustomScalingReplicas(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
+		Replicas: 5,
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	if worker["replicas"] != int64(5) {
+		t.Errorf("expected replicas 5, got %v", worker["replicas"])
+	}
+}
+
+func TestTransformDisaggregatedGPURequests(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Serving = &kubefoundryv1alpha1.ServingSpec{
+		Mode: kubefoundryv1alpha1.ServingModeDisaggregated,
+	}
+	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
+		Prefill: &kubefoundryv1alpha1.ComponentScalingSpec{
+			Replicas: 1,
+			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 4},
+		},
+		Decode: &kubefoundryv1alpha1.ComponentScalingSpec{
+			Replicas: 1,
+			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 2},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+
+	// Check prefill has both limits and requests
+	prefill, _ := services["VllmPrefillWorker"].(map[string]interface{})
+	prefillRes, _ := prefill["resources"].(map[string]interface{})
+	prefillLimits, _ := prefillRes["limits"].(map[string]interface{})
+	prefillRequests, _ := prefillRes["requests"].(map[string]interface{})
+	if prefillLimits["gpu"] != "4" {
+		t.Errorf("expected prefill gpu limit 4, got %v", prefillLimits["gpu"])
+	}
+	if prefillRequests["gpu"] != "4" {
+		t.Errorf("expected prefill gpu request 4, got %v", prefillRequests["gpu"])
+	}
+
+	// Check decode has both limits and requests
+	decode, _ := services["VllmDecodeWorker"].(map[string]interface{})
+	decodeRes, _ := decode["resources"].(map[string]interface{})
+	decodeLimits, _ := decodeRes["limits"].(map[string]interface{})
+	decodeRequests, _ := decodeRes["requests"].(map[string]interface{})
+	if decodeLimits["gpu"] != "2" {
+		t.Errorf("expected decode gpu limit 2, got %v", decodeLimits["gpu"])
+	}
+	if decodeRequests["gpu"] != "2" {
+		t.Errorf("expected decode gpu request 2, got %v", decodeRequests["gpu"])
+	}
+}
+
+func TestTransformOverrideCanOverwriteServices(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+		Name: "dynamo",
+		Overrides: &runtime.RawExtension{
+			Raw: []byte(`{
+				"spec": {
+					"services": {
+						"VllmWorker": {
+							"replicas": 3
+						}
+					}
+				}
+			}`),
+		},
+	}
+
+	results, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := results[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+
+	// Deep merge should have replaced replicas but kept other fields
+	if worker["replicas"] != float64(3) {
+		t.Errorf("expected overridden replicas 3, got %v (type %T)", worker["replicas"], worker["replicas"])
+	}
+	// componentType should be preserved from the transformer
+	if worker["componentType"] != ComponentTypeWorker {
+		t.Errorf("expected componentType preserved, got %v", worker["componentType"])
+	}
+}
+
+func TestTransformWithCustomImage(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Image = "my-registry.io/custom-vllm:v1"
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	eps, _ := worker["extraPodSpec"].(map[string]interface{})
+	mc, _ := eps["mainContainer"].(map[string]interface{})
+	if mc["image"] != "my-registry.io/custom-vllm:v1" {
+		t.Errorf("expected custom image, got %v", mc["image"])
+	}
+}
+
+func TestBuildResourceLimitsWithAllFields(t *testing.T) {
+	tr := NewTransformer()
+	result := tr.buildResourceLimits(&kubefoundryv1alpha1.ResourceSpec{
+		GPU:    &kubefoundryv1alpha1.GPUSpec{Count: 2},
+		Memory: "64Gi",
+		CPU:    "16",
+	})
+	limits, _ := result["limits"].(map[string]interface{})
+	requests, _ := result["requests"].(map[string]interface{})
+
+	if limits["gpu"] != "2" {
+		t.Errorf("expected gpu limit 2, got %v", limits["gpu"])
+	}
+	if limits["memory"] != "64Gi" {
+		t.Errorf("expected memory limit 64Gi, got %v", limits["memory"])
+	}
+	if limits["cpu"] != "16" {
+		t.Errorf("expected cpu limit 16, got %v", limits["cpu"])
+	}
+	if requests["gpu"] != "2" {
+		t.Errorf("expected gpu request 2, got %v", requests["gpu"])
+	}
+	// Memory and CPU should not be in requests (only gpu goes there)
+	if _, ok := requests["memory"]; ok {
+		t.Error("did not expect memory in requests")
+	}
+}

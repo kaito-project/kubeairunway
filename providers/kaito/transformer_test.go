@@ -528,3 +528,243 @@ func TestApplyOverridesInvalidJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON overrides")
 	}
 }
+
+func TestTransformVLLMDefaultReplicas(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	// No Scaling spec at all — should default to count=1
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	count, found, _ := unstructured.NestedInt64(ws.Object, "resource", "count")
+	if !found || count != 1 {
+		t.Errorf("expected default count 1, got %v (found=%v)", count, found)
+	}
+}
+
+func TestTransformVLLMZeroReplicas(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
+		Replicas: 0,
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	// When replicas is 0, should still default to 1
+	count, found, _ := unstructured.NestedInt64(ws.Object, "resource", "count")
+	if !found || count != 1 {
+		t.Errorf("expected default count 1 for zero replicas, got %v", count)
+	}
+}
+
+func TestTransformLlamaCppWithServedName(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Image = "my-image:latest"
+	md.Spec.Model.ServedName = "my-alias"
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	containers, found, _ := unstructured.NestedSlice(ws.Object, "inference", "template", "spec", "containers")
+	if !found || len(containers) == 0 {
+		t.Fatal("expected containers in template")
+	}
+	container := containers[0].(map[string]interface{})
+	args, _ := container["args"].([]interface{})
+	foundServedName := false
+	for _, a := range args {
+		if a.(string) == "--served-model-name=my-alias" {
+			foundServedName = true
+		}
+	}
+	if !foundServedName {
+		t.Errorf("expected --served-model-name in args, got %v", args)
+	}
+}
+
+func TestTransformEmptyNodeSelector(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.NodeSelector = map[string]string{}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	matchLabels, found, _ := unstructured.NestedStringMap(ws.Object, "resource", "labelSelector", "matchLabels")
+	if !found {
+		t.Fatal("expected matchLabels")
+	}
+	if matchLabels["kubernetes.io/os"] != "linux" {
+		t.Error("expected kubernetes.io/os=linux in default matchLabels")
+	}
+	if len(matchLabels) != 1 {
+		t.Errorf("expected only 1 matchLabel (os=linux), got %d: %v", len(matchLabels), matchLabels)
+	}
+}
+
+func TestTransformSGLangUnsupported(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+
+	_, err := tr.Transform(context.Background(), md)
+	if err == nil {
+		t.Fatal("expected error for unsupported SGLang engine")
+	}
+}
+
+func TestTransformTRTLLMUnsupported(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeTRTLLM
+
+	_, err := tr.Transform(context.Background(), md)
+	if err == nil {
+		t.Fatal("expected error for unsupported TRT-LLM engine")
+	}
+}
+
+func TestTransformWithNilResources(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Image = "my-image:latest"
+	md.Spec.Resources = nil
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	containers, found, _ := unstructured.NestedSlice(ws.Object, "inference", "template", "spec", "containers")
+	if !found || len(containers) == 0 {
+		t.Fatal("expected containers in template")
+	}
+	container := containers[0].(map[string]interface{})
+	// No resources should be set
+	if _, ok := container["resources"]; ok {
+		t.Error("expected no resources when spec.resources is nil")
+	}
+}
+
+func TestTransformWithHFSecret(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Image = "my-image:latest"
+	md.Spec.Secrets = &kubefoundryv1alpha1.SecretsSpec{
+		HuggingFaceToken: "my-hf-secret",
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	containers, found, _ := unstructured.NestedSlice(ws.Object, "inference", "template", "spec", "containers")
+	if !found || len(containers) == 0 {
+		t.Fatal("expected containers in template")
+	}
+	container := containers[0].(map[string]interface{})
+	envVars, _ := container["env"].([]interface{})
+	foundHFToken := false
+	for _, ev := range envVars {
+		e, _ := ev.(map[string]interface{})
+		if e["name"] == "HF_TOKEN" {
+			foundHFToken = true
+			vf, _ := e["valueFrom"].(map[string]interface{})
+			skr, _ := vf["secretKeyRef"].(map[string]interface{})
+			if skr["name"] != "my-hf-secret" {
+				t.Errorf("expected secret name 'my-hf-secret', got %v", skr["name"])
+			}
+		}
+	}
+	if !foundHFToken {
+		t.Error("expected HF_TOKEN env var")
+	}
+}
+
+func TestTransformOverrideCanSetRootFields(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+		Overrides: &runtime.RawExtension{
+			Raw: []byte(`{
+				"resource": {
+					"count": 10
+				}
+			}`),
+		},
+	}
+
+	results, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := results[0]
+	// Overrides should set resource.count (KAITO has resource at root level)
+	count, found, _ := unstructured.NestedFloat64(ws.Object, "resource", "count")
+	if !found || count != 10 {
+		t.Errorf("expected overridden count 10, got %v", count)
+	}
+	// labelSelector should still be present (deep merge preserves it)
+	_, found, _ = unstructured.NestedMap(ws.Object, "resource", "labelSelector")
+	if !found {
+		t.Error("expected labelSelector to be preserved after override merge")
+	}
+}
+
+func TestBuildResourceRequestsGPUOnly(t *testing.T) {
+	tr := NewTransformer()
+	// GPU-only spec — KAITO buildResourceRequests doesn't handle GPU
+	result := tr.buildResourceRequests(&kubefoundryv1alpha1.ResourceSpec{
+		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 4},
+	})
+	if result != nil {
+		t.Errorf("expected nil when only GPU is specified (KAITO doesn't put GPU in requests), got %v", result)
+	}
+}
+
+func TestTransformPreservesOwnerReference(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.APIVersion = "kubefoundry.kubefoundry.ai/v1alpha1"
+	md.Kind = "ModelDeployment"
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	ownerRefs := ws.GetOwnerReferences()
+	if len(ownerRefs) != 1 {
+		t.Fatalf("expected 1 owner reference, got %d", len(ownerRefs))
+	}
+	if ownerRefs[0].Name != "test-model" {
+		t.Errorf("expected owner ref name 'test-model', got %s", ownerRefs[0].Name)
+	}
+	if *ownerRefs[0].Controller != true {
+		t.Error("expected controller=true on owner ref")
+	}
+}
