@@ -1507,7 +1507,7 @@ Each provider controller manages default container images for supported engines.
 
 **Webhook TLS:** The validating webhook uses self-signed certificates managed by [cert-controller](https://github.com/open-policy-agent/cert-controller) (from the OPA project). This approach:
 - Automatically generates and rotates TLS certificates
-- No external dependency on cert-manager
+- No external dependency on cert-manager (cert-controller is an in-process library)
 - Certificates stored in Kubernetes secrets
 - Controller handles certificate rotation transparently
 

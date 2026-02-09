@@ -277,14 +277,14 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
 		})
 
-		It("should provisioned cert-manager", func() {
-			By("validating that cert-manager has the certificate Secret")
-			verifyCertManager := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "secrets", "webhook-server-cert", "-n", namespace)
+		It("should have the webhook server cert secret", func() {
+			By("validating that the webhook server cert Secret exists")
+			verifyWebhookCert := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secrets", "kubefoundry-webhook-server-cert", "-n", namespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 			}
-			Eventually(verifyCertManager).Should(Succeed())
+			Eventually(verifyWebhookCert).Should(Succeed())
 		})
 
 		It("should have CA injection for mutating webhooks", func() {
