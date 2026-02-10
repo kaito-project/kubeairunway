@@ -505,10 +505,10 @@ export const huggingFaceApi = {
     if (options?.limit) params.set('limit', options.limit.toString());
     if (options?.offset) params.set('offset', options.offset.toString());
 
-    // Build headers - include HF token if provided for gated model access
+    // Build headers - include HF token via dedicated header (not Authorization, which is for cluster auth)
     const headers: Record<string, string> = {};
     if (options?.hfToken) {
-      headers['Authorization'] = `Bearer ${options.hfToken}`;
+      headers['X-HF-Token'] = options.hfToken;
     }
 
     return request<HfModelSearchResponse>(`/models/search?${params.toString()}`, {
@@ -520,7 +520,7 @@ export const huggingFaceApi = {
   getGgufFiles: (modelId: string, hfToken?: string) => {
     const headers: Record<string, string> = {};
     if (hfToken) {
-      headers['Authorization'] = `Bearer ${hfToken}`;
+      headers['X-HF-Token'] = hfToken;
     }
     return request<{ files: string[] }>(`/models/${encodeURIComponent(modelId)}/gguf-files`, {
       headers,

@@ -27,9 +27,8 @@ const modelsRoute = new Hono()
   .get('/search', zValidator('query', modelSearchQuerySchema), async (c) => {
     const { q, limit, offset } = c.req.valid('query');
 
-    // Extract HuggingFace token from Authorization header if present
-    const authHeader = c.req.header('Authorization');
-    const hfToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    // Extract HuggingFace token from dedicated header (not Authorization, which is for cluster auth)
+    const hfToken = c.req.header('X-HF-Token') || undefined;
 
     try {
       const results = await huggingFaceService.searchModels(
@@ -47,9 +46,8 @@ const modelsRoute = new Hono()
   .get('/:modelId{.+}/gguf-files', async (c) => {
     const modelId = c.req.param('modelId');
     
-    // Extract HuggingFace token from Authorization header if present
-    const authHeader = c.req.header('Authorization');
-    const hfToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    // Extract HuggingFace token from dedicated header (not Authorization, which is for cluster auth)
+    const hfToken = c.req.header('X-HF-Token') || undefined;
 
     try {
       const ggufFiles = await huggingFaceService.getGgufFiles(modelId, hfToken);

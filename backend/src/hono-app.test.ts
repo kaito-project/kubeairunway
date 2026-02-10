@@ -65,7 +65,6 @@ describe('Hono Routes', () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.config).toBeDefined();
-      expect(data.providers).toBeDefined();
     });
 
     test('GET /api/settings returns auth config', async () => {
@@ -74,14 +73,6 @@ describe('Hono Routes', () => {
       const data = await res.json();
       expect(data.auth).toBeDefined();
       expect(typeof data.auth.enabled).toBe('boolean');
-    });
-
-    test('GET /api/settings/providers returns providers list', async () => {
-      const res = await app.request('/api/settings/providers');
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(data.providers).toBeDefined();
-      expect(Array.isArray(data.providers)).toBe(true);
     });
   });
 

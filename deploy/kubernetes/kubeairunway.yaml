@@ -35,17 +35,26 @@ metadata:
   labels:
     app.kubernetes.io/name: kubeairunway
 rules:
-  # Core API - Pods, Services, Secrets, ConfigMaps, Namespaces
+  # Core API - Pods, Services (full CRUD for deployment management)
   - apiGroups: [""]
     resources:
       - pods
       - pods/log
       - services
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Secrets and ConfigMaps (needed for HF tokens, config storage)
+  - apiGroups: [""]
+    resources:
       - secrets
       - configmaps
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # Namespaces (read + create only, no delete)
+  - apiGroups: [""]
+    resources:
       - namespaces
-      - nodes
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create"]
 
   # Apps API - Deployments, ReplicaSets
   - apiGroups: ["apps"]

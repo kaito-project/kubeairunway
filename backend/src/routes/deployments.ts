@@ -37,6 +37,39 @@ const deploymentParamsSchema = z.object({
   name: resourceNameSchema,
 });
 
+const createDeploymentSchema = z.object({
+  name: resourceNameSchema,
+  modelId: z.string().min(1, 'Model ID is required'),
+  engine: z.enum(['vllm', 'sglang', 'trtllm', 'llamacpp']),
+  namespace: namespaceSchema.optional(),
+  mode: z.enum(['aggregated', 'disaggregated']).optional().default('aggregated'),
+  provider: z.string().optional(),
+  servedModelName: z.string().optional(),
+  routerMode: z.enum(['none', 'kv', 'round-robin']).optional().default('none'),
+  replicas: z.number().int().min(0).optional().default(1),
+  hfTokenSecret: z.string().optional().default(''),
+  contextLength: z.number().int().positive().optional(),
+  enforceEager: z.boolean().optional().default(false),
+  enablePrefixCaching: z.boolean().optional().default(false),
+  trustRemoteCode: z.boolean().optional().default(false),
+  resources: z.object({
+    gpu: z.number().int().min(0),
+    memory: z.string().optional(),
+  }).optional(),
+  engineArgs: z.record(z.unknown()).optional(),
+  prefillReplicas: z.number().int().min(0).optional(),
+  decodeReplicas: z.number().int().min(0).optional(),
+  prefillGpus: z.number().int().min(0).optional(),
+  decodeGpus: z.number().int().min(0).optional(),
+  modelSource: z.enum(['premade', 'huggingface', 'vllm']).optional(),
+  premadeModel: z.string().optional(),
+  ggufFile: z.string().optional(),
+  ggufRunMode: z.enum(['build', 'direct']).optional(),
+  imageRef: z.string().optional(),
+  computeType: z.enum(['cpu', 'gpu']).optional(),
+  maxModelLen: z.number().int().positive().optional(),
+});
+
 const deployments = new Hono()
   .get('/', zValidator('query', listDeploymentsQuerySchema), async (c) => {
     try {
@@ -74,38 +107,12 @@ const deployments = new Hono()
       });
     }
   })
-  .post('/', async (c) => {
-    const body = await c.req.json();
+  .post('/', zValidator('json', createDeploymentSchema), async (c) => {
+    const body = c.req.valid('json');
 
-    // Validate required fields
-    if (!body.name || !body.modelId || !body.engine) {
-      throw new HTTPException(400, {
-        message: 'Required fields: name, modelId, engine',
-      });
-    }
-
-    // Set defaults
     const config: DeploymentConfig = {
-      name: body.name,
+      ...body,
       namespace: body.namespace || (await configService.getDefaultNamespace()),
-      modelId: body.modelId,
-      engine: body.engine,
-      mode: body.mode || 'aggregated',
-      provider: body.provider,
-      servedModelName: body.servedModelName,
-      routerMode: body.routerMode || 'none',
-      replicas: body.replicas || 1,
-      hfTokenSecret: body.hfTokenSecret || '',
-      contextLength: body.contextLength,
-      enforceEager: body.enforceEager ?? false,
-      enablePrefixCaching: body.enablePrefixCaching ?? false,
-      trustRemoteCode: body.trustRemoteCode ?? false,
-      resources: body.resources,
-      engineArgs: body.engineArgs,
-      prefillReplicas: body.prefillReplicas,
-      decodeReplicas: body.decodeReplicas,
-      prefillGpus: body.prefillGpus,
-      decodeGpus: body.decodeGpus,
     };
 
     // GPU fit validation

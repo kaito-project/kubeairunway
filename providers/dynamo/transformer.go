@@ -550,6 +550,14 @@ func applyOverrides(obj *unstructured.Unstructured, md *kubeairunwayv1alpha1.Mod
 		return fmt.Errorf("failed to unmarshal overrides: %w", err)
 	}
 
+	// Block dangerous top-level keys to prevent privilege escalation
+	blockedKeys := []string{"apiVersion", "kind", "metadata", "status"}
+	for _, key := range blockedKeys {
+		if _, exists := overrides[key]; exists {
+			return fmt.Errorf("overriding %q is not allowed", key)
+		}
+	}
+
 	obj.Object = deepMerge(obj.Object, overrides)
 	return nil
 }
