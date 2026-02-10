@@ -69,19 +69,16 @@ kubeairunway/
 │   ├── src/
 │   │   ├── hono-app.ts  # All API routes consolidated
 │   │   ├── index.ts     # Bun.serve() entry point
-│   │   ├── providers/   # Provider implementations
-│   │   │   ├── types.ts      # Provider interface
-│   │   │   ├── index.ts      # Provider registry
-│   │   │   ├── dynamo/       # NVIDIA Dynamo provider
-│   │   │   ├── kuberay/      # KubeRay provider
-│   │   │   └── kaito/        # KAITO provider (CPU/GPU via llama.cpp or vLLM)
+│   │   ├── routes/      # API route handlers
+│   │   │   ├── installation.ts # Provider installation (reads from CRDs)
+│   │   │   ├── deployments.ts  # Deployment management
+│   │   │   └── ...
 │   │   ├── services/    # Core services
 │   │   │   ├── kubernetes.ts # K8s client
 │   │   │   ├── config.ts     # ConfigMap persistence
 │   │   │   ├── helm.ts       # Helm CLI integration
 │   │   │   ├── metrics.ts    # Prometheus metrics fetching
 │   │   │   ├── autoscaler.ts # Cluster autoscaler detection
-│   │   │   ├── aikit.ts      # AIKit image building
 │   │   │   ├── buildkit.ts   # BuildKit builder management
 │   │   │   └── registry.ts   # In-cluster registry management
 │   │   ├── lib/         # Utility libraries
@@ -91,6 +88,15 @@ kubeairunway/
 │   │   └── data/        # Static model catalog
 │   └── ...
 ├── shared/            # Shared TypeScript types
+├── controller/        # Go-based Kubernetes controller (kubebuilder)
+│   ├── api/v1alpha1/  # CRD type definitions
+│   ├── internal/      # Reconciliation logic
+│   ├── cmd/main.go    # Controller entrypoint
+│   └── config/        # Kustomize manifests
+├── providers/         # Out-of-tree provider operators (Go)
+│   ├── kaito/         # KAITO provider
+│   ├── dynamo/        # NVIDIA Dynamo provider
+│   └── kuberay/       # KubeRay provider
 └── docs/              # Documentation
 ```
 
@@ -98,21 +104,11 @@ kubeairunway/
 
 ### Provider Pattern
 
-KubeAIRunway uses a provider abstraction to support multiple inference runtimes:
+KubeAIRunway uses a two-tier provider architecture. The core controller handles `ModelDeployment` validation and provider selection, while independent out-of-tree provider controllers (in `providers/`) handle provider-specific resource creation:
 
-```typescript
-interface Provider {
-  id: string;
-  name: string;
-  getCRDConfig(): CRDConfig;
-  generateManifest(config: DeploymentConfig): object;
-  parseStatus(resource: object): DeploymentStatus;
-  validateConfig(config: DeploymentConfig): ValidationResult;
-  checkInstallation(k8s: KubernetesService): Promise<InstallationStatus>;
-  getHelmRepos(): HelmRepo[];
-  getHelmCharts(): HelmChart[];
-}
-```
+- **Core controller**: Validates specs, selects providers via `InferenceProviderConfig` CRDs, updates status
+- **Provider controllers**: Watch `ModelDeployment` resources, create provider-specific resources (KAITO Workspace, DynamoGraphDeployment, RayService)
+- **Web UI backend**: Reads provider info (capabilities, installation steps, Helm charts) from `InferenceProviderConfig` CRDs — no hardcoded provider registry
 
 ### Configuration Storage
 
@@ -152,35 +148,32 @@ AUTH_ENABLED=false
 
 ## Adding a New Provider
 
+Providers are independent Go operators in `providers/<name>/`. See existing providers for reference.
+
 1. **Create provider directory:**
    ```
-   backend/src/providers/<name>/
-   ├── index.ts    # Provider implementation
-   └── schema.ts   # Zod validation schema
+   providers/<name>/
+   ├── cmd/main.go          # Provider entrypoint
+   ├── controller.go        # Reconciliation logic
+   ├── transformer.go       # ModelDeployment → provider resource conversion
+   ├── status.go            # Provider resource → ModelDeployment status mapping
+   ├── config.go            # InferenceProviderConfig self-registration
+   ├── config/              # Kustomize deployment manifests
+   ├── Dockerfile           # Container image
+   └── go.mod               # Independent Go module
    ```
 
-2. **Implement the Provider interface:**
-   ```typescript
-   import { Provider, CRDConfig, ... } from '../types';
+2. **Implement the provider controller:**
+   - Watch `ModelDeployment` resources where `status.provider.name` matches your provider
+   - Transform `ModelDeployment` spec into provider-specific resources
+   - Map provider resource status back to `ModelDeployment` status
+   - Self-register an `InferenceProviderConfig` with capabilities, selection rules, and installation info
 
-   export class MyProvider implements Provider {
-     id = 'my-provider';
-     name = 'My Provider';
-     description = '...';
-
-     getCRDConfig(): CRDConfig { ... }
-     generateManifest(config: DeploymentConfig): object { ... }
-     parseStatus(resource: object): DeploymentStatus { ... }
-     // ... implement all interface methods
-   }
-   ```
-
-3. **Register the provider:**
-   ```typescript
-   // backend/src/providers/index.ts
-   import { MyProvider } from './my-provider';
-
-   providerRegistry.register(new MyProvider());
+3. **Add Makefile targets** in the root `Makefile`:
+   ```bash
+   make <name>-provider-build         # Build provider binary
+   make <name>-provider-docker-build  # Build Docker image
+   make <name>-provider-deploy        # Deploy to cluster
    ```
 
 ## Adding a New Model

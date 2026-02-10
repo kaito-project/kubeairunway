@@ -100,7 +100,7 @@ spec:
 ```
 
 ### InferenceProviderConfig
-Cluster-scoped resource for provider registration:
+Cluster-scoped resource for provider registration. Each provider controller self-registers its `InferenceProviderConfig` at startup, declaring capabilities, selection rules, and installation info:
 
 ```yaml
 apiVersion: kubeairunway.ai/v1alpha1
@@ -116,6 +116,26 @@ spec:
   selectionRules:
     - condition: "spec.serving.mode == 'disaggregated'"
       priority: 100
+  installation:
+    description: "NVIDIA Dynamo for GPU-accelerated inference"
+    defaultNamespace: dynamo-system
+    helmRepos:
+      - name: nvidia-dynamo
+        url: https://helm.ngc.nvidia.com/nvidia/ai-dynamo
+    helmCharts:
+      - name: dynamo-crds
+        chart: https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-crds-0.7.1.tgz
+        version: "0.7.1"
+        namespace: default
+      - name: dynamo-platform
+        chart: https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-0.7.1.tgz
+        version: "0.7.1"
+        namespace: dynamo-system
+        createNamespace: true
+    steps:
+      - title: Install Dynamo CRDs
+        command: "helm install dynamo-crds ..."
+        description: Install the Dynamo custom resource definitions
 status:
   ready: true
   version: "0.7.1"
@@ -131,10 +151,8 @@ The Web UI provides a graphical interface for managing deployments:
 │  (React)    │◀────│   (Hono)    │◀────│   API Server     │
 └─────────────┘     └─────────────┘     └──────────────────┘
        │                   │
-       │            ┌──────┴──────┐
-       │            │  Provider   │
-       │            │  Registry   │
-       │            └─────────────┘
+       │            Reads InferenceProviderConfig
+       │            CRDs for provider info
        │
        │  (when AUTH_ENABLED=true)
        │            ┌─────────────┐
@@ -175,6 +193,131 @@ When `AUTH_ENABLED=true`, the system uses Kubernetes OIDC tokens:
                                       └─────────────┘
 ```
 
+## Provider Selection
+
+When `spec.provider.name` is omitted, the controller auto-selects a provider using CEL-based selection rules from `InferenceProviderConfig` resources. Each provider declares rules with priorities; the highest-priority match wins.
+
+**Default selection behavior** (with built-in providers):
+
+```
+IF gpu.count == 0 OR resources.gpu is omitted:
+    → KAITO (only CPU provider)
+
+IF engine == "trtllm" OR engine == "sglang":
+    → Dynamo (only provider supporting these engines)
+
+IF engine == "llamacpp":
+    → KAITO (only llamacpp provider)
+
+IF mode == "disaggregated":
+    → Dynamo (best disaggregated support)
+
+DEFAULT (GPU + vllm + aggregated):
+    → Dynamo (GPU inference default)
+```
+
+**Note:** KubeRay is never auto-selected. Users must explicitly set `provider.name: kuberay`.
+
+The selection reason is recorded in `status.provider.selectedReason` for observability.
+
+### Provider Capability Matrix
+
+| Criteria | KAITO | Dynamo | KubeRay |
+|----------|-------|--------|---------|
+| CPU inference | **Yes** | No | No |
+| GPU inference | Yes | **Yes** | Yes |
+| vLLM engine | Yes | **Yes** | Yes |
+| sglang engine | No | **Yes** | No |
+| trtllm engine | No | **Yes** | No |
+| llamacpp engine | **Yes** | No | No |
+| Disaggregated P/D | No | **Yes** | Yes |
+| Auto-selection | Yes | Yes (default) | No (explicit only) |
+
+## Status Ownership
+
+Multiple controllers write to `ModelDeployment.status` using server-side apply with distinct field managers:
+
+| Field | Owner | Description |
+|-------|-------|-------------|
+| `status.provider.name` | Core controller | Selected provider name |
+| `status.provider.selectedReason` | Core controller | Why this provider was chosen |
+| `status.phase` | Provider controller | Deploying / Running / Failed |
+| `status.provider.resourceName` | Provider controller | Name of created upstream resource |
+| `status.provider.resourceKind` | Provider controller | Kind of created upstream resource |
+| `status.replicas.*` | Provider controller | Desired, ready, available counts |
+| `status.endpoint.*` | Provider controller | Service name and port |
+| `conditions[Validated]` | Core webhook | Spec validation result |
+| `conditions[ProviderSelected]` | Core controller | Provider selection result |
+| `conditions[ProviderCompatible]` | Provider controller | Engine/mode compatibility check |
+| `conditions[ResourceCreated]` | Provider controller | Upstream resource creation status |
+| `conditions[Ready]` | Provider controller | Overall readiness |
+
+## Drift Detection
+
+The controller enforces the `ModelDeployment` spec on provider resources. If someone directly edits a provider resource (e.g., `kubectl edit workspace my-llm`), the controller overwrites those changes on the next reconciliation.
+
+**Pause annotation** — to temporarily disable reconciliation for debugging:
+```yaml
+metadata:
+  annotations:
+    kubeairunway.ai/reconcile-paused: "true"
+```
+
+## Provider Overrides
+
+The `spec.provider.overrides` field provides an escape hatch for provider-specific configuration not covered by the unified API:
+
+**Dynamo overrides:**
+```yaml
+provider:
+  name: dynamo
+  overrides:
+    routerMode: "kv"          # kv | round-robin | none (default: round-robin)
+    frontend:
+      replicas: 2
+      resources:
+        cpu: "4"
+        memory: "8Gi"
+```
+
+**KubeRay overrides:**
+```yaml
+provider:
+  name: kuberay
+  overrides:
+    head:
+      resources:
+        cpu: "4"
+        memory: "8Gi"
+      rayStartParams:
+        dashboard-host: "0.0.0.0"
+        num-cpus: "0"
+```
+
+KAITO currently has no supported overrides. Unknown keys trigger warnings; invalid types cause reconciliation failure.
+
+## Validation Webhook
+
+The controller includes a validating admission webhook for `ModelDeployment` resources. Webhook TLS uses self-signed certificates managed by [cert-controller](https://github.com/open-policy-agent/cert-controller) (in-process, no cert-manager dependency).
+
+**Core webhook validation rules:**
+
+| Rule | Error |
+|------|-------|
+| `engine: vllm/sglang/trtllm` with `gpu.count: 0` | Engine requires GPU |
+| `mode: disaggregated` with `spec.resources.gpu` | Cannot specify both resources.gpu and scaling.prefill/decode |
+| `mode: disaggregated` without `scaling.prefill` or `scaling.decode` | Disaggregated mode requires prefill and decode scaling |
+| Missing `engine.type` | engine.type is required |
+| Missing `model.id` when `source: huggingface` | model.id is required |
+
+Provider compatibility (e.g., "KAITO does not support sglang") is validated by provider controllers, not the core webhook, maintaining the "core has zero provider knowledge" principle.
+
+## RBAC
+
+**Controller ServiceAccount** requires permissions for ModelDeployments, InferenceProviderConfigs, and provider-specific CRDs (Workspaces, DynamoGraphDeployments, RayServices).
+
+**Users** only need RBAC for `ModelDeployment` resources — the controller acts as a privileged intermediary that creates provider resources on their behalf. This means a user who can create `ModelDeployment` in namespace X can effectively create provider resources in that namespace.
+
 ## Provider Abstraction
 
 KubeAIRunway supports two deployment methods, both using the provider abstraction pattern:
@@ -185,32 +328,8 @@ Users create `ModelDeployment` CRs, and the controller + provider controllers ha
 - Unified status reporting
 - Provider-agnostic lifecycle management
 
-### 2. Web UI Deployment (Legacy)
-The Web UI backend can directly create provider-specific resources:
-
-```typescript
-interface Provider {
-  id: string;
-  name: string;
-  description: string;
-
-  // CRD configuration
-  getCRDConfig(): CRDConfig;
-
-  // Manifest generation and parsing
-  generateManifest(config: DeploymentConfig): object;
-  parseStatus(resource: object): DeploymentStatus;
-
-  // Validation
-  validateConfig(config: DeploymentConfig): ValidationResult;
-
-  // Installation
-  checkInstallation(k8s: KubernetesService): Promise<InstallationStatus>;
-  getHelmRepos(): HelmRepo[];
-  getHelmCharts(): HelmChart[];
-  getInstallationSteps(): InstallationStep[];
-}
-```
+### 2. Web UI Deployment
+The Web UI backend reads provider information (capabilities, installation steps, Helm charts) from `InferenceProviderConfig` CRDs in the cluster. It can trigger Helm-based provider installation and creates `ModelDeployment` CRs for model deployment, which are then handled by the controller and provider controllers.
 
 ### Supported Providers
 

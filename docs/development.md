@@ -129,6 +129,47 @@ After editing `*_types.go` files, regenerate code:
 cd controller && make manifests generate
 ```
 
+### Reconciliation Flow
+
+The core controller reconciliation follows these steps:
+
+1. **Receive** ModelDeployment event
+2. **Check** for pause annotation (`kubeairunway.ai/reconcile-paused: "true"`) — skip if paused
+3. **Validate** spec (engine/resource compatibility, required fields)
+4. **Select provider** — use explicit `spec.provider.name` or run auto-selection algorithm
+5. **Set status** — `status.provider.name`, `status.provider.selectedReason`, conditions
+
+The core controller stops here. Provider controllers then:
+
+6. **Filter** — only reconcile ModelDeployments where `status.provider.name` matches
+7. **Validate compatibility** — check engine/mode support for this provider
+8. **Transform** — convert ModelDeployment spec to provider-specific resource
+9. **Create/Update** — apply provider resource with owner references
+10. **Sync status** — map provider resource status back to ModelDeployment (phase, replicas, endpoint)
+11. **Handle deletion** — clean up provider resources via finalizers (5-minute timeout)
+
+### Observability
+
+**Controller metrics:**
+```
+kubeairunway_modeldeployment_total{namespace, phase}
+kubeairunway_reconciliation_duration_seconds{provider}
+kubeairunway_reconciliation_errors_total{provider, error_type}
+kubeairunway_provider_selection{provider, reason}
+kubeairunway_deployment_replicas{name, namespace, state}
+kubeairunway_deployment_phase{name, namespace, phase}
+```
+
+**Events emitted:**
+```
+Normal   ProviderSelected    Selected provider 'dynamo': default → dynamo (GPU inference default)
+Normal   ResourceCreated     Created DynamoGraphDeployment 'my-llm'
+Warning  SecretNotFound      Secret 'hf-token-secret' not found in namespace 'default'
+Warning  ProviderError       Provider resource in error state: insufficient GPUs
+Warning  DriftDetected       Provider resource was modified directly, reconciling
+Warning  FinalizerTimeout    Finalizer removed after timeout, provider resource may be orphaned
+```
+
 ### Running Locally
 ```bash
 # Install CRDs first
@@ -145,6 +186,29 @@ make controller-test
 
 # Run with verbose output
 cd controller && go test -v ./...
+```
+
+**Test categories:**
+
+- **Unit tests** — manifest transformation per provider, status mapping, provider selection algorithm, schema validation
+- **Integration tests** — controller reconciliation with mock K8s API, owner references, finalizer behavior, drift detection, webhook validation
+- **E2E tests** — full deployment lifecycle per provider, error recovery, controller restart resilience
+
+### Provider Development
+
+Provider controllers are independent operators in `providers/<name>/`:
+
+```bash
+# Build a provider binary
+make kaito-provider-build
+make dynamo-provider-build
+make kuberay-provider-build
+
+# Build provider Docker image
+make kaito-provider-docker-build
+
+# Deploy provider to cluster
+make kaito-provider-deploy
 ```
 
 ## Environment Variables
@@ -280,35 +344,102 @@ helm install dynamo-platform dynamo-platform-${RELEASE_VERSION}.tgz --namespace 
 
 ## Adding a New Provider
 
+Providers are independent out-of-tree Go operators in `providers/<name>/`. Each provider watches `ModelDeployment` resources and creates provider-specific resources.
+
+There are two provider patterns:
+
+### Shim Providers (Adapter Pattern)
+
+Use this when wrapping an existing inference operator that has its own CRD (e.g., KAITO Workspace, DynamoGraphDeployment, RayService). The provider translates `ModelDeployment` → upstream CRD and syncs status back.
+
+```
+ModelDeployment → Provider Controller → Upstream CRD → Upstream Operator → Pods/Services
+                                             ↑ status sync
+```
+
 1. **Create provider directory:**
    ```
-   backend/src/providers/<name>/
-   ├── index.ts    # Provider implementation
-   └── schema.ts   # Zod validation schema
+   providers/<name>/
+   ├── cmd/main.go          # Provider entrypoint
+   ├── controller.go        # Reconciliation logic
+   ├── transformer.go       # ModelDeployment → upstream CRD conversion
+   ├── status.go            # Upstream CRD → ModelDeployment status mapping
+   ├── config.go            # InferenceProviderConfig self-registration
+   ├── config/              # Kustomize deployment manifests
+   ├── Dockerfile           # Container image
+   ├── go.mod               # Independent Go module
+   └── go.sum
    ```
 
-2. **Implement the Provider interface:**
-   ```typescript
-   import { Provider, CRDConfig, ... } from '../types';
+2. **Implement the provider controller** (see existing providers for examples):
+   - `controller.go`: Reconcile `ModelDeployment` resources where `status.provider.name` matches
+   - `transformer.go`: Convert `ModelDeployment` spec to upstream CRD resources
+   - `status.go`: Map upstream CRD status back to `ModelDeployment` status
+   - `config.go`: Define `InferenceProviderConfigSpec` with capabilities, selection rules, and installation info
 
-   export class MyProvider implements Provider {
-     id = 'my-provider';
-     name = 'My Provider';
-     description = '...';
+### Native Providers (No Upstream CRD)
 
-     getCRDConfig(): CRDConfig { ... }
-     generateManifest(config: DeploymentConfig): object { ... }
-     parseStatus(resource: object): DeploymentStatus { ... }
-     // ... implement all interface methods
-   }
-   ```
+Use this when there is no upstream operator — the provider directly manages Kubernetes resources (Deployments, Services) from the `ModelDeployment` spec. No transformer or intermediate CRD is needed.
 
-3. **Register the provider:**
-   ```typescript
-   // backend/src/providers/index.ts
-   import { MyProvider } from './my-provider';
+```
+ModelDeployment → Provider Controller → Deployments/Services → Pods
+                                             ↑ status sync
+```
 
-   providerRegistry.register(new MyProvider());
+This works because the `status.provider.resourceKind` and `resourceName` fields are free-form strings — they can point at a `Deployment` just as easily as a `Workspace`. The core controller never inspects what the provider creates.
+
+**When to use this pattern:**
+- Building a new inference runtime with no pre-existing CRD
+- A lightweight provider that runs vLLM/SGLang containers directly via Deployments
+- A "generic" provider where an upstream CRD adds no value
+
+**Directory structure** (no `transformer.go` needed):
+```
+providers/<name>/
+├── cmd/main.go          # Provider entrypoint
+├── controller.go        # Reconciliation logic (creates Deployments/Services directly)
+├── status.go            # Deployment/Pod → ModelDeployment status mapping
+├── config.go            # InferenceProviderConfig self-registration
+├── config/              # Kustomize deployment manifests
+├── Dockerfile
+├── go.mod
+└── go.sum
+```
+
+**Example reconciliation** (simplified):
+```go
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    md := &v1alpha1.ModelDeployment{}
+    r.Get(ctx, req.NamespacedName, md)
+
+    // Build Deployment directly from ModelDeployment spec — no intermediate CRD
+    deploy := r.buildDeployment(md)  // vllm container with model args
+    svc := r.buildService(md)
+
+    controllerutil.CreateOrUpdate(ctx, r.Client, deploy, func() error { return nil })
+    controllerutil.CreateOrUpdate(ctx, r.Client, svc, func() error { return nil })
+
+    // Sync status from Deployment
+    md.Status.Phase = phaseFromDeployment(deploy)
+    md.Status.Provider.ResourceName = deploy.Name
+    md.Status.Provider.ResourceKind = "Deployment"
+    md.Status.Replicas = replicasFromDeployment(deploy)
+    md.Status.Endpoint = endpointFromService(svc)
+    r.Status().Update(ctx, md)
+
+    return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+}
+```
+
+The `config.go` for a native provider can omit the `installation` section (no upstream operator to install), or include it if the provider itself is installed via Helm.
+
+### Common Steps (Both Patterns)
+
+3. **Add Makefile targets** in the root `Makefile`:
+   ```bash
+   make <name>-provider-build         # Build provider binary
+   make <name>-provider-docker-build  # Build Docker image
+   make <name>-provider-deploy        # Deploy to cluster
    ```
 
 ## Adding a New Model

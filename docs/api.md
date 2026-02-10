@@ -40,7 +40,176 @@ kubectl describe modeldeployment qwen-demo
 kubectl delete modeldeployment qwen-demo
 ```
 
-See [architecture.md](architecture.md) for full CRD specification.
+See [architecture.md](architecture.md) for controller architecture and provider selection.
+
+### ModelDeployment Spec Reference
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `model.id` | string | Yes (when source=huggingface) | — | HuggingFace model ID |
+| `model.source` | string | No | `huggingface` | `huggingface` or `custom` |
+| `model.servedName` | string | No | Model ID basename | API-facing model name |
+| `engine.type` | string | Yes | — | `vllm`, `sglang`, `trtllm`, or `llamacpp` |
+| `engine.contextLength` | int | No | Model default | Max context length |
+| `engine.trustRemoteCode` | bool | No | `false` | Allow remote code (vLLM/SGLang only) |
+| `engine.args` | map[string]string | No | `{}` | Engine-specific CLI flags |
+| `provider.name` | string | No | Auto-selected | `dynamo`, `kaito`, or `kuberay` |
+| `provider.overrides` | object | No | `{}` | Provider-specific escape hatch |
+| `serving.mode` | string | No | `aggregated` | `aggregated` or `disaggregated` |
+| `scaling.replicas` | int | No | `1` | Replicas (aggregated mode) |
+| `scaling.prefill` | object | No | — | Prefill scaling (disaggregated mode) |
+| `scaling.decode` | object | No | — | Decode scaling (disaggregated mode) |
+| `resources.gpu.count` | int | No | `0` | GPU count |
+| `resources.gpu.type` | string | No | `nvidia.com/gpu` | GPU resource name |
+| `resources.memory` | string | No | — | Memory request |
+| `resources.cpu` | string | No | — | CPU request |
+| `image` | string | No | Provider default | Custom container image |
+| `env` | []EnvVar | No | `[]` | Environment variables |
+| `podTemplate.metadata.labels` | map | No | `{}` | Labels for pods |
+| `podTemplate.metadata.annotations` | map | No | `{}` | Annotations for pods |
+| `secrets.huggingFaceToken` | string | No | — | K8s secret name for HF token |
+| `nodeSelector` | map | No | `{}` | Node selector |
+| `tolerations` | []Toleration | No | `[]` | Tolerations |
+
+### Engine-Specific Parameters
+
+Common concepts are abstracted via `engine.contextLength` and `engine.trustRemoteCode`. For engine-specific flags, use `engine.args`:
+
+**Context length mapping:**
+
+| Engine | CLI flag | Default |
+|--------|----------|---------|
+| vLLM | `--max-model-len` | Model default |
+| SGLang | `--context-length` | Model default |
+| TensorRT-LLM | Build-time config | — |
+| llama.cpp | `--ctx-size` | Model max |
+
+**Quantization** (via `engine.args`):
+```yaml
+engine:
+  type: vllm
+  args:
+    quantization: "awq"    # awq, gptq, squeezellm, fp8
+```
+
+**GPU memory utilization** (via `engine.args`):
+
+| Engine | Arg key | Default |
+|--------|---------|---------|
+| vLLM | `gpu-memory-utilization` | `0.9` |
+| SGLang | `mem-fraction-static` | `0.88` |
+
+### Example Transformations
+
+#### GPU Deployment → Dynamo (auto-selected)
+
+```yaml
+# User creates:
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-8b
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-8B-Instruct"
+    source: huggingface
+  engine:
+    type: vllm
+    contextLength: 8192
+  scaling:
+    replicas: 1
+  resources:
+    gpu:
+      count: 1
+    memory: "32Gi"
+  secrets:
+    huggingFaceToken: "hf-token"
+
+# Controller creates DynamoGraphDeployment with:
+#   - Frontend service (router)
+#   - VllmWorker with 1 GPU, 32Gi memory
+#   - vLLM runtime image
+# Status:
+#   provider.name: dynamo
+#   provider.selectedReason: "default → dynamo (GPU inference default)"
+#   endpoint.service: llama-8b-frontend, port: 8000
+```
+
+#### CPU Deployment → KAITO (auto-selected)
+
+```yaml
+# User creates:
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: gemma-cpu
+spec:
+  model:
+    id: "google/gemma-3-1b-it-qat-q8_0-gguf"
+    source: huggingface
+  engine:
+    type: llamacpp
+  scaling:
+    replicas: 1
+  resources:
+    gpu:
+      count: 0
+    memory: "16Gi"
+    cpu: "8"
+  image: "ghcr.io/sozercan/llama-cpp-runner:latest"
+
+# Controller creates KAITO Workspace with:
+#   - llama.cpp container, CPU-only
+# Status:
+#   provider.name: kaito
+#   provider.selectedReason: "no GPU requested → kaito (only CPU provider)"
+#   endpoint.service: gemma-cpu, port: 80
+```
+
+#### Disaggregated P/D → Dynamo (explicit)
+
+```yaml
+# User creates:
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-70b-pd
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-70B-Instruct"
+  provider:
+    name: dynamo
+    overrides:
+      routerMode: "kv"
+      frontend:
+        replicas: 2
+  engine:
+    type: vllm
+  serving:
+    mode: disaggregated
+  scaling:
+    prefill:
+      replicas: 2
+      gpu:
+        count: 4
+      memory: "128Gi"
+    decode:
+      replicas: 4
+      gpu:
+        count: 2
+      memory: "64Gi"
+  secrets:
+    huggingFaceToken: "hf-token"
+
+# Controller creates DynamoGraphDeployment with:
+#   - Frontend (2 replicas, KV routing)
+#   - VllmPrefillWorker (2 replicas, 4 GPUs each)
+#   - VllmDecodeWorker (4 replicas, 2 GPUs each)
+# Status:
+#   provider.name: dynamo
+#   replicas.desired: 6 (2 prefill + 4 decode)
+#   endpoint.service: llama-70b-pd-frontend, port: 8000
+```
 
 ---
 
