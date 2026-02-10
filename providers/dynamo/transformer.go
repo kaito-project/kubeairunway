@@ -109,8 +109,13 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 	// Build the spec
 	spec := map[string]interface{}{
 		"backendFramework": t.mapEngineType(md.Spec.Engine.Type),
-		"services":         t.buildServices(md, overrides),
 	}
+
+	services, err := t.buildServices(md, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build services: %w", err)
+	}
+	spec["services"] = services
 
 	if err := unstructured.SetNestedField(dgd.Object, spec, "spec"); err != nil {
 		return nil, fmt.Errorf("failed to set spec: %w", err)
@@ -153,7 +158,7 @@ func (t *Transformer) mapEngineType(engineType kubeairunwayv1alpha1.EngineType) 
 }
 
 // buildServices creates the services map for DynamoGraphDeployment
-func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
+func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, overrides *DynamoOverrides) (map[string]interface{}, error) {
 	services := map[string]interface{}{}
 
 	// Determine serving mode
@@ -169,6 +174,15 @@ func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, ov
 	services["Frontend"] = t.buildFrontendService(md, overrides)
 
 	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+		if md.Spec.Scaling == nil {
+			return nil, fmt.Errorf("spec.scaling is required for disaggregated serving mode")
+		}
+		if md.Spec.Scaling.Prefill == nil {
+			return nil, fmt.Errorf("spec.scaling.prefill is required for disaggregated serving mode")
+		}
+		if md.Spec.Scaling.Decode == nil {
+			return nil, fmt.Errorf("spec.scaling.decode is required for disaggregated serving mode")
+		}
 		// Disaggregated mode: separate prefill and decode workers
 		services["VllmPrefillWorker"] = t.buildPrefillWorker(md, image)
 		services["VllmDecodeWorker"] = t.buildDecodeWorker(md, image)
@@ -177,7 +191,7 @@ func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, ov
 		services["VllmWorker"] = t.buildAggregatedWorker(md, image)
 	}
 
-	return services
+	return services, nil
 }
 
 // buildFrontendService creates the frontend service configuration

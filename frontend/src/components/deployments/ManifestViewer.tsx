@@ -149,9 +149,10 @@ export function ManifestViewer(props: ManifestViewerProps) {
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   // For deployed mode, use the hook to fetch resources
-  const deployedQuery = props.mode === 'deployed' 
-    ? useDeploymentManifest(props.deploymentName, props.namespace)
-    : null;
+  const deployedQuery = useDeploymentManifest(
+    props.mode === 'deployed' ? (props as ManifestViewerDeployedProps).deploymentName : undefined,
+    props.mode === 'deployed' ? (props as ManifestViewerDeployedProps).namespace : undefined,
+  );
 
   // Handle preview mode fetching
   useEffect(() => {
@@ -174,7 +175,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
     };
 
     fetchPreview();
-  }, [props.mode === 'preview' ? isExpanded : null, props.mode === 'preview' ? props.config : null]);
+  }, [props.mode, isExpanded, props.mode === 'preview' ? (props as ManifestViewerPreviewProps).config : undefined]);
 
   // Handle deployed mode data
   useEffect(() => {
@@ -182,7 +183,7 @@ export function ManifestViewer(props: ManifestViewerProps) {
     
     setResources(deployedQuery.data.resources);
     setSelectedResourceIndex(0);
-  }, [props.mode === 'deployed' ? deployedQuery?.data : null]);
+  }, [props.mode, deployedQuery?.data]);
 
   const isLoading = props.mode === 'preview' ? isPreviewLoading : deployedQuery?.isLoading;
   const error = props.mode === 'preview' ? previewError : (deployedQuery?.error instanceof Error ? deployedQuery.error.message : null);
