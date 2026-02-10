@@ -1,10 +1,10 @@
-# Azure Cluster Autoscaling for KubeFoundry
+# Azure Cluster Autoscaling for KubeAIRunway
 
-This guide explains how to enable cluster autoscaling for GPU workloads in Azure Kubernetes Service (AKS), allowing your cluster to automatically provision GPU nodes when KubeFoundry deployments require more resources than currently available.
+This guide explains how to enable cluster autoscaling for GPU workloads in Azure Kubernetes Service (AKS), allowing your cluster to automatically provision GPU nodes when KubeAIRunway deployments require more resources than currently available.
 
 ## Overview
 
-KubeFoundry integrates with Kubernetes cluster autoscaling to provide visibility and guidance when deploying models that exceed available GPU capacity.
+KubeAIRunway integrates with Kubernetes cluster autoscaling to provide visibility and guidance when deploying models that exceed available GPU capacity.
 
 ## Prerequisites
 
@@ -95,9 +95,9 @@ az aks nodepool update \
 
 ## Verification
 
-### Check Autoscaler Detection in KubeFoundry
+### Check Autoscaler Detection in KubeAIRunway
 
-1. Navigate to **Installation** page in KubeFoundry
+1. Navigate to **Installation** page in KubeAIRunway
 2. Look for **Cluster Autoscaling** section
 3. Expected status: **Cluster Autoscaler running on X node group(s)**
 
@@ -114,7 +114,7 @@ az aks nodepool show \
 
 ### Check Autoscaler Status ConfigMap
 
-KubeFoundry detects autoscaler by checking for the `cluster-autoscaler-status` ConfigMap:
+KubeAIRunway detects autoscaler by checking for the `cluster-autoscaler-status` ConfigMap:
 
 ```bash
 kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
@@ -124,7 +124,7 @@ kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
 
 ## Troubleshooting
 
-### Issue: KubeFoundry Shows "Not Detected"
+### Issue: KubeAIRunway Shows "Not Detected"
 
 **Check if autoscaling is enabled:**
 ```bash

@@ -10,12 +10,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-kubefoundry-kubefoundry-ai-v1alpha1-modeldeployment
+      path: /mutate-kubeairunway-ai-v1alpha1-modeldeployment
   failurePolicy: Fail
   name: mmodeldeployment-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - kubefoundry.kubefoundry.ai
+    - kubeairunway.ai
     apiVersions:
     - v1alpha1
     operations:
@@ -36,12 +36,12 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-kubefoundry-kubefoundry-ai-v1alpha1-modeldeployment
+      path: /validate-kubeairunway-ai-v1alpha1-modeldeployment
   failurePolicy: Fail
   name: vmodeldeployment-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - kubefoundry.kubefoundry.ai
+    - kubeairunway.ai
     apiVersions:
     - v1alpha1
     operations:

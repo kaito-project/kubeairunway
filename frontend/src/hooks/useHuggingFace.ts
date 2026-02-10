@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { huggingFaceApi } from '@/lib/api';
-import type { HfSecretStatus, HfTokenExchangeResponse, HfModelSearchResponse } from '@kubefoundry/shared';
+import type { HfSecretStatus, HfTokenExchangeResponse, HfModelSearchResponse } from '@kubeairunway/shared';
 
 // HuggingFace token storage key (for model search)
 const HF_ACCESS_TOKEN_KEY = 'hf_access_token';

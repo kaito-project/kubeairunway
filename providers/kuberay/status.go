@@ -19,7 +19,7 @@ package kuberay
 import (
 	"fmt"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -27,10 +27,10 @@ import (
 // Defined locally to avoid importing the controller's internal providers package,
 // keeping this provider self-contained for out-of-tree use.
 type ProviderStatusResult struct {
-	Phase        kubefoundryv1alpha1.DeploymentPhase
+	Phase        kubeairunwayv1alpha1.DeploymentPhase
 	Message      string
-	Replicas     *kubefoundryv1alpha1.ReplicaStatus
-	Endpoint     *kubefoundryv1alpha1.EndpointStatus
+	Replicas     *kubeairunwayv1alpha1.ReplicaStatus
+	Endpoint     *kubeairunwayv1alpha1.EndpointStatus
 	ResourceName string
 	ResourceKind string
 }
@@ -70,7 +70,7 @@ func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) 
 	result := &ProviderStatusResult{
 		ResourceName: upstream.GetName(),
 		ResourceKind: RayServiceKind,
-		Phase:        kubefoundryv1alpha1.DeploymentPhasePending,
+		Phase:        kubeairunwayv1alpha1.DeploymentPhasePending,
 	}
 
 	// Check conditions first
@@ -136,14 +136,14 @@ func (t *StatusTranslator) parseConditions(conditions []interface{}) map[string]
 }
 
 // mapConditionsToPhase determines the deployment phase from RayService conditions
-func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo) (kubefoundryv1alpha1.DeploymentPhase, string, bool) {
+func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo) (kubeairunwayv1alpha1.DeploymentPhase, string, bool) {
 	// RayServiceReady=True → Running
 	if rs, ok := condMap[conditionRayServiceReady]; ok {
 		if rs.Status == "True" {
-			return kubefoundryv1alpha1.DeploymentPhaseRunning, "", true
+			return kubeairunwayv1alpha1.DeploymentPhaseRunning, "", true
 		}
 		if rs.Status == "False" {
-			return kubefoundryv1alpha1.DeploymentPhaseDeploying, rs.Message, true
+			return kubeairunwayv1alpha1.DeploymentPhaseDeploying, rs.Message, true
 		}
 	}
 
@@ -151,7 +151,7 @@ func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo
 }
 
 // mapAppStatusesToPhase determines phase from application statuses
-func (t *StatusTranslator) mapAppStatusesToPhase(appStatuses map[string]interface{}) (kubefoundryv1alpha1.DeploymentPhase, string) {
+func (t *StatusTranslator) mapAppStatusesToPhase(appStatuses map[string]interface{}) (kubeairunwayv1alpha1.DeploymentPhase, string) {
 	allRunning := true
 	anyFailed := false
 	var failMessage string
@@ -177,20 +177,20 @@ func (t *StatusTranslator) mapAppStatusesToPhase(appStatuses map[string]interfac
 	}
 
 	if anyFailed {
-		return kubefoundryv1alpha1.DeploymentPhaseFailed, failMessage
+		return kubeairunwayv1alpha1.DeploymentPhaseFailed, failMessage
 	}
 	if allRunning && len(appStatuses) > 0 {
-		return kubefoundryv1alpha1.DeploymentPhaseRunning, ""
+		return kubeairunwayv1alpha1.DeploymentPhaseRunning, ""
 	}
 	if len(appStatuses) > 0 {
-		return kubefoundryv1alpha1.DeploymentPhaseDeploying, ""
+		return kubeairunwayv1alpha1.DeploymentPhaseDeploying, ""
 	}
 	return "", ""
 }
 
 // extractReplicas extracts replica information from the RayService
-func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured) *kubefoundryv1alpha1.ReplicaStatus {
-	replicas := &kubefoundryv1alpha1.ReplicaStatus{}
+func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured) *kubeairunwayv1alpha1.ReplicaStatus {
+	replicas := &kubeairunwayv1alpha1.ReplicaStatus{}
 
 	// Try to get desired replicas from spec workerGroupSpecs
 	workerGroups, found, _ := unstructured.NestedSlice(upstream.Object, "spec", "rayClusterConfig", "workerGroupSpecs")
@@ -229,8 +229,8 @@ func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured) 
 }
 
 // extractEndpoint extracts service endpoint information for the RayService
-func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *kubefoundryv1alpha1.EndpointStatus {
-	return &kubefoundryv1alpha1.EndpointStatus{
+func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *kubeairunwayv1alpha1.EndpointStatus {
+	return &kubeairunwayv1alpha1.EndpointStatus{
 		// RayService creates a service with the name <rayservice-name>-serve-svc
 		Service: fmt.Sprintf("%s-serve-svc", upstream.GetName()),
 		Port:    defaultRayServicePort,

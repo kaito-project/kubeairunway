@@ -36,9 +36,9 @@ metadata:
   name: workspace-{name}
   namespace: {namespace}
   labels:
-    app.kubernetes.io/name: kubefoundry
-    kubefoundry.io/model-source: vllm
-    kubefoundry.io/compute-type: gpu
+    app.kubernetes.io/name: kubeairunway
+    kubeairunway.io/model-source: vllm
+    kubeairunway.io/compute-type: gpu
 resource:
   count: {replicas}
   labelSelector:

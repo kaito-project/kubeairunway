@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -13,23 +13,23 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func newTestMD(name, namespace string) *kubefoundryv1alpha1.ModelDeployment {
-	return &kubefoundryv1alpha1.ModelDeployment{
+func newTestMD(name, namespace string) *kubeairunwayv1alpha1.ModelDeployment {
+	return &kubeairunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-			Model: kubefoundryv1alpha1.ModelSpec{
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
 				ID:     "meta-llama/Llama-2-7b-chat-hf",
-				Source: kubefoundryv1alpha1.ModelSourceHuggingFace,
+				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
 			},
-			Engine: kubefoundryv1alpha1.EngineSpec{
-				Type: kubefoundryv1alpha1.EngineTypeVLLM,
+			Engine: kubeairunwayv1alpha1.EngineSpec{
+				Type: kubeairunwayv1alpha1.EngineTypeVLLM,
 			},
-			Resources: &kubefoundryv1alpha1.ResourceSpec{
-				GPU: &kubefoundryv1alpha1.GPUSpec{
+			Resources: &kubeairunwayv1alpha1.ResourceSpec{
+				GPU: &kubeairunwayv1alpha1.GPUSpec{
 					Count: 1,
 				},
 			},
@@ -67,13 +67,13 @@ func TestTransformAggregated(t *testing.T) {
 
 	// Check labels
 	labels := dgd.GetLabels()
-	if labels["kubefoundry.ai/managed-by"] != "kubefoundry" {
-		t.Errorf("expected managed-by label 'kubefoundry'")
+	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" {
+		t.Errorf("expected managed-by label 'kubeairunway'")
 	}
-	if labels["kubefoundry.ai/deployment-namespace"] != "default" {
+	if labels["kubeairunway.ai/deployment-namespace"] != "default" {
 		t.Errorf("expected deployment-namespace label 'default'")
 	}
-	if labels["kubefoundry.ai/engine-type"] != "vllm" {
+	if labels["kubeairunway.ai/engine-type"] != "vllm" {
 		t.Errorf("expected engine-type label 'vllm'")
 	}
 
@@ -95,18 +95,18 @@ func TestTransformAggregated(t *testing.T) {
 func TestTransformDisaggregated(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubefoundryv1alpha1.ServingSpec{
-		Mode: kubefoundryv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
+		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
-		Prefill: &kubefoundryv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 2,
-			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 2, Type: "nvidia.com/gpu"},
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2, Type: "nvidia.com/gpu"},
 			Memory:   "64Gi",
 		},
-		Decode: &kubefoundryv1alpha1.ComponentScalingSpec{
+		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 3,
-			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 1, Type: "nvidia.com/gpu"},
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1, Type: "nvidia.com/gpu"},
 			Memory:   "32Gi",
 		},
 	}
@@ -151,13 +151,13 @@ func TestMapEngineType(t *testing.T) {
 	tr := NewTransformer()
 
 	tests := []struct {
-		input    kubefoundryv1alpha1.EngineType
+		input    kubeairunwayv1alpha1.EngineType
 		expected string
 	}{
-		{kubefoundryv1alpha1.EngineTypeVLLM, "vllm"},
-		{kubefoundryv1alpha1.EngineTypeSGLang, "sglang"},
-		{kubefoundryv1alpha1.EngineTypeTRTLLM, "trtllm"},
-		{kubefoundryv1alpha1.EngineType("unknown"), "unknown"},
+		{kubeairunwayv1alpha1.EngineTypeVLLM, "vllm"},
+		{kubeairunwayv1alpha1.EngineTypeSGLang, "sglang"},
+		{kubeairunwayv1alpha1.EngineTypeTRTLLM, "trtllm"},
+		{kubeairunwayv1alpha1.EngineType("unknown"), "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -180,25 +180,25 @@ func TestGetImage(t *testing.T) {
 
 	// Default vLLM image
 	md.Spec.Image = ""
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeVLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
 	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1" {
 		t.Errorf("expected default vllm image, got %s", img)
 	}
 
 	// Default SGLang image
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.7.1" {
 		t.Errorf("expected default sglang image, got %s", img)
 	}
 
 	// Default TRT-LLM image
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeTRTLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeTRTLLM
 	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/trtllm-runtime:0.7.1" {
 		t.Errorf("expected default trtllm image, got %s", img)
 	}
 
 	// Unknown engine → fallback
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineType("unknown")
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineType("unknown")
 	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1" {
 		t.Errorf("expected fallback to vllm image, got %s", img)
 	}
@@ -215,7 +215,7 @@ func TestBuildEngineArgs(t *testing.T) {
 	}
 
 	// SGLang with context length
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 	ctxLen := int32(4096)
 	md.Spec.Engine.ContextLength = &ctxLen
 	args = tr.buildEngineArgs(md)
@@ -224,14 +224,14 @@ func TestBuildEngineArgs(t *testing.T) {
 	}
 
 	// vLLM with context length
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeVLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
 	args = tr.buildEngineArgs(md)
 	if args != "python3 -m dynamo.vllm --model meta-llama/Llama-2-7b-chat-hf --max-model-len 4096" {
 		t.Errorf("unexpected args: %s", args)
 	}
 
 	// TRT-LLM
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeTRTLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeTRTLLM
 	md.Spec.Engine.ContextLength = nil
 	args = tr.buildEngineArgs(md)
 	if args != "python3 -m dynamo.trtllm --model meta-llama/Llama-2-7b-chat-hf" {
@@ -239,7 +239,7 @@ func TestBuildEngineArgs(t *testing.T) {
 	}
 
 	// With served name and trust remote code
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeVLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
 	md.Spec.Model.ServedName = "my-model"
 	md.Spec.Engine.TrustRemoteCode = true
 	args = tr.buildEngineArgs(md)
@@ -275,8 +275,8 @@ func TestBuildResourceLimits(t *testing.T) {
 	}
 
 	// With GPU
-	result = tr.buildResourceLimits(&kubefoundryv1alpha1.ResourceSpec{
-		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 4, Type: "nvidia.com/gpu"},
+	result = tr.buildResourceLimits(&kubeairunwayv1alpha1.ResourceSpec{
+		GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 4, Type: "nvidia.com/gpu"},
 	})
 	limits, _ = result["limits"].(map[string]interface{})
 	if limits["gpu"] != "4" {
@@ -288,8 +288,8 @@ func TestBuildResourceLimits(t *testing.T) {
 	}
 
 	// With custom GPU type (Dynamo always uses 'gpu' key)
-	result = tr.buildResourceLimits(&kubefoundryv1alpha1.ResourceSpec{
-		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
+	result = tr.buildResourceLimits(&kubeairunwayv1alpha1.ResourceSpec{
+		GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
 	})
 	limits, _ = result["limits"].(map[string]interface{})
 	if limits["gpu"] != "2" {
@@ -297,7 +297,7 @@ func TestBuildResourceLimits(t *testing.T) {
 	}
 
 	// With memory and CPU
-	result = tr.buildResourceLimits(&kubefoundryv1alpha1.ResourceSpec{
+	result = tr.buildResourceLimits(&kubeairunwayv1alpha1.ResourceSpec{
 		Memory: "32Gi",
 		CPU:    "8",
 	})
@@ -335,7 +335,7 @@ func TestParseOverrides(t *testing.T) {
 		},
 	}
 	raw, _ := json.Marshal(overrideData)
-	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
 		Name:      "dynamo",
 		Overrides: &runtime.RawExtension{Raw: raw},
 	}
@@ -399,7 +399,7 @@ func TestBuildFrontendService(t *testing.T) {
 func TestBuildFrontendWithSecret(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Secrets = &kubefoundryv1alpha1.SecretsSpec{
+	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{
 		HuggingFaceToken: "my-hf-secret",
 	}
 
@@ -412,7 +412,7 @@ func TestBuildFrontendWithSecret(t *testing.T) {
 func TestBuildAggregatedWorker(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{Replicas: 2}
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{Replicas: 2}
 
 	worker := tr.buildAggregatedWorker(md, "test-image:v1")
 	if worker["replicas"] != int64(2) {
@@ -432,7 +432,7 @@ func TestBuildAggregatedWorker(t *testing.T) {
 func TestBuildAggregatedWorkerWithSecret(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Secrets = &kubefoundryv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
+	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
 
 	worker := tr.buildAggregatedWorker(md, "img")
 	if worker["envFromSecret"] != "hf-secret" {
@@ -530,11 +530,11 @@ func TestBoolPtr(t *testing.T) {
 func TestBuildPrefillWorkerWithSecret(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Secrets = &kubefoundryv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
-		Prefill: &kubefoundryv1alpha1.ComponentScalingSpec{
+	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 1},
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
 		},
 	}
 
@@ -558,11 +558,11 @@ func TestBuildPrefillWorkerWithSecret(t *testing.T) {
 func TestBuildDecodeWorkerWithSecret(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Secrets = &kubefoundryv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
-		Decode: &kubefoundryv1alpha1.ComponentScalingSpec{
+	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 2,
-			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 1, Type: "custom.gpu"},
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1, Type: "custom.gpu"},
 			Memory:   "64Gi",
 		},
 	}
@@ -593,7 +593,7 @@ func TestBuildEngineArgsWithCustomArgs(t *testing.T) {
 func TestBuildEngineArgsTrustRemoteCodeSGLang(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 	md.Spec.Engine.TrustRemoteCode = true
 
 	args := tr.buildEngineArgs(md)
@@ -605,7 +605,7 @@ func TestBuildEngineArgsTrustRemoteCodeSGLang(t *testing.T) {
 func TestBuildEngineArgsTRTLLMContextLength(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeTRTLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeTRTLLM
 	ctxLen := int32(8192)
 	md.Spec.Engine.ContextLength = &ctxLen
 
@@ -619,10 +619,10 @@ func TestBuildEngineArgsTRTLLMContextLength(t *testing.T) {
 func TestBuildPrefillWorkerWithCustomGPUType(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
-		Prefill: &kubefoundryv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
 			Memory:   "32Gi",
 		},
 	}
@@ -643,7 +643,7 @@ func TestApplyOverridesEscapeHatch(t *testing.T) {
 	md := newTestMD("test-model", "default")
 
 	// Set overrides with both typed fields and arbitrary escape hatch fields
-	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
 		Name: "dynamo",
 		Overrides: &runtime.RawExtension{
 			Raw: []byte(`{
@@ -677,7 +677,7 @@ func TestApplyOverridesEscapeHatch(t *testing.T) {
 func TestTransformAggregatedNoGPU(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Resources = &kubefoundryv1alpha1.ResourceSpec{
+	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
 		Memory: "16Gi",
 		CPU:    "4",
 	}
@@ -733,8 +733,8 @@ func TestTransformAggregatedNilResources(t *testing.T) {
 func TestTransformAggregatedGPUCount0(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Resources = &kubefoundryv1alpha1.ResourceSpec{
-		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 0},
+	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
+		GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 0},
 	}
 
 	resources, err := tr.Transform(context.Background(), md)
@@ -756,7 +756,7 @@ func TestTransformAggregatedGPUCount0(t *testing.T) {
 func TestTransformSGLangEngine(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 
 	resources, err := tr.Transform(context.Background(), md)
 	if err != nil {
@@ -785,7 +785,7 @@ func TestTransformSGLangEngine(t *testing.T) {
 func TestTransformTRTLLMEngine(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeTRTLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeTRTLLM
 
 	resources, err := tr.Transform(context.Background(), md)
 	if err != nil {
@@ -802,7 +802,7 @@ func TestTransformTRTLLMEngine(t *testing.T) {
 func TestTransformWithCustomScalingReplicas(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
 		Replicas: 5,
 	}
 
@@ -823,17 +823,17 @@ func TestTransformWithCustomScalingReplicas(t *testing.T) {
 func TestTransformDisaggregatedGPURequests(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubefoundryv1alpha1.ServingSpec{
-		Mode: kubefoundryv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
+		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
-		Prefill: &kubefoundryv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 4},
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
 		},
-		Decode: &kubefoundryv1alpha1.ComponentScalingSpec{
+		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubefoundryv1alpha1.GPUSpec{Count: 2},
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2},
 		},
 	}
 
@@ -874,7 +874,7 @@ func TestTransformDisaggregatedGPURequests(t *testing.T) {
 func TestTransformOverrideCanOverwriteServices(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
 		Name: "dynamo",
 		Overrides: &runtime.RawExtension{
 			Raw: []byte(`{
@@ -932,8 +932,8 @@ func TestTransformWithCustomImage(t *testing.T) {
 
 func TestBuildResourceLimitsWithAllFields(t *testing.T) {
 	tr := NewTransformer()
-	result := tr.buildResourceLimits(&kubefoundryv1alpha1.ResourceSpec{
-		GPU:    &kubefoundryv1alpha1.GPUSpec{Count: 2},
+	result := tr.buildResourceLimits(&kubeairunwayv1alpha1.ResourceSpec{
+		GPU:    &kubeairunwayv1alpha1.GPUSpec{Count: 2},
 		Memory: "64Gi",
 		CPU:    "16",
 	})

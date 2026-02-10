@@ -25,7 +25,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 )
 
 // nolint:unused
@@ -34,42 +34,42 @@ var modeldeploymentlog = logf.Log.WithName("modeldeployment-resource")
 
 // SetupModelDeploymentWebhookWithManager registers the webhook for ModelDeployment in the manager.
 func SetupModelDeploymentWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &kubefoundryv1alpha1.ModelDeployment{}).
+	return ctrl.NewWebhookManagedBy(mgr, &kubeairunwayv1alpha1.ModelDeployment{}).
 		WithValidator(&ModelDeploymentCustomValidator{}).
 		WithDefaulter(&ModelDeploymentCustomDefaulter{}).
 		Complete()
 }
 
-// +kubebuilder:webhook:path=/mutate-kubefoundry-kubefoundry-ai-v1alpha1-modeldeployment,mutating=true,failurePolicy=fail,sideEffects=None,groups=kubefoundry.kubefoundry.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=mmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-kubeairunway-ai-v1alpha1-modeldeployment,mutating=true,failurePolicy=fail,sideEffects=None,groups=kubeairunway.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=mmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ModelDeploymentCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind ModelDeployment when those are created or updated.
 type ModelDeploymentCustomDefaulter struct{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind ModelDeployment.
-func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubefoundryv1alpha1.ModelDeployment) error {
+func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeairunwayv1alpha1.ModelDeployment) error {
 	modeldeploymentlog.Info("Defaulting for ModelDeployment", "name", obj.GetName())
 
 	spec := &obj.Spec
 
 	// Default model source to huggingface
 	if spec.Model.Source == "" {
-		spec.Model.Source = kubefoundryv1alpha1.ModelSourceHuggingFace
+		spec.Model.Source = kubeairunwayv1alpha1.ModelSourceHuggingFace
 	}
 
 	// Default serving mode to aggregated
 	if spec.Serving == nil {
-		spec.Serving = &kubefoundryv1alpha1.ServingSpec{
-			Mode: kubefoundryv1alpha1.ServingModeAggregated,
+		spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
+			Mode: kubeairunwayv1alpha1.ServingModeAggregated,
 		}
 	} else if spec.Serving.Mode == "" {
-		spec.Serving.Mode = kubefoundryv1alpha1.ServingModeAggregated
+		spec.Serving.Mode = kubeairunwayv1alpha1.ServingModeAggregated
 	}
 
 	// Default scaling replicas to 1 for aggregated mode
-	if spec.Serving.Mode == kubefoundryv1alpha1.ServingModeAggregated {
+	if spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeAggregated {
 		if spec.Scaling == nil {
-			spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
+			spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
 				Replicas: 1,
 			}
 		} else if spec.Scaling.Replicas == 0 {
@@ -96,14 +96,14 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubefou
 	return nil
 }
 
-// +kubebuilder:webhook:path=/validate-kubefoundry-kubefoundry-ai-v1alpha1-modeldeployment,mutating=false,failurePolicy=fail,sideEffects=None,groups=kubefoundry.kubefoundry.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=vmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-kubeairunway-ai-v1alpha1-modeldeployment,mutating=false,failurePolicy=fail,sideEffects=None,groups=kubeairunway.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=vmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ModelDeploymentCustomValidator struct is responsible for validating the ModelDeployment resource
 // when it is created, updated, or deleted.
 type ModelDeploymentCustomValidator struct{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ModelDeployment.
-func (v *ModelDeploymentCustomValidator) ValidateCreate(_ context.Context, obj *kubefoundryv1alpha1.ModelDeployment) (admission.Warnings, error) {
+func (v *ModelDeploymentCustomValidator) ValidateCreate(_ context.Context, obj *kubeairunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
 	modeldeploymentlog.Info("Validation for ModelDeployment upon creation", "name", obj.GetName())
 
 	var warnings admission.Warnings
@@ -122,7 +122,7 @@ func (v *ModelDeploymentCustomValidator) ValidateCreate(_ context.Context, obj *
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ModelDeployment.
-func (v *ModelDeploymentCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *kubefoundryv1alpha1.ModelDeployment) (admission.Warnings, error) {
+func (v *ModelDeploymentCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *kubeairunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
 	modeldeploymentlog.Info("Validation for ModelDeployment upon update", "name", newObj.GetName())
 
 	var warnings admission.Warnings
@@ -144,7 +144,7 @@ func (v *ModelDeploymentCustomValidator) ValidateUpdate(_ context.Context, oldOb
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ModelDeployment.
-func (v *ModelDeploymentCustomValidator) ValidateDelete(_ context.Context, obj *kubefoundryv1alpha1.ModelDeployment) (admission.Warnings, error) {
+func (v *ModelDeploymentCustomValidator) ValidateDelete(_ context.Context, obj *kubeairunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
 	modeldeploymentlog.Info("Validation for ModelDeployment upon deletion", "name", obj.GetName())
 
 	// No validation on delete
@@ -152,13 +152,13 @@ func (v *ModelDeploymentCustomValidator) ValidateDelete(_ context.Context, obj *
 }
 
 // validateSpec validates the ModelDeployment spec
-func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubefoundryv1alpha1.ModelDeployment) field.ErrorList {
+func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.ModelDeployment) field.ErrorList {
 	var allErrs field.ErrorList
 	spec := &obj.Spec
 	specPath := field.NewPath("spec")
 
 	// Validate model.id is required for huggingface source
-	if spec.Model.Source == kubefoundryv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
+	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
 		if spec.Model.ID == "" {
 			allErrs = append(allErrs, field.Required(
 				specPath.Child("model", "id"),
@@ -181,15 +181,15 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubefoundryv1alpha1.M
 		gpuCount = spec.Resources.GPU.Count
 	}
 
-	servingMode := kubefoundryv1alpha1.ServingModeAggregated
+	servingMode := kubeairunwayv1alpha1.ServingModeAggregated
 	if spec.Serving != nil && spec.Serving.Mode != "" {
 		servingMode = spec.Serving.Mode
 	}
 
 	switch spec.Engine.Type {
-	case kubefoundryv1alpha1.EngineTypeVLLM, kubefoundryv1alpha1.EngineTypeSGLang, kubefoundryv1alpha1.EngineTypeTRTLLM:
+	case kubeairunwayv1alpha1.EngineTypeVLLM, kubeairunwayv1alpha1.EngineTypeSGLang, kubeairunwayv1alpha1.EngineTypeTRTLLM:
 		// These engines require GPU (unless in disaggregated mode with component-level GPUs)
-		if servingMode == kubefoundryv1alpha1.ServingModeAggregated && gpuCount == 0 {
+		if servingMode == kubeairunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
 			allErrs = append(allErrs, field.Invalid(
 				specPath.Child("resources", "gpu", "count"),
 				gpuCount,
@@ -199,7 +199,7 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubefoundryv1alpha1.M
 	}
 
 	// Validate disaggregated mode configuration
-	if servingMode == kubefoundryv1alpha1.ServingModeDisaggregated {
+	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
 		// Cannot specify resources.gpu in disaggregated mode
 		if spec.Resources != nil && spec.Resources.GPU != nil && spec.Resources.GPU.Count > 0 {
 			allErrs = append(allErrs, field.Invalid(
@@ -251,7 +251,7 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubefoundryv1alpha1.M
 
 // validateImmutableFields checks if any immutable (identity) fields have been changed
 // Changing these fields triggers a delete+recreate of the provider resource
-func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj *kubefoundryv1alpha1.ModelDeployment) field.ErrorList {
+func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj *kubeairunwayv1alpha1.ModelDeployment) field.ErrorList {
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
 
@@ -303,8 +303,8 @@ func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj 
 	}
 
 	// serving.mode is an identity field
-	oldMode := kubefoundryv1alpha1.ServingModeAggregated
-	newMode := kubefoundryv1alpha1.ServingModeAggregated
+	oldMode := kubeairunwayv1alpha1.ServingModeAggregated
+	newMode := kubeairunwayv1alpha1.ServingModeAggregated
 	if oldSpec.Serving != nil && oldSpec.Serving.Mode != "" {
 		oldMode = oldSpec.Serving.Mode
 	}
@@ -323,12 +323,12 @@ func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj 
 }
 
 // checkWarnings returns non-fatal warnings for the spec
-func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubefoundryv1alpha1.ModelDeployment) admission.Warnings {
+func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubeairunwayv1alpha1.ModelDeployment) admission.Warnings {
 	var warnings admission.Warnings
 	spec := &obj.Spec
 
 	// Warn if servedName is specified with custom source
-	if spec.Model.Source == kubefoundryv1alpha1.ModelSourceCustom && spec.Model.ServedName != "" {
+	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceCustom && spec.Model.ServedName != "" {
 		warnings = append(warnings, "servedName is ignored for custom source (model name is defined by the container)")
 	}
 
@@ -338,7 +338,7 @@ func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubefoundryv1alpha1.
 	}
 
 	// Warn if contextLength is set for trtllm
-	if spec.Engine.Type == kubefoundryv1alpha1.EngineTypeTRTLLM && spec.Engine.ContextLength != nil {
+	if spec.Engine.Type == kubeairunwayv1alpha1.EngineTypeTRTLLM && spec.Engine.ContextLength != nil {
 		warnings = append(warnings, "contextLength is ignored for TensorRT-LLM (must be configured at engine build time)")
 	}
 

@@ -1,5 +1,5 @@
 import logger from '../lib/logger';
-import type { HfUserInfo, HfTokenExchangeResponse, HfApiModelResult, HfModelSearchResult, HfSearchParams, HfModelSearchResponse } from '@kubefoundry/shared';
+import type { HfUserInfo, HfTokenExchangeResponse, HfApiModelResult, HfModelSearchResult, HfSearchParams, HfModelSearchResponse } from '@kubeairunway/shared';
 import { filterCompatibleModels } from './modelCompatibility';
 
 /**

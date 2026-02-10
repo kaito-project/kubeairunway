@@ -3,7 +3,7 @@ package kuberay
 import (
 	"testing"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -57,7 +57,7 @@ func TestTranslateStatusNoStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhasePending {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase, got %s", result.Phase)
 	}
 	if result.ResourceKind != RayServiceKind {
@@ -78,7 +78,7 @@ func TestTranslateStatusConditionReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 }
@@ -97,7 +97,7 @@ func TestTranslateStatusConditionNotReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseDeploying {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying phase, got %s", result.Phase)
 	}
 	if result.Message != "waiting for pods" {
@@ -118,7 +118,7 @@ func TestTranslateStatusAppRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 }
@@ -136,7 +136,7 @@ func TestTranslateStatusAppFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseFailed {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase, got %s", result.Phase)
 	}
 	if result.Message != "pod crash" {
@@ -156,7 +156,7 @@ func TestTranslateStatusAppDeploying(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseDeploying {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying phase, got %s", result.Phase)
 	}
 }
@@ -330,7 +330,7 @@ func TestMapAppStatusesEmptyAndMixed(t *testing.T) {
 		"app1": map[string]interface{}{"status": "RUNNING"},
 		"app2": map[string]interface{}{"status": "DEPLOYING"},
 	})
-	if phase != kubefoundryv1alpha1.DeploymentPhaseDeploying {
+	if phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying for mixed statuses, got %s", phase)
 	}
 }

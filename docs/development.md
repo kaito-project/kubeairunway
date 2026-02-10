@@ -61,7 +61,7 @@ The project can be compiled to a standalone executable that includes both the ba
 bun run compile
 
 # Run the binary (serves both API and frontend on port 3001)
-./dist/kubefoundry
+./dist/kubeairunway
 
 # Check version info
 curl http://localhost:3001/api/health/version
@@ -119,7 +119,7 @@ controller/
 ```
 
 ### CRDs
-KubeFoundry defines two CRDs:
+KubeAIRunway defines two CRDs:
 
 1. **ModelDeployment** (namespaced) - User-facing API for deploying models
 2. **InferenceProviderConfig** (cluster-scoped) - Provider registration
@@ -152,46 +152,46 @@ cd controller && go test -v ./...
 ### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:3001
-VITE_DEFAULT_NAMESPACE=kubefoundry-system
+VITE_DEFAULT_NAMESPACE=kubeairunway-system
 VITE_DEFAULT_HF_SECRET=hf-token-secret
 ```
 
 ### Backend (.env)
 ```env
 PORT=3001
-DEFAULT_NAMESPACE=kubefoundry-system
+DEFAULT_NAMESPACE=kubeairunway-system
 CORS_ORIGIN=http://localhost:5173
 AUTH_ENABLED=false
 ```
 
 ## Authentication
 
-KubeFoundry supports optional authentication using Kubernetes OIDC tokens from your kubeconfig.
+KubeAIRunway supports optional authentication using Kubernetes OIDC tokens from your kubeconfig.
 
 ### Enabling Authentication
 
 Set the `AUTH_ENABLED` environment variable:
 
 ```bash
-AUTH_ENABLED=true ./dist/kubefoundry
+AUTH_ENABLED=true ./dist/kubeairunway
 ```
 
 ### Login Flow
 
 1. **Run the login command:**
    ```bash
-   kubefoundry login
+   kubeairunway login
    ```
    This extracts your OIDC token from kubeconfig and opens the browser with a magic link.
 
 2. **Alternative: Specify server URL:**
    ```bash
-   kubefoundry login --server https://kubefoundry.example.com
+   kubeairunway login --server https://kubeairunway.example.com
    ```
 
 3. **Use a specific kubeconfig context:**
    ```bash
-   kubefoundry login --context my-cluster
+   kubeairunway login --context my-cluster
    ```
 
 ### How It Works
@@ -212,14 +212,14 @@ These routes are accessible without authentication:
 ### CLI Commands
 
 ```bash
-kubefoundry                    # Start server (default)
-kubefoundry serve              # Start server
-kubefoundry login              # Login with kubeconfig credentials
-kubefoundry login --server URL # Login to specific server
-kubefoundry login --context X  # Use specific kubeconfig context
-kubefoundry logout             # Clear stored credentials
-kubefoundry version            # Show version
-kubefoundry help               # Show help
+kubeairunway                    # Start server (default)
+kubeairunway serve              # Start server
+kubeairunway login              # Login with kubeconfig credentials
+kubeairunway login --server URL # Login to specific server
+kubeairunway login --context X  # Use specific kubeconfig context
+kubeairunway logout             # Clear stored credentials
+kubeairunway version            # Show version
+kubeairunway help               # Show help
 ```
 
 ## Project Commands
@@ -228,7 +228,7 @@ kubefoundry help               # Show help
 ```bash
 bun run dev           # Start both frontend and backend
 bun run build         # Build all packages
-bun run compile       # Build single binary (frontend + backend) to dist/kubefoundry
+bun run compile       # Build single binary (frontend + backend) to dist/kubeairunway
 bun run lint          # Lint all packages
 ```
 
@@ -261,7 +261,7 @@ bun run compile         # Build single binary executable
 ```bash
 kubectl create secret generic hf-token-secret \
   --from-literal=HF_TOKEN="your-token" \
-  -n kubefoundry
+  -n kubeairunway
 ```
 
 ### Install NVIDIA Dynamo (via Helm)
@@ -352,7 +352,7 @@ curl -X POST http://localhost:3001/api/deployments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-deployment",
-    "namespace": "kubefoundry-system",
+    "namespace": "kubeairunway-system",
     "provider": "dynamo",
     "modelId": "Qwen/Qwen3-0.6B",
     "engine": "vllm",
@@ -409,7 +409,7 @@ After deployment is running:
 ```bash
 # Port-forward to the service (check deployment details for exact service name)
 # Dynamo/KubeRay deployments expose port 8000
-kubectl port-forward svc/<deployment>-frontend 8000:8000 -n kubefoundry-system
+kubectl port-forward svc/<deployment>-frontend 8000:8000 -n kubeairunway-system
 
 # KAITO deployments with vLLM expose port 8000
 kubectl port-forward svc/<deployment-name> 8000:8000 -n kaito-workspace
@@ -438,8 +438,8 @@ curl http://localhost:5000/v1/chat/completions \
 ## Troubleshooting
 
 ### Controller not reconciling
-- Check controller logs: `kubectl logs -n kubefoundry-system deploy/kubefoundry-controller-manager`
-- Verify CRDs are installed: `kubectl get crd modeldeployments.kubefoundry.kubefoundry.ai`
+- Check controller logs: `kubectl logs -n kubeairunway-system deploy/kubeairunway-controller-manager`
+- Verify CRDs are installed: `kubectl get crd modeldeployments.kubeairunway.ai`
 - Check RBAC permissions for the controller service account
 
 ### ModelDeployment stuck in Pending
@@ -469,7 +469,7 @@ curl http://localhost:5000/v1/chat/completions \
 - Check events: `kubectl get events -n kaito-workspace --sort-by=.lastTimestamp`
 
 ### Metrics not available
-- Metrics require KubeFoundry to run in-cluster
+- Metrics require KubeAIRunway to run in-cluster
 - Check deployment pods are running: `kubectl get pods -n <namespace>`
 - Verify metrics endpoint is exposed (port 8000 for vLLM, port 5000 for llama.cpp)
 

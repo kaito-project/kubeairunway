@@ -20,21 +20,21 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	// TODO (user): Add any additional imports if needed
 )
 
 var _ = Describe("ModelDeployment Webhook", func() {
 	var (
-		obj       *kubefoundryv1alpha1.ModelDeployment
-		oldObj    *kubefoundryv1alpha1.ModelDeployment
+		obj       *kubeairunwayv1alpha1.ModelDeployment
+		oldObj    *kubeairunwayv1alpha1.ModelDeployment
 		validator ModelDeploymentCustomValidator
 		defaulter ModelDeploymentCustomDefaulter
 	)
 
 	BeforeEach(func() {
-		obj = &kubefoundryv1alpha1.ModelDeployment{}
-		oldObj = &kubefoundryv1alpha1.ModelDeployment{}
+		obj = &kubeairunwayv1alpha1.ModelDeployment{}
+		oldObj = &kubeairunwayv1alpha1.ModelDeployment{}
 		validator = ModelDeploymentCustomValidator{}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		defaulter = ModelDeploymentCustomDefaulter{}

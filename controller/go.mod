@@ -1,4 +1,4 @@
-module github.com/kubefoundry/kubefoundry/controller
+module github.com/kaito-project/kubeairunway/controller
 
 go 1.25.3
 

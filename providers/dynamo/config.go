@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 )
 
 const (
@@ -38,7 +38,7 @@ const (
 	ProviderVersion = "dynamo-provider:v0.1.0"
 
 	// ProviderDocumentation is the documentation URL for the Dynamo provider
-	ProviderDocumentation = "https://github.com/kubefoundry/kubefoundry/tree/main/docs/providers/dynamo.md"
+	ProviderDocumentation = "https://github.com/kaito-project/kubeairunway/tree/main/docs/providers/dynamo.md"
 
 	// HeartbeatInterval is the interval for updating the provider heartbeat
 	HeartbeatInterval = 1 * time.Minute
@@ -57,22 +57,22 @@ func NewProviderConfigManager(c client.Client) *ProviderConfigManager {
 }
 
 // GetProviderConfigSpec returns the InferenceProviderConfigSpec for Dynamo
-func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
-	return kubefoundryv1alpha1.InferenceProviderConfigSpec{
-		Capabilities: &kubefoundryv1alpha1.ProviderCapabilities{
-			Engines: []kubefoundryv1alpha1.EngineType{
-				kubefoundryv1alpha1.EngineTypeVLLM,
-				kubefoundryv1alpha1.EngineTypeSGLang,
-				kubefoundryv1alpha1.EngineTypeTRTLLM,
+func GetProviderConfigSpec() kubeairunwayv1alpha1.InferenceProviderConfigSpec {
+	return kubeairunwayv1alpha1.InferenceProviderConfigSpec{
+		Capabilities: &kubeairunwayv1alpha1.ProviderCapabilities{
+			Engines: []kubeairunwayv1alpha1.EngineType{
+				kubeairunwayv1alpha1.EngineTypeVLLM,
+				kubeairunwayv1alpha1.EngineTypeSGLang,
+				kubeairunwayv1alpha1.EngineTypeTRTLLM,
 			},
-			ServingModes: []kubefoundryv1alpha1.ServingMode{
-				kubefoundryv1alpha1.ServingModeAggregated,
-				kubefoundryv1alpha1.ServingModeDisaggregated,
+			ServingModes: []kubeairunwayv1alpha1.ServingMode{
+				kubeairunwayv1alpha1.ServingModeAggregated,
+				kubeairunwayv1alpha1.ServingModeDisaggregated,
 			},
 			CPUSupport: false,
 			GPUSupport: true,
 		},
-		SelectionRules: []kubefoundryv1alpha1.SelectionRule{
+		SelectionRules: []kubeairunwayv1alpha1.SelectionRule{
 			{
 				// Select Dynamo for trtllm engine (only provider supporting it)
 				Condition: "spec.engine.type == 'trtllm'",
@@ -94,13 +94,13 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 				Priority:  50,
 			},
 		},
-		Installation: &kubefoundryv1alpha1.InstallationInfo{
+		Installation: &kubeairunwayv1alpha1.InstallationInfo{
 			Description:      "NVIDIA Dynamo for high-performance GPU inference",
 			DefaultNamespace: "dynamo-system",
-			HelmRepos: []kubefoundryv1alpha1.HelmRepo{
+			HelmRepos: []kubeairunwayv1alpha1.HelmRepo{
 				{Name: "nvidia-ai-dynamo", URL: "https://helm.ngc.nvidia.com/nvidia/ai-dynamo"},
 			},
-			HelmCharts: []kubefoundryv1alpha1.HelmChart{
+			HelmCharts: []kubeairunwayv1alpha1.HelmChart{
 				{
 					Name:      "dynamo-crds",
 					Chart:     "https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-crds-0.7.1.tgz",
@@ -113,7 +113,7 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 					CreateNamespace: true,
 				},
 			},
-			Steps: []kubefoundryv1alpha1.InstallationStep{
+			Steps: []kubeairunwayv1alpha1.InstallationStep{
 				{
 					Title:       "Install Dynamo CRDs",
 					Command:     "helm fetch https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-crds-0.7.1.tgz && helm install dynamo-crds dynamo-crds-0.7.1.tgz --namespace default",
@@ -134,7 +134,7 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
-	config := &kubefoundryv1alpha1.InferenceProviderConfig{
+	config := &kubeairunwayv1alpha1.InferenceProviderConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: ProviderConfigName,
 		},
@@ -142,7 +142,7 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	}
 
 	// Check if config already exists
-	existing := &kubefoundryv1alpha1.InferenceProviderConfig{}
+	existing := &kubeairunwayv1alpha1.InferenceProviderConfig{}
 	err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, existing)
 
 	if errors.IsNotFound(err) {
@@ -168,13 +168,13 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 
 // UpdateStatus updates the status of the InferenceProviderConfig
 func (m *ProviderConfigManager) UpdateStatus(ctx context.Context, ready bool) error {
-	config := &kubefoundryv1alpha1.InferenceProviderConfig{}
+	config := &kubeairunwayv1alpha1.InferenceProviderConfig{}
 	if err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, config); err != nil {
 		return fmt.Errorf("failed to get InferenceProviderConfig: %w", err)
 	}
 
 	now := metav1.Now()
-	config.Status = kubefoundryv1alpha1.InferenceProviderConfigStatus{
+	config.Status = kubeairunwayv1alpha1.InferenceProviderConfigStatus{
 		Ready:              ready,
 		Version:           ProviderVersion,
 		LastHeartbeat:     &now,

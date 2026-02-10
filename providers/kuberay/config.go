@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 )
 
 const (
@@ -38,7 +38,7 @@ const (
 	ProviderVersion = "kuberay-provider:v0.1.0"
 
 	// ProviderDocumentation is the documentation URL for the KubeRay provider
-	ProviderDocumentation = "https://github.com/kubefoundry/kubefoundry/tree/main/docs/providers/kuberay.md"
+	ProviderDocumentation = "https://github.com/kaito-project/kubeairunway/tree/main/docs/providers/kuberay.md"
 
 	// HeartbeatInterval is the interval for updating the provider heartbeat
 	HeartbeatInterval = 1 * time.Minute
@@ -57,33 +57,33 @@ func NewProviderConfigManager(c client.Client) *ProviderConfigManager {
 }
 
 // GetProviderConfigSpec returns the InferenceProviderConfigSpec for KubeRay
-func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
-	return kubefoundryv1alpha1.InferenceProviderConfigSpec{
-		Capabilities: &kubefoundryv1alpha1.ProviderCapabilities{
-			Engines: []kubefoundryv1alpha1.EngineType{
-				kubefoundryv1alpha1.EngineTypeVLLM,
+func GetProviderConfigSpec() kubeairunwayv1alpha1.InferenceProviderConfigSpec {
+	return kubeairunwayv1alpha1.InferenceProviderConfigSpec{
+		Capabilities: &kubeairunwayv1alpha1.ProviderCapabilities{
+			Engines: []kubeairunwayv1alpha1.EngineType{
+				kubeairunwayv1alpha1.EngineTypeVLLM,
 			},
-			ServingModes: []kubefoundryv1alpha1.ServingMode{
-				kubefoundryv1alpha1.ServingModeAggregated,
-				kubefoundryv1alpha1.ServingModeDisaggregated,
+			ServingModes: []kubeairunwayv1alpha1.ServingMode{
+				kubeairunwayv1alpha1.ServingModeAggregated,
+				kubeairunwayv1alpha1.ServingModeDisaggregated,
 			},
 			CPUSupport: false,
 			GPUSupport: true,
 		},
-		SelectionRules: []kubefoundryv1alpha1.SelectionRule{
+		SelectionRules: []kubeairunwayv1alpha1.SelectionRule{
 			{
 				// Prefer for multi-GPU vLLM workloads
 				Condition: "has(spec.resources.gpu) && spec.resources.gpu.count > 1 && spec.engine.type == 'vllm'",
 				Priority:  80,
 			},
 		},
-		Installation: &kubefoundryv1alpha1.InstallationInfo{
+		Installation: &kubeairunwayv1alpha1.InstallationInfo{
 			Description:      "Ray Serve via KubeRay for distributed Ray-based model serving with vLLM",
 			DefaultNamespace: "ray-system",
-			HelmRepos: []kubefoundryv1alpha1.HelmRepo{
+			HelmRepos: []kubeairunwayv1alpha1.HelmRepo{
 				{Name: "kuberay", URL: "https://ray-project.github.io/kuberay-helm/"},
 			},
-			HelmCharts: []kubefoundryv1alpha1.HelmChart{
+			HelmCharts: []kubeairunwayv1alpha1.HelmChart{
 				{
 					Name:            "kuberay-operator",
 					Chart:           "kuberay/kuberay-operator",
@@ -92,7 +92,7 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 					CreateNamespace: true,
 				},
 			},
-			Steps: []kubefoundryv1alpha1.InstallationStep{
+			Steps: []kubeairunwayv1alpha1.InstallationStep{
 				{
 					Title:       "Add KubeRay Helm Repository",
 					Command:     "helm repo add kuberay https://ray-project.github.io/kuberay-helm/",
@@ -118,7 +118,7 @@ func GetProviderConfigSpec() kubefoundryv1alpha1.InferenceProviderConfigSpec {
 func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
-	config := &kubefoundryv1alpha1.InferenceProviderConfig{
+	config := &kubeairunwayv1alpha1.InferenceProviderConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: ProviderConfigName,
 		},
@@ -126,7 +126,7 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	}
 
 	// Check if config already exists
-	existing := &kubefoundryv1alpha1.InferenceProviderConfig{}
+	existing := &kubeairunwayv1alpha1.InferenceProviderConfig{}
 	err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, existing)
 
 	if errors.IsNotFound(err) {
@@ -160,13 +160,13 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 
 // UpdateStatus updates the status of the InferenceProviderConfig
 func (m *ProviderConfigManager) UpdateStatus(ctx context.Context, ready bool) error {
-	config := &kubefoundryv1alpha1.InferenceProviderConfig{}
+	config := &kubeairunwayv1alpha1.InferenceProviderConfig{}
 	if err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, config); err != nil {
 		return fmt.Errorf("failed to get InferenceProviderConfig: %w", err)
 	}
 
 	now := metav1.Now()
-	config.Status = kubefoundryv1alpha1.InferenceProviderConfigStatus{
+	config.Status = kubeairunwayv1alpha1.InferenceProviderConfigStatus{
 		Ready:              ready,
 		Version:            ProviderVersion,
 		LastHeartbeat:      &now,

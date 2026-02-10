@@ -1,8 +1,8 @@
 import * as k8s from '@kubernetes/client-node';
 import logger from '../lib/logger';
 
-// Default namespace for KubeFoundry deployments
-const DEFAULT_KUBEFOUNDRY_NAMESPACE = 'kubefoundry-system';
+// Default namespace for KubeAIRunway deployments
+const DEFAULT_KUBEAIRUNWAY_NAMESPACE = 'kubeairunway-system';
 
 /**
  * Application configuration stored in Kubernetes ConfigMap
@@ -11,8 +11,8 @@ export interface AppConfig {
   defaultNamespace?: string;
 }
 
-const CONFIG_NAMESPACE = 'kubefoundry-system';
-const CONFIG_NAME = 'kubefoundry-config';
+const CONFIG_NAMESPACE = 'kubeairunway-system';
+const CONFIG_NAME = 'kubeairunway-config';
 const CONFIG_KEY = 'config.json';
 
 /**
@@ -42,12 +42,12 @@ class ConfigService {
    */
   private getDefaultConfig(): AppConfig {
     return {
-      defaultNamespace: process.env.DEFAULT_NAMESPACE || DEFAULT_KUBEFOUNDRY_NAMESPACE,
+      defaultNamespace: process.env.DEFAULT_NAMESPACE || DEFAULT_KUBEAIRUNWAY_NAMESPACE,
     };
   }
 
   /**
-   * Ensure the kubefoundry namespace exists
+   * Ensure the kubeairunway namespace exists
    */
   private async ensureNamespace(): Promise<void> {
     try {
@@ -60,8 +60,8 @@ class ConfigService {
           metadata: {
             name: CONFIG_NAMESPACE,
             labels: {
-              'app.kubernetes.io/name': 'kubefoundry',
-              'app.kubernetes.io/managed-by': 'kubefoundry',
+              'app.kubernetes.io/name': 'kubeairunway',
+              'app.kubernetes.io/managed-by': 'kubeairunway',
             },
           },
         });
@@ -130,8 +130,8 @@ class ConfigService {
           name: CONFIG_NAME,
           namespace: CONFIG_NAMESPACE,
           labels: {
-            'app.kubernetes.io/name': 'kubefoundry',
-            'app.kubernetes.io/managed-by': 'kubefoundry',
+            'app.kubernetes.io/name': 'kubeairunway',
+            'app.kubernetes.io/managed-by': 'kubeairunway',
           },
         },
         data: {
@@ -173,7 +173,7 @@ class ConfigService {
    */
   async getDefaultNamespace(): Promise<string> {
     const config = await this.getConfig();
-    return config.defaultNamespace || DEFAULT_KUBEFOUNDRY_NAMESPACE;
+    return config.defaultNamespace || DEFAULT_KUBEAIRUNWAY_NAMESPACE;
   }
 
   /**

@@ -30,20 +30,20 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/kubefoundry/kubefoundry/controller/test/utils"
+	"github.com/kaito-project/kubeairunway/controller/test/utils"
 )
 
 // namespace where the project is deployed in
-const namespace = "controller-system"
+const namespace = "kubeairunway-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "controller-controller-manager"
+const serviceAccountName = "kubeairunway-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "controller-controller-manager-metrics-service"
+const metricsServiceName = "kubeairunway-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "controller-metrics-binding"
+const metricsRoleBindingName = "kubeairunway-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -52,6 +52,11 @@ var _ = Describe("Manager", Ordered, func() {
 	// enforce the restricted security policy to the namespace, installing CRDs,
 	// and deploying the controller.
 	BeforeAll(func() {
+		if skipDeploy {
+			By("skipping deploy (SKIP_DEPLOY=true, using existing cluster)")
+			return
+		}
+
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, err := utils.Run(cmd)
@@ -78,8 +83,17 @@ var _ = Describe("Manager", Ordered, func() {
 	// and deleting the namespace.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "--ignore-not-found", "-n", namespace)
 		_, _ = utils.Run(cmd)
+
+		By("cleaning up the metrics role binding")
+		cmd = exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName, "--ignore-not-found")
+		_, _ = utils.Run(cmd)
+
+		if skipDeploy {
+			By("skipping undeploy (SKIP_DEPLOY=true)")
+			return
+		}
 
 		By("undeploying the controller-manager")
 		cmd = exec.Command("make", "undeploy")
@@ -176,7 +190,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=controller-metrics-reader",
+				"--clusterrole=kubeairunway-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)
@@ -215,7 +229,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("waiting for the webhook service endpoints to be ready")
 			verifyWebhookEndpointsReady := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "endpointslices.discovery.k8s.io", "-n", namespace,
-					"-l", "kubernetes.io/service-name=controller-webhook-service",
+					"-l", "kubernetes.io/service-name=kubeairunway-webhook-service",
 					"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Webhook endpoints should exist")
@@ -280,7 +294,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should have the webhook server cert secret", func() {
 			By("validating that the webhook server cert Secret exists")
 			verifyWebhookCert := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "secrets", "kubefoundry-webhook-server-cert", "-n", namespace)
+				cmd := exec.Command("kubectl", "get", "secrets", "kubeairunway-webhook-server-cert", "-n", namespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 			}
@@ -292,7 +306,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"mutatingwebhookconfigurations.admissionregistration.k8s.io",
-					"controller-mutating-webhook-configuration",
+					"kubeairunway-mutating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				mwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -306,7 +320,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"controller-validating-webhook-configuration",
+					"kubeairunway-validating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())

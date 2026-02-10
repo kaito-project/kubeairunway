@@ -1,6 +1,6 @@
-# Contributing to KubeFoundry
+# Contributing to KubeAIRunway
 
-Thank you for your interest in contributing to KubeFoundry! This guide covers development setup, project structure, and contribution guidelines.
+Thank you for your interest in contributing to KubeAIRunway! This guide covers development setup, project structure, and contribution guidelines.
 
 ## Development Setup
 
@@ -57,7 +57,7 @@ bun run dev:backend     # Start with watch mode
 ## Project Structure
 
 ```
-kubefoundry/
+kubeairunway/
 ├── frontend/          # React frontend application
 │   ├── src/
 │   │   ├── components/  # UI components
@@ -98,7 +98,7 @@ kubefoundry/
 
 ### Provider Pattern
 
-KubeFoundry uses a provider abstraction to support multiple inference runtimes:
+KubeAIRunway uses a provider abstraction to support multiple inference runtimes:
 
 ```typescript
 interface Provider {
@@ -116,18 +116,18 @@ interface Provider {
 
 ### Configuration Storage
 
-Settings are stored in a Kubernetes ConfigMap (`kubefoundry-config`) in the `kubefoundry-system` namespace:
+Settings are stored in a Kubernetes ConfigMap (`kubeairunway-config`) in the `kubeairunway-system` namespace:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubefoundry-config
-  namespace: kubefoundry-system
+  name: kubeairunway-config
+  namespace: kubeairunway-system
 data:
   config.json: |
     {
-      "defaultNamespace": "kubefoundry-system"
+      "defaultNamespace": "kubeairunway-system"
     }
 ```
 
@@ -138,14 +138,14 @@ data:
 ### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:3001
-VITE_DEFAULT_NAMESPACE=kubefoundry-system
+VITE_DEFAULT_NAMESPACE=kubeairunway-system
 VITE_DEFAULT_HF_SECRET=hf-token-secret
 ```
 
 ### Backend (.env)
 ```env
 PORT=3001
-DEFAULT_NAMESPACE=kubefoundry-system
+DEFAULT_NAMESPACE=kubeairunway-system
 CORS_ORIGIN=http://localhost:5173
 AUTH_ENABLED=false
 ```
@@ -224,7 +224,7 @@ curl -X POST http://localhost:3001/api/deployments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-deployment",
-    "namespace": "kubefoundry-system",
+    "namespace": "kubeairunway-system",
     "modelId": "Qwen/Qwen3-0.6B",
     "engine": "vllm",
     "mode": "aggregated",
@@ -304,7 +304,7 @@ curl -X POST http://localhost:3001/api/deployments \
 
 ### Provider not detected as installed
 - Check CRD exists: `kubectl get crd dynamographdeployments.nvidia.com`
-- Check operator deployment: `kubectl get deployments -n kubefoundry`
+- Check operator deployment: `kubectl get deployments -n kubeairunway`
 
 ### Frontend can't reach backend
 - Check CORS_ORIGIN matches frontend URL

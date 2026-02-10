@@ -48,19 +48,19 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
-	"github.com/kubefoundry/kubefoundry/controller/internal/controller"
-	webhookv1alpha1 "github.com/kubefoundry/kubefoundry/controller/internal/webhook/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	"github.com/kaito-project/kubeairunway/controller/internal/controller"
+	webhookv1alpha1 "github.com/kaito-project/kubeairunway/controller/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
 const (
-	secretName     = "kubefoundry-webhook-server-cert"
-	caName         = "kubefoundry-ca"
-	caOrganization = "kubefoundry"
+	secretName     = "kubeairunway-webhook-server-cert"
+	caName         = "kubeairunway-ca"
+	caOrganization = "kubeairunway"
 	certDir        = "/tmp/k8s-webhook-server/serving-certs"
-	vwhName        = "kubefoundry-validating-webhook-configuration"
-	mwhName        = "kubefoundry-mutating-webhook-configuration"
+	vwhName        = "kubeairunway-validating-webhook-configuration"
+	mwhName        = "kubeairunway-mutating-webhook-configuration"
 )
 
 var (
@@ -71,7 +71,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(kubefoundryv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kubeairunwayv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -163,8 +163,8 @@ func main() {
 		"If set, the controller will run provider selection for ModelDeployments without explicit provider.name")
 	flag.BoolVar(&disableCertRotation, "disable-cert-rotation", false,
 		"Disable automatic generation and rotation of webhook TLS certificates/keys")
-	flag.StringVar(&certServiceName, "cert-service-name", "kubefoundry-webhook-service",
-		"The service name used to generate the TLS cert's hostname. Defaults to kubefoundry-webhook-service")
+	flag.StringVar(&certServiceName, "cert-service-name", "kubeairunway-webhook-service",
+		"The service name used to generate the TLS cert's hostname. Defaults to kubeairunway-webhook-service")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -241,7 +241,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "2038fe6a.kubefoundry.ai",
+		LeaderElectionID:       "2038fe6a.kubeairunway.ai",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

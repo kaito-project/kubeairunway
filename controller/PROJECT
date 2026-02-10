@@ -3,20 +3,20 @@
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
 cliVersion: 4.11.1
-domain: kubefoundry.ai
+domain: kubeairunway.ai
 layout:
 - go.kubebuilder.io/v4
 projectName: controller
-repo: github.com/kubefoundry/kubefoundry/controller
+repo: github.com/kaito-project/kubeairunway/controller
 resources:
 - api:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: kubefoundry.ai
-  group: kubefoundry
+  domain: kubeairunway.ai
+  group: ""
   kind: ModelDeployment
-  path: github.com/kubefoundry/kubefoundry/controller/api/v1alpha1
+  path: github.com/kaito-project/kubeairunway/controller/api/v1alpha1
   version: v1alpha1
   webhooks:
     defaulting: true
@@ -25,9 +25,9 @@ resources:
 - api:
     crdVersion: v1
     namespaced: true
-  domain: kubefoundry.ai
-  group: kubefoundry
+  domain: kubeairunway.ai
+  group: ""
   kind: InferenceProviderConfig
-  path: github.com/kubefoundry/kubefoundry/controller/api/v1alpha1
+  path: github.com/kaito-project/kubeairunway/controller/api/v1alpha1
   version: v1alpha1
 version: "3"

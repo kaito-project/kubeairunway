@@ -36,7 +36,7 @@ export const mockModels = [
 export const mockDeployments = [
   {
     name: 'qwen3-0-6b-vllm-abc123',
-    namespace: 'kubefoundry-system',
+    namespace: 'kubeairunway-system',
     modelId: 'Qwen/Qwen3-0.6B',
     engine: 'vllm' as const,
     mode: 'aggregated' as const,
@@ -62,14 +62,14 @@ export const mockDeployments = [
 
 export const mockSettings = {
   config: {
-    defaultNamespace: 'kubefoundry-system',
+    defaultNamespace: 'kubeairunway-system',
   },
   providers: [
     {
       id: 'dynamo',
       name: 'NVIDIA Dynamo',
       description: 'GPU-accelerated inference with disaggregated serving',
-      defaultNamespace: 'kubefoundry-system',
+      defaultNamespace: 'kubeairunway-system',
     },
     {
       id: 'kuberay',
@@ -148,7 +148,7 @@ export const handlers = [
   http.get(`${API_BASE}/cluster/status`, () => {
     return HttpResponse.json({
       connected: true,
-      namespace: 'kubefoundry-system',
+      namespace: 'kubeairunway-system',
       clusterName: 'test-cluster',
       provider: {
         id: 'dynamo',

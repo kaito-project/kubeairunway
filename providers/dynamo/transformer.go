@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -82,7 +82,7 @@ func NewTransformer() *Transformer {
 }
 
 // Transform converts a ModelDeployment to a DynamoGraphDeployment
-func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
+func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
 	// Parse overrides if present
 	overrides, err := t.parseOverrides(md)
 	if err != nil {
@@ -98,11 +98,11 @@ func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.Mod
 
 	// Add labels (owner reference cannot cross namespaces, so we track the source via labels)
 	labels := map[string]string{
-		"kubefoundry.ai/managed-by":          "kubefoundry",
-		"kubefoundry.ai/deployment":          md.Name,
-		"kubefoundry.ai/deployment-namespace": md.Namespace,
-		"kubefoundry.ai/model-id":            sanitizeLabelValue(md.Spec.Model.ID),
-		"kubefoundry.ai/engine-type":         string(md.Spec.Engine.Type),
+		"kubeairunway.ai/managed-by":          "kubeairunway",
+		"kubeairunway.ai/deployment":          md.Name,
+		"kubeairunway.ai/deployment-namespace": md.Namespace,
+		"kubeairunway.ai/model-id":            sanitizeLabelValue(md.Spec.Model.ID),
+		"kubeairunway.ai/engine-type":         string(md.Spec.Engine.Type),
 	}
 	dgd.SetLabels(labels)
 
@@ -125,7 +125,7 @@ func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.Mod
 }
 
 // parseOverrides parses the provider.overrides field into DynamoOverrides
-func (t *Transformer) parseOverrides(md *kubefoundryv1alpha1.ModelDeployment) (*DynamoOverrides, error) {
+func (t *Transformer) parseOverrides(md *kubeairunwayv1alpha1.ModelDeployment) (*DynamoOverrides, error) {
 	if md.Spec.Provider == nil || md.Spec.Provider.Overrides == nil {
 		return &DynamoOverrides{}, nil
 	}
@@ -138,14 +138,14 @@ func (t *Transformer) parseOverrides(md *kubefoundryv1alpha1.ModelDeployment) (*
 	return &overrides, nil
 }
 
-// mapEngineType maps KubeFoundry engine types to Dynamo backend framework names
-func (t *Transformer) mapEngineType(engineType kubefoundryv1alpha1.EngineType) string {
+// mapEngineType maps KubeAIRunway engine types to Dynamo backend framework names
+func (t *Transformer) mapEngineType(engineType kubeairunwayv1alpha1.EngineType) string {
 	switch engineType {
-	case kubefoundryv1alpha1.EngineTypeVLLM:
+	case kubeairunwayv1alpha1.EngineTypeVLLM:
 		return "vllm"
-	case kubefoundryv1alpha1.EngineTypeSGLang:
+	case kubeairunwayv1alpha1.EngineTypeSGLang:
 		return "sglang"
-	case kubefoundryv1alpha1.EngineTypeTRTLLM:
+	case kubeairunwayv1alpha1.EngineTypeTRTLLM:
 		return "trtllm"
 	default:
 		return string(engineType)
@@ -153,11 +153,11 @@ func (t *Transformer) mapEngineType(engineType kubefoundryv1alpha1.EngineType) s
 }
 
 // buildServices creates the services map for DynamoGraphDeployment
-func (t *Transformer) buildServices(md *kubefoundryv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
+func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
 	services := map[string]interface{}{}
 
 	// Determine serving mode
-	servingMode := kubefoundryv1alpha1.ServingModeAggregated
+	servingMode := kubeairunwayv1alpha1.ServingModeAggregated
 	if md.Spec.Serving != nil && md.Spec.Serving.Mode != "" {
 		servingMode = md.Spec.Serving.Mode
 	}
@@ -168,7 +168,7 @@ func (t *Transformer) buildServices(md *kubefoundryv1alpha1.ModelDeployment, ove
 	// Add frontend service
 	services["Frontend"] = t.buildFrontendService(md, overrides)
 
-	if servingMode == kubefoundryv1alpha1.ServingModeDisaggregated {
+	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
 		// Disaggregated mode: separate prefill and decode workers
 		services["VllmPrefillWorker"] = t.buildPrefillWorker(md, image)
 		services["VllmDecodeWorker"] = t.buildDecodeWorker(md, image)
@@ -181,7 +181,7 @@ func (t *Transformer) buildServices(md *kubefoundryv1alpha1.ModelDeployment, ove
 }
 
 // buildFrontendService creates the frontend service configuration
-func (t *Transformer) buildFrontendService(md *kubefoundryv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
+func (t *Transformer) buildFrontendService(md *kubeairunwayv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
 	// Determine replicas
 	replicas := int64(DefaultFrontendReplicas)
 	if overrides.Frontend != nil && overrides.Frontend.Replicas != nil {
@@ -233,7 +233,7 @@ func (t *Transformer) buildFrontendService(md *kubefoundryv1alpha1.ModelDeployme
 }
 
 // buildAggregatedWorker creates the worker service for aggregated mode
-func (t *Transformer) buildAggregatedWorker(md *kubefoundryv1alpha1.ModelDeployment, image string) map[string]interface{} {
+func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) map[string]interface{} {
 	// Get replicas
 	replicas := int64(1)
 	if md.Spec.Scaling != nil && md.Spec.Scaling.Replicas > 0 {
@@ -272,7 +272,7 @@ func (t *Transformer) buildAggregatedWorker(md *kubefoundryv1alpha1.ModelDeploym
 }
 
 // buildPrefillWorker creates the prefill worker for disaggregated mode
-func (t *Transformer) buildPrefillWorker(md *kubefoundryv1alpha1.ModelDeployment, image string) map[string]interface{} {
+func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) map[string]interface{} {
 	prefillSpec := md.Spec.Scaling.Prefill
 
 	// Build resource limits and requests from component spec
@@ -323,7 +323,7 @@ func (t *Transformer) buildPrefillWorker(md *kubefoundryv1alpha1.ModelDeployment
 }
 
 // buildDecodeWorker creates the decode worker for disaggregated mode
-func (t *Transformer) buildDecodeWorker(md *kubefoundryv1alpha1.ModelDeployment, image string) map[string]interface{} {
+func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) map[string]interface{} {
 	decodeSpec := md.Spec.Scaling.Decode
 
 	// Build resource limits and requests from component spec
@@ -374,7 +374,7 @@ func (t *Transformer) buildDecodeWorker(md *kubefoundryv1alpha1.ModelDeployment,
 }
 
 // buildResourceLimits creates resource limits and requests from ResourceSpec
-func (t *Transformer) buildResourceLimits(spec *kubefoundryv1alpha1.ResourceSpec) map[string]interface{} {
+func (t *Transformer) buildResourceLimits(spec *kubeairunwayv1alpha1.ResourceSpec) map[string]interface{} {
 	limits := map[string]interface{}{}
 	requests := map[string]interface{}{}
 
@@ -406,16 +406,16 @@ func (t *Transformer) buildResourceLimits(spec *kubefoundryv1alpha1.ResourceSpec
 }
 
 // buildEngineArgs constructs the engine command line arguments
-func (t *Transformer) buildEngineArgs(md *kubefoundryv1alpha1.ModelDeployment) string {
+func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) string {
 	var args []string
 
 	// Start with the engine runner
 	switch md.Spec.Engine.Type {
-	case kubefoundryv1alpha1.EngineTypeVLLM:
+	case kubeairunwayv1alpha1.EngineTypeVLLM:
 		args = append(args, "python3 -m dynamo.vllm")
-	case kubefoundryv1alpha1.EngineTypeSGLang:
+	case kubeairunwayv1alpha1.EngineTypeSGLang:
 		args = append(args, "python3 -m dynamo.sglang")
-	case kubefoundryv1alpha1.EngineTypeTRTLLM:
+	case kubeairunwayv1alpha1.EngineTypeTRTLLM:
 		args = append(args, "python3 -m dynamo.trtllm")
 	}
 
@@ -430,9 +430,9 @@ func (t *Transformer) buildEngineArgs(md *kubefoundryv1alpha1.ModelDeployment) s
 	// Add context length
 	if md.Spec.Engine.ContextLength != nil {
 		switch md.Spec.Engine.Type {
-		case kubefoundryv1alpha1.EngineTypeVLLM:
+		case kubeairunwayv1alpha1.EngineTypeVLLM:
 			args = append(args, "--max-model-len", fmt.Sprintf("%d", *md.Spec.Engine.ContextLength))
-		case kubefoundryv1alpha1.EngineTypeSGLang:
+		case kubeairunwayv1alpha1.EngineTypeSGLang:
 			args = append(args, "--context-length", fmt.Sprintf("%d", *md.Spec.Engine.ContextLength))
 		// TensorRT-LLM context length is build-time, skip with warning logged elsewhere
 		}
@@ -441,7 +441,7 @@ func (t *Transformer) buildEngineArgs(md *kubefoundryv1alpha1.ModelDeployment) s
 	// Add trust remote code
 	if md.Spec.Engine.TrustRemoteCode {
 		switch md.Spec.Engine.Type {
-		case kubefoundryv1alpha1.EngineTypeVLLM, kubefoundryv1alpha1.EngineTypeSGLang:
+		case kubeairunwayv1alpha1.EngineTypeVLLM, kubeairunwayv1alpha1.EngineTypeSGLang:
 			args = append(args, "--trust-remote-code")
 		}
 	}
@@ -459,14 +459,14 @@ func (t *Transformer) buildEngineArgs(md *kubefoundryv1alpha1.ModelDeployment) s
 }
 
 // defaultImages contains the default container images for each engine type
-var defaultImages = map[kubefoundryv1alpha1.EngineType]string{
-	kubefoundryv1alpha1.EngineTypeVLLM:   "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1",
-	kubefoundryv1alpha1.EngineTypeSGLang: "nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.7.1",
-	kubefoundryv1alpha1.EngineTypeTRTLLM: "nvcr.io/nvidia/ai-dynamo/trtllm-runtime:0.7.1",
+var defaultImages = map[kubeairunwayv1alpha1.EngineType]string{
+	kubeairunwayv1alpha1.EngineTypeVLLM:   "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1",
+	kubeairunwayv1alpha1.EngineTypeSGLang: "nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.7.1",
+	kubeairunwayv1alpha1.EngineTypeTRTLLM: "nvcr.io/nvidia/ai-dynamo/trtllm-runtime:0.7.1",
 }
 
 // getImage returns the container image to use
-func (t *Transformer) getImage(md *kubefoundryv1alpha1.ModelDeployment) string {
+func (t *Transformer) getImage(md *kubeairunwayv1alpha1.ModelDeployment) string {
 	// Use custom image if specified
 	if md.Spec.Image != "" {
 		return md.Spec.Image
@@ -482,7 +482,7 @@ func (t *Transformer) getImage(md *kubefoundryv1alpha1.ModelDeployment) string {
 }
 
 // addSchedulingConfig adds node selector and tolerations to a service
-func (t *Transformer) addSchedulingConfig(service map[string]interface{}, md *kubefoundryv1alpha1.ModelDeployment) {
+func (t *Transformer) addSchedulingConfig(service map[string]interface{}, md *kubeairunwayv1alpha1.ModelDeployment) {
 	extraPodSpec, ok := service["extraPodSpec"].(map[string]interface{})
 	if !ok {
 		extraPodSpec = map[string]interface{}{}
@@ -540,7 +540,7 @@ func boolPtr(b bool) *bool {
 
 // applyOverrides deep-merges spec.provider.overrides into the unstructured object.
 // This is the escape hatch that lets users set arbitrary fields on the provider CRD.
-func applyOverrides(obj *unstructured.Unstructured, md *kubefoundryv1alpha1.ModelDeployment) error {
+func applyOverrides(obj *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	if md.Spec.Provider == nil || md.Spec.Provider.Overrides == nil {
 		return nil
 	}

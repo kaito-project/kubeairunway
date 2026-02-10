@@ -1,9 +1,9 @@
-module github.com/kubefoundry/kubefoundry/providers/kaito
+module github.com/kaito-project/kubeairunway/providers/kaito
 
 go 1.25.3
 
 require (
-	github.com/kubefoundry/kubefoundry/controller v0.0.0
+	github.com/kaito-project/kubeairunway/controller v0.0.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
@@ -93,4 +93,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/kubefoundry/kubefoundry/controller => ../../controller
+replace github.com/kaito-project/kubeairunway/controller => ../../controller

@@ -3,8 +3,8 @@ import type {
   CostEstimate,
   CostEstimateRequest,
   NodePoolCostEstimate,
-} from '@kubefoundry/shared';
-import type { NodePoolInfo } from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
+import type { NodePoolInfo } from '@kubeairunway/shared';
 import { logger } from '../lib/logger';
 
 /** Hours per month assuming 24/7 operation */

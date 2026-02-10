@@ -3,7 +3,7 @@
  * Fetches and processes Prometheus metrics from inference deployments
  */
 
-import type { MetricsResponse, RawMetricValue } from '@kubefoundry/shared';
+import type { MetricsResponse, RawMetricValue } from '@kubeairunway/shared';
 import { parsePrometheusText } from '../lib/prometheus-parser';
 import logger from '../lib/logger';
 import * as fs from 'fs';
@@ -22,7 +22,7 @@ const DEFAULT_METRICS_CONFIG = {
 };
 
 /**
- * Check if KubeFoundry is running inside a Kubernetes cluster
+ * Check if KubeAIRunway is running inside a Kubernetes cluster
  * This is determined by the presence of the service account token
  */
 function isRunningInCluster(): boolean {
@@ -113,7 +113,7 @@ class MetricsService {
     if (!checkInCluster()) {
       return {
         available: false,
-        error: 'Metrics are only available when KubeFoundry is deployed inside the Kubernetes cluster. Run KubeFoundry in-cluster to access deployment metrics.',
+        error: 'Metrics are only available when KubeAIRunway is deployed inside the Kubernetes cluster. Run KubeAIRunway in-cluster to access deployment metrics.',
         timestamp,
         metrics: [],
         runningOffCluster: true,
@@ -159,7 +159,7 @@ class MetricsService {
       let userMessage = errorMessage;
 
       if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-        userMessage = 'Cannot resolve service DNS. KubeFoundry must be running in-cluster to fetch metrics.';
+        userMessage = 'Cannot resolve service DNS. KubeAIRunway must be running in-cluster to fetch metrics.';
       } else if (errorMessage.includes('ECONNREFUSED')) {
         userMessage = 'Connection refused. The deployment may not be ready yet.';
       } else if (errorMessage.includes('abort')) {
@@ -169,7 +169,7 @@ class MetricsService {
       } else if (errorMessage.includes('HTTP 503')) {
         userMessage = 'Service unavailable. The deployment is starting up.';
       } else if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
-        userMessage = 'Cannot connect to metrics endpoint. KubeFoundry must be running in-cluster.';
+        userMessage = 'Cannot connect to metrics endpoint. KubeAIRunway must be running in-cluster.';
       }
 
       logger.warn(

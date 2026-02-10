@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -50,7 +50,7 @@ func NewTransformer() *Transformer {
 }
 
 // Transform converts a ModelDeployment to a KAITO Workspace
-func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
+func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
 	ws := &unstructured.Unstructured{}
 	ws.SetAPIVersion(fmt.Sprintf("%s/%s", KaitoAPIGroup, KaitoAPIVersion))
 	ws.SetKind(WorkspaceKind)
@@ -71,10 +71,10 @@ func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.Mod
 
 	// Set labels
 	labels := map[string]string{
-		"kubefoundry.ai/managed-by":    "kubefoundry",
-		"kubefoundry.ai/deployment":    md.Name,
-		"kubefoundry.ai/model-source":  string(md.Spec.Model.Source),
-		"kubefoundry.ai/engine-type":   string(md.Spec.Engine.Type),
+		"kubeairunway.ai/managed-by":    "kubeairunway",
+		"kubeairunway.ai/deployment":    md.Name,
+		"kubeairunway.ai/model-source":  string(md.Spec.Model.Source),
+		"kubeairunway.ai/engine-type":   string(md.Spec.Engine.Type),
 	}
 	// Merge podTemplate labels onto the Workspace
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil {
@@ -115,7 +115,7 @@ func (t *Transformer) Transform(ctx context.Context, md *kubefoundryv1alpha1.Mod
 }
 
 // buildResource creates the resource section of the Workspace spec
-func (t *Transformer) buildResource(md *kubefoundryv1alpha1.ModelDeployment) map[string]interface{} {
+func (t *Transformer) buildResource(md *kubeairunwayv1alpha1.ModelDeployment) map[string]interface{} {
 	resource := map[string]interface{}{}
 
 	// Map scaling.replicas → spec.resource.count
@@ -141,16 +141,16 @@ func (t *Transformer) buildResource(md *kubefoundryv1alpha1.ModelDeployment) map
 }
 
 // buildInference creates the inference section of the Workspace spec
-func (t *Transformer) buildInference(md *kubefoundryv1alpha1.ModelDeployment) (map[string]interface{}, error) {
+func (t *Transformer) buildInference(md *kubeairunwayv1alpha1.ModelDeployment) (map[string]interface{}, error) {
 	inference := map[string]interface{}{}
 
 	switch md.Spec.Engine.Type {
-	case kubefoundryv1alpha1.EngineTypeVLLM:
+	case kubeairunwayv1alpha1.EngineTypeVLLM:
 		// vLLM preset path: KAITO manages the image
 		inference["preset"] = map[string]interface{}{
 			"name": md.Spec.Model.ID,
 		}
-	case kubefoundryv1alpha1.EngineTypeLlamaCpp:
+	case kubeairunwayv1alpha1.EngineTypeLlamaCpp:
 		// llamacpp template path: user-provided image with pod template
 		template, err := t.buildLlamaCppTemplate(md)
 		if err != nil {
@@ -165,7 +165,7 @@ func (t *Transformer) buildInference(md *kubefoundryv1alpha1.ModelDeployment) (m
 }
 
 // buildLlamaCppTemplate creates the pod template spec for llamacpp inference
-func (t *Transformer) buildLlamaCppTemplate(md *kubefoundryv1alpha1.ModelDeployment) (map[string]interface{}, error) {
+func (t *Transformer) buildLlamaCppTemplate(md *kubeairunwayv1alpha1.ModelDeployment) (map[string]interface{}, error) {
 	if md.Spec.Image == "" {
 		return nil, fmt.Errorf("image is required for llamacpp engine type")
 	}
@@ -216,7 +216,7 @@ func (t *Transformer) buildLlamaCppTemplate(md *kubefoundryv1alpha1.ModelDeploym
 }
 
 // buildResourceRequests creates resource requests from ResourceSpec
-func (t *Transformer) buildResourceRequests(spec *kubefoundryv1alpha1.ResourceSpec) map[string]interface{} {
+func (t *Transformer) buildResourceRequests(spec *kubeairunwayv1alpha1.ResourceSpec) map[string]interface{} {
 	if spec == nil {
 		return nil
 	}
@@ -240,7 +240,7 @@ func (t *Transformer) buildResourceRequests(spec *kubefoundryv1alpha1.ResourceSp
 }
 
 // buildEnvVars constructs environment variables including HF_TOKEN from secrets
-func (t *Transformer) buildEnvVars(md *kubefoundryv1alpha1.ModelDeployment) []interface{} {
+func (t *Transformer) buildEnvVars(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
 	var envVars []interface{}
 
 	// Add user-specified env vars
@@ -303,7 +303,7 @@ func boolPtr(b bool) *bool {
 
 // applyOverrides deep-merges spec.provider.overrides into the unstructured object.
 // This is the escape hatch that lets users set arbitrary fields on the provider CRD.
-func applyOverrides(obj *unstructured.Unstructured, md *kubefoundryv1alpha1.ModelDeployment) error {
+func applyOverrides(obj *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	if md.Spec.Provider == nil || md.Spec.Provider.Overrides == nil {
 		return nil
 	}

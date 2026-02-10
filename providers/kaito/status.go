@@ -19,7 +19,7 @@ package kaito
 import (
 	"fmt"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -27,10 +27,10 @@ import (
 // Defined locally to avoid importing the controller's internal providers package,
 // keeping this provider self-contained for out-of-tree use.
 type ProviderStatusResult struct {
-	Phase        kubefoundryv1alpha1.DeploymentPhase
+	Phase        kubeairunwayv1alpha1.DeploymentPhase
 	Message      string
-	Replicas     *kubefoundryv1alpha1.ReplicaStatus
-	Endpoint     *kubefoundryv1alpha1.EndpointStatus
+	Replicas     *kubeairunwayv1alpha1.ReplicaStatus
+	Endpoint     *kubeairunwayv1alpha1.EndpointStatus
 	ResourceName string
 	ResourceKind string
 }
@@ -62,7 +62,7 @@ func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) 
 	result := &ProviderStatusResult{
 		ResourceName: upstream.GetName(),
 		ResourceKind: WorkspaceKind,
-		Phase:        kubefoundryv1alpha1.DeploymentPhasePending,
+		Phase:        kubeairunwayv1alpha1.DeploymentPhasePending,
 	}
 
 	conditions, found, err := unstructured.NestedSlice(upstream.Object, "status", "conditions")
@@ -117,14 +117,14 @@ func (t *StatusTranslator) parseConditions(conditions []interface{}) map[string]
 }
 
 // mapConditionsToPhase determines the deployment phase from KAITO conditions
-func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo) (kubefoundryv1alpha1.DeploymentPhase, string) {
+func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo) (kubeairunwayv1alpha1.DeploymentPhase, string) {
 	// WorkspaceSucceeded=True → Running
 	if ws, ok := condMap[conditionWorkspaceSucceeded]; ok {
 		if ws.Status == "True" {
-			return kubefoundryv1alpha1.DeploymentPhaseRunning, ""
+			return kubeairunwayv1alpha1.DeploymentPhaseRunning, ""
 		}
 		if ws.Status == "False" {
-			return kubefoundryv1alpha1.DeploymentPhaseFailed, ws.Message
+			return kubeairunwayv1alpha1.DeploymentPhaseFailed, ws.Message
 		}
 	}
 
@@ -132,16 +132,16 @@ func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo
 	if rr, ok := condMap[conditionResourceReady]; ok && rr.Status == "True" {
 		ir, irFound := condMap[conditionInferenceReady]
 		if !irFound || ir.Status != "True" {
-			return kubefoundryv1alpha1.DeploymentPhaseDeploying, ""
+			return kubeairunwayv1alpha1.DeploymentPhaseDeploying, ""
 		}
 	}
 
-	return kubefoundryv1alpha1.DeploymentPhasePending, ""
+	return kubeairunwayv1alpha1.DeploymentPhasePending, ""
 }
 
 // extractReplicas extracts replica information from the Workspace spec and conditions
-func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured, condMap map[string]conditionInfo) *kubefoundryv1alpha1.ReplicaStatus {
-	replicas := &kubefoundryv1alpha1.ReplicaStatus{}
+func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured, condMap map[string]conditionInfo) *kubeairunwayv1alpha1.ReplicaStatus {
+	replicas := &kubeairunwayv1alpha1.ReplicaStatus{}
 
 	// Try spec.resource.count for desired replicas
 	if count, found, _ := unstructured.NestedInt64(upstream.Object, "spec", "resource", "count"); found {
@@ -158,8 +158,8 @@ func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured, 
 }
 
 // extractEndpoint extracts service endpoint information for the Workspace
-func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *kubefoundryv1alpha1.EndpointStatus {
-	return &kubefoundryv1alpha1.EndpointStatus{
+func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *kubeairunwayv1alpha1.EndpointStatus {
+	return &kubeairunwayv1alpha1.EndpointStatus{
 		// KAITO creates a service with the same name as the Workspace
 		Service: upstream.GetName(),
 		// Default port for KAITO preset deployments; template-based may differ

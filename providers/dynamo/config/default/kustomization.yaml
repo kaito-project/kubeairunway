@@ -1,4 +1,4 @@
-namespace: kubefoundry-system
+namespace: kubeairunway-system
 resources:
 - ../rbac
 - ../manager

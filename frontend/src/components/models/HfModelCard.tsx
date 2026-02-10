@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GpuFitIndicator, getGpuFitStatus } from './GpuFitIndicator';
-import type { HfModelSearchResult } from '@kubefoundry/shared';
+import type { HfModelSearchResult } from '@kubeairunway/shared';
 import { Cpu, Download, Heart, Lock } from 'lucide-react';
 
 interface HfModelCardProps {

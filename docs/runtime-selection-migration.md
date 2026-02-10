@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-This plan transforms KubeFoundry from a "single active provider" model to a "multi-runtime" model where:
+This plan transforms KubeAIRunway from a "single active provider" model to a "multi-runtime" model where:
 1. Users select the runtime (Dynamo/KubeRay) when deploying a model, not globally
 2. Operator installation status is derived from cluster state (not stored config)
 3. Existing deployments continue to work with provider inferred from resource kind
@@ -51,7 +51,7 @@ This plan transforms KubeFoundry from a "single active provider" model to a "mul
 - `createDeployment(config)`: Use `config.provider` to select provider, fall back to active provider
 - `listDeployments(namespace)`: Query both CRD kinds, merge results, populate `provider` from resource kind
 - `getDeployment(name, namespace)`: Try both CRD kinds, return whichever matches
-- Add label `kubefoundry.io/provider` to all created resources for optimization
+- Add label `kubeairunway.io/provider` to all created resources for optimization
 
 ### 1.4 Update Provider Status Check
 

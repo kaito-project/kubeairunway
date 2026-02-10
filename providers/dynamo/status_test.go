@@ -3,7 +3,7 @@ package dynamo
 import (
 	"testing"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -45,7 +45,7 @@ func TestTranslateStatusNoStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhasePending {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase, got %s", result.Phase)
 	}
 	if result.ResourceName != "test-dgd" {
@@ -66,7 +66,7 @@ func TestTranslateStatusSuccessful(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 }
@@ -81,7 +81,7 @@ func TestTranslateStatusDeploying(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseDeploying {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying phase, got %s", result.Phase)
 	}
 }
@@ -97,7 +97,7 @@ func TestTranslateStatusFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhaseFailed {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase, got %s", result.Phase)
 	}
 	if result.Message != "OOM error" {
@@ -115,7 +115,7 @@ func TestTranslateStatusPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhasePending {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase, got %s", result.Phase)
 	}
 }
@@ -130,7 +130,7 @@ func TestTranslateStatusUnknownState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubefoundryv1alpha1.DeploymentPhasePending {
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase for unknown state, got %s", result.Phase)
 	}
 }
@@ -310,13 +310,13 @@ func TestMapStateToPhase(t *testing.T) {
 
 	tests := []struct {
 		state    DynamoState
-		expected kubefoundryv1alpha1.DeploymentPhase
+		expected kubeairunwayv1alpha1.DeploymentPhase
 	}{
-		{DynamoStateSuccessful, kubefoundryv1alpha1.DeploymentPhaseRunning},
-		{DynamoStateDeploying, kubefoundryv1alpha1.DeploymentPhaseDeploying},
-		{DynamoStateFailed, kubefoundryv1alpha1.DeploymentPhaseFailed},
-		{DynamoStatePending, kubefoundryv1alpha1.DeploymentPhasePending},
-		{DynamoState("unknown"), kubefoundryv1alpha1.DeploymentPhasePending},
+		{DynamoStateSuccessful, kubeairunwayv1alpha1.DeploymentPhaseRunning},
+		{DynamoStateDeploying, kubeairunwayv1alpha1.DeploymentPhaseDeploying},
+		{DynamoStateFailed, kubeairunwayv1alpha1.DeploymentPhaseFailed},
+		{DynamoStatePending, kubeairunwayv1alpha1.DeploymentPhasePending},
+		{DynamoState("unknown"), kubeairunwayv1alpha1.DeploymentPhasePending},
 	}
 
 	for _, tt := range tests {

@@ -12,7 +12,7 @@ import {
   getIndexHtmlResponse,
   hasStaticFiles,
 } from './static';
-import type { UserInfo } from '@kubefoundry/shared';
+import type { UserInfo } from '@kubeairunway/shared';
 
 // Import route modules
 import {

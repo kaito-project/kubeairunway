@@ -5,7 +5,7 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -13,7 +13,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - modeldeployments
   verbs:
@@ -25,13 +25,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - modeldeployments/finalizers
   verbs:
   - update
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - modeldeployments/status
   verbs:

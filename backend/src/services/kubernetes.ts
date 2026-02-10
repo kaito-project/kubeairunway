@@ -1,13 +1,13 @@
 import * as k8s from '@kubernetes/client-node';
 import { configService } from './config';
-import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment } from '@kubefoundry/shared';
-import { toModelDeploymentManifest, toDeploymentStatus } from '@kubefoundry/shared';
+import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment } from '@kubeairunway/shared';
+import { toModelDeploymentManifest, toDeploymentStatus } from '@kubeairunway/shared';
 import { withRetry } from '../lib/retry';
 import logger from '../lib/logger';
 
 // ModelDeployment CRD configuration
 const MODEL_DEPLOYMENT_CRD = {
-  apiGroup: 'kubefoundry.kubefoundry.ai',
+  apiGroup: 'kubeairunway.ai',
   apiVersion: 'v1alpha1',
   plural: 'modeldeployments',
   kind: 'ModelDeployment',
@@ -89,7 +89,7 @@ class KubernetesService {
     this.customObjectsApi = this.kc.makeApiClient(k8s.CustomObjectsApi);
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
     this.apiExtensionsApi = this.kc.makeApiClient(k8s.ApiextensionsV1Api);
-    this.defaultNamespace = process.env.DEFAULT_NAMESPACE || 'kubefoundry-system';
+    this.defaultNamespace = process.env.DEFAULT_NAMESPACE || 'kubeairunway-system';
   }
 
   async checkClusterConnection(): Promise<ClusterStatus> {
@@ -270,7 +270,7 @@ class KubernetesService {
     // Try multiple label selectors since different providers use different labels
     const labelSelectors = [
       `app.kubernetes.io/instance=${name}`,  // Standard K8s label (Dynamo, KubeRay)
-      `kubefoundry.kubefoundry.ai/deployment=${name}`,  // KubeFoundry label
+      `kubeairunway.ai/deployment=${name}`,  // KubeAIRunway label
       `kaito.sh/workspace=${name}`,          // KAITO workspace label
       `app=${name}`,                         // Common fallback
     ];
@@ -368,7 +368,7 @@ class KubernetesService {
         return {
           installed: false,
           crdFound: false,
-          message: 'ModelDeployment CRD not found. Please install KubeFoundry controller.',
+          message: 'ModelDeployment CRD not found. Please install KubeAIRunway controller.',
         };
       }
       logger.error({ error }, 'Error checking CRD installation');
@@ -402,7 +402,7 @@ class KubernetesService {
   async getRuntimesStatus(): Promise<RuntimeStatus[]> {
     const runtimes: RuntimeStatus[] = [];
 
-    // Check if KubeFoundry controller is installed by checking for the CRD
+    // Check if KubeAIRunway controller is installed by checking for the CRD
     const crdStatus = await this.checkCRDInstallation();
 
     // List InferenceProviderConfig resources to discover registered providers
@@ -727,7 +727,7 @@ class KubernetesService {
    * Get detailed GPU capacity including per-node pool breakdown.
    * This groups nodes by node pool labels and includes GPU model information.
    */
-  async getDetailedClusterGpuCapacity(): Promise<import('@kubefoundry/shared').DetailedClusterCapacity> {
+  async getDetailedClusterGpuCapacity(): Promise<import('@kubeairunway/shared').DetailedClusterCapacity> {
     try {
       // Get basic capacity first
       const basicCapacity = await this.getClusterGpuCapacity();
@@ -818,7 +818,7 @@ class KubernetesService {
       }
 
       // Convert to array
-      const nodePools: import('@kubefoundry/shared').NodePoolInfo[] = [];
+      const nodePools: import('@kubeairunway/shared').NodePoolInfo[] = [];
       for (const [name, info] of nodePoolMap) {
         nodePools.push({
           name,
@@ -859,7 +859,7 @@ class KubernetesService {
    * Get all node pools in the cluster (both CPU and GPU).
    * Used for cost estimation of CPU-based deployments.
    */
-  async getAllNodePools(): Promise<import('@kubefoundry/shared').NodePoolInfo[]> {
+  async getAllNodePools(): Promise<import('@kubeairunway/shared').NodePoolInfo[]> {
     try {
       const nodesResponse = await withRetry(
         () => this.coreV1Api.listNode(),
@@ -934,7 +934,7 @@ class KubernetesService {
       }
 
       // Convert to array
-      const nodePools: import('@kubefoundry/shared').NodePoolInfo[] = [];
+      const nodePools: import('@kubeairunway/shared').NodePoolInfo[] = [];
       for (const [name, info] of nodePoolMap) {
         nodePools.push({
           name,
@@ -960,7 +960,7 @@ class KubernetesService {
   async getPodFailureReasons(
     podName: string,
     namespace: string
-  ): Promise<import('@kubefoundry/shared').PodFailureReason[]> {
+  ): Promise<import('@kubeairunway/shared').PodFailureReason[]> {
     try {
       // Get events for the pod
       const eventsResponse = await withRetry(
@@ -974,7 +974,7 @@ class KubernetesService {
         { operationName: 'getPodFailureReasons' }
       );
 
-      const reasons: import('@kubefoundry/shared').PodFailureReason[] = [];
+      const reasons: import('@kubeairunway/shared').PodFailureReason[] = [];
 
       for (const event of eventsResponse.body.items) {
         // Focus on Warning events related to scheduling failures
@@ -1234,10 +1234,10 @@ class KubernetesService {
         name: `${name}-vllm`,
         namespace,
         labels: {
-          'app.kubernetes.io/name': 'kubefoundry',
+          'app.kubernetes.io/name': 'kubeairunway',
           'app.kubernetes.io/instance': name,
-          'app.kubernetes.io/managed-by': 'kubefoundry',
-          'kubefoundry.io/service-type': 'vllm',
+          'app.kubernetes.io/managed-by': 'kubeairunway',
+          'kubeairunway.ai/service-type': 'vllm',
         },
       },
       spec: {

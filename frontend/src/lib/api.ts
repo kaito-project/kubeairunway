@@ -6,7 +6,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 console.log('[API] API_BASE:', API_BASE || '(same origin)');
 
 // Auth token storage key
-const AUTH_TOKEN_KEY = 'kubefoundry_auth_token';
+const AUTH_TOKEN_KEY = 'kubeairunway_auth_token';
 
 /**
  * Get the stored auth token
@@ -27,7 +27,7 @@ function dispatchUnauthorized(): void {
 }
 
 // ============================================================================
-// Re-export types from @kubefoundry/shared
+// Re-export types from @kubeairunway/shared
 // ============================================================================
 
 // Core types
@@ -44,7 +44,7 @@ export type {
   PodStatus,
   DeploymentStatus,
   ClusterStatus,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // Settings types
 export type {
@@ -53,7 +53,7 @@ export type {
   Settings,
   RuntimeStatus,
   RuntimesStatusResponse,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // Installation types
 export type {
@@ -64,7 +64,7 @@ export type {
   GPUOperatorInstallResult,
   NodeGpuInfo,
   ClusterGpuCapacity,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // HuggingFace types
 export type {
@@ -76,14 +76,14 @@ export type {
   HfModelSearchResult,
   HfModelSearchResponse,
   HfSearchParams,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // API response types
 export type {
   Pagination,
   DeploymentsListResponse,
   ClusterStatusResponse,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // Metrics types
 export type {
@@ -92,7 +92,7 @@ export type {
   ComputedMetric,
   ComputedMetrics,
   MetricDefinition,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // Autoscaler types
 export type {
@@ -103,7 +103,7 @@ export type {
   PodFailureReason,
   PodLogsOptions,
   PodLogsResponse,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // Import types for internal use
 import type {
@@ -135,7 +135,7 @@ import type {
   PodFailureReason,
   RuntimesStatusResponse,
   PodLogsResponse,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // ============================================================================
 // Error Handling
@@ -650,14 +650,14 @@ export type {
   AIConfiguratorStatus,
   AIConfiguratorConfig,
   AIConfiguratorPerformance,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // Import types for internal use
 import type {
   AIConfiguratorInput,
   AIConfiguratorResult,
   AIConfiguratorStatus,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 export const aiConfiguratorApi = {
   /** Check if AI Configurator is available */
@@ -692,14 +692,14 @@ export type {
   RealtimePricing,
   GpuPricing,
   CloudProvider,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 // Import types for internal use
 import type {
   CostEstimateRequest,
   CostEstimateResponse,
   NodePoolCostEstimate,
-} from '@kubefoundry/shared';
+} from '@kubeairunway/shared';
 
 export const costsApi = {
   /** Estimate deployment cost based on GPU configuration */

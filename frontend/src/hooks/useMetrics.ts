@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { metricsApi } from '@/lib/api'
-import type { MetricsResponse, ComputedMetrics, ComputedMetric, MetricDefinition, RawMetricValue } from '@kubefoundry/shared'
+import type { MetricsResponse, ComputedMetrics, ComputedMetric, MetricDefinition, RawMetricValue } from '@kubeairunway/shared'
 
 /**
  * Format a numeric value for display with appropriate units and precision

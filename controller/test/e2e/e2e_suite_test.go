@@ -21,18 +21,21 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/kubefoundry/kubefoundry/controller/test/utils"
+	"github.com/kaito-project/kubeairunway/controller/test/utils"
 )
 
 var (
 	// managerImage is the manager image to be built and loaded for testing.
 	managerImage = "example.com/controller:v0.0.1"
+	// skipDeploy skips image build/load and deploy/undeploy when testing against an existing cluster.
+	skipDeploy = os.Getenv("SKIP_DEPLOY") == "true"
 )
 
 // TestE2E runs the e2e test suite to validate the solution in an isolated environment.
@@ -44,6 +47,11 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	if skipDeploy {
+		By("skipping image build and load (SKIP_DEPLOY=true)")
+		return
+	}
+
 	By("building the manager image")
 	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
 	_, err := utils.Run(cmd)

@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSettings } from './useSettings';
 
-const AUTH_TOKEN_KEY = 'kubefoundry_auth_token';
-const AUTH_USERNAME_KEY = 'kubefoundry_auth_username';
+const AUTH_TOKEN_KEY = 'kubeairunway_auth_token';
+const AUTH_USERNAME_KEY = 'kubeairunway_auth_username';
 
 export interface AuthState {
   isAuthenticated: boolean;

@@ -8,7 +8,7 @@ import {
   formatGpuWarnings,
   type GpuFitResult,
 } from './gpuValidation';
-import type { DeploymentConfig } from '@kubefoundry/shared';
+import type { DeploymentConfig } from '@kubeairunway/shared';
 import type { ClusterGpuCapacity } from './kubernetes';
 
 describe('estimateGpuMemory', () => {

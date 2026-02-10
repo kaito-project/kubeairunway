@@ -1,10 +1,10 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubefoundry-kuberay-provider-role
+  name: kubeairunway-kuberay-provider-role
 rules:
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - modeldeployments
   verbs:
@@ -14,7 +14,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - modeldeployments/status
   verbs:
@@ -22,13 +22,13 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - modeldeployments/finalizers
   verbs:
   - update
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -39,7 +39,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubefoundry.kubefoundry.ai
+  - kubeairunway.ai
   resources:
   - inferenceproviderconfigs/status
   verbs:

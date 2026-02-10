@@ -167,7 +167,7 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
             </p>
             {!autoscaler.detected && (
               <a
-                href="https://github.com/sozercan/kube-foundry/blob/main/docs/azure-autoscaling.md"
+                href="https://github.com/kaito-project/kubeairunway/blob/main/docs/azure-autoscaling.md"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:underline inline-flex items-center gap-1"

@@ -1,20 +1,20 @@
-# KubeFoundry Kubernetes Deployment
+# KubeAIRunway Kubernetes Deployment
 
-This directory contains Kubernetes manifests for deploying KubeFoundry to a cluster.
+This directory contains Kubernetes manifests for deploying KubeAIRunway to a cluster.
 
 ## Quick Start
 
 ```bash
 # Deploy using kubectl
-kubectl apply -f kubefoundry.yaml
+kubectl apply -f kubeairunway.yaml
 ```
 
-## Access KubeFoundry
+## Access KubeAIRunway
 
-After deployment, access KubeFoundry using port-forward:
+After deployment, access KubeAIRunway using port-forward:
 
 ```bash
-kubectl port-forward -n kubefoundry-system svc/kubefoundry 3001:80
+kubectl port-forward -n kubeairunway-system svc/kubeairunway 3001:80
 ```
 
 Then open http://localhost:3001 in your browser.
@@ -23,11 +23,11 @@ Then open http://localhost:3001 in your browser.
 
 | Resource | Description |
 |----------|-------------|
-| `Namespace` | `kubefoundry-system` - dedicated namespace |
-| `ServiceAccount` | Service account for KubeFoundry pod |
+| `Namespace` | `kubeairunway-system` - dedicated namespace |
+| `ServiceAccount` | Service account for KubeAIRunway pod |
 | `ClusterRole` | RBAC permissions for K8s and CRD access |
 | `ClusterRoleBinding` | Binds role to service account |
-| `Deployment` | KubeFoundry server deployment |
+| `Deployment` | KubeAIRunway server deployment |
 | `Service` | ClusterIP service on port 80 |
 
 ## Configuration
@@ -54,24 +54,24 @@ env:
 
 ```bash
 # Check pods
-kubectl get pods -n kubefoundry-system
+kubectl get pods -n kubeairunway-system
 
 # Check service
-kubectl get svc -n kubefoundry-system
+kubectl get svc -n kubeairunway-system
 
 # View logs
-kubectl logs -n kubefoundry-system -l app.kubernetes.io/name=kubefoundry -f
+kubectl logs -n kubeairunway-system -l app.kubernetes.io/name=kubeairunway -f
 
 # Test health endpoint
-kubectl exec -it -n kubefoundry-system deploy/kubefoundry -- curl localhost:3001/api/health
+kubectl exec -it -n kubeairunway-system deploy/kubeairunway -- curl localhost:3001/api/health
 ```
 
 ## Uninstall
 
 ```bash
-kubectl delete -f kubefoundry.yaml
+kubectl delete -f kubeairunway.yaml
 ```
 
 ## Metrics Feature
 
-Once deployed in-cluster, KubeFoundry can fetch real-time metrics from inference deployments (vLLM, Ray Serve). This feature requires in-cluster deployment as it uses Kubernetes service DNS to reach metrics endpoints.
+Once deployed in-cluster, KubeAIRunway can fetch real-time metrics from inference deployments (vLLM, Ray Serve). This feature requires in-cluster deployment as it uses Kubernetes service DNS to reach metrics endpoints.

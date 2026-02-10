@@ -5,16 +5,16 @@
 .PHONY: kuberay-provider-build kuberay-provider-docker-build kuberay-provider-deploy
 
 # Controller image
-CONTROLLER_IMG ?= ghcr.io/kubefoundry/kubefoundry-controller:latest
+CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway-controller:latest
 
 # Provider images
-KAITO_PROVIDER_IMG ?= ghcr.io/kubefoundry/kaito-provider:latest
-DYNAMO_PROVIDER_IMG ?= ghcr.io/kubefoundry/dynamo-provider:latest
-KUBERAY_PROVIDER_IMG ?= ghcr.io/kubefoundry/kuberay-provider:latest
+KAITO_PROVIDER_IMG ?= ghcr.io/kaito-project/kaito-provider:latest
+DYNAMO_PROVIDER_IMG ?= ghcr.io/kaito-project/dynamo-provider:latest
+KUBERAY_PROVIDER_IMG ?= ghcr.io/kaito-project/kuberay-provider:latest
 
 # Default target
 help:
-	@echo "KubeFoundry Development Commands"
+	@echo "KubeAIRunway Development Commands"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
@@ -75,8 +75,8 @@ build:
 compile:
 	bun run compile
 	@echo ""
-	@echo "✅ Binary created: dist/kubefoundry (includes frontend)"
-	@ls -lh dist/kubefoundry
+	@echo "✅ Binary created: dist/kubeairunway (includes frontend)"
+	@ls -lh dist/kubeairunway
 
 # Cross-compile for all platforms
 compile-all: compile-linux compile-darwin compile-windows

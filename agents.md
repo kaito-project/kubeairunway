@@ -1,8 +1,8 @@
-# KubeFoundry - Agent Instructions
+# KubeAIRunway - Agent Instructions
 
 ## WHY: Project Purpose
 
-**KubeFoundry** is a platform for deploying and managing machine learning models on Kubernetes. It provides a unified CRD abstraction (`ModelDeployment`) that works across multiple inference providers (KAITO, Dynamo, KubeRay, etc.).
+**KubeAIRunway** is a platform for deploying and managing machine learning models on Kubernetes. It provides a unified CRD abstraction (`ModelDeployment`) that works across multiple inference providers (KAITO, Dynamo, KubeRay, etc.).
 
 ## WHAT: Tech Stack & Structure
 

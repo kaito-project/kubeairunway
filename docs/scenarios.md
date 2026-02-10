@@ -1,6 +1,6 @@
-# KubeFoundry Bug Bash - Scenario Testing Guide
+# KubeAIRunway Bug Bash - Scenario Testing Guide
 
-Welcome to the KubeFoundry bug bash! This guide walks you through real-world scenarios to test the platform. Work through each scenario as if you're a new user deploying ML models to Kubernetes.
+Welcome to the KubeAIRunway bug bash! This guide walks you through real-world scenarios to test the platform. Work through each scenario as if you're a new user deploying ML models to Kubernetes.
 
 ## Before You Start
 
@@ -10,20 +10,20 @@ Welcome to the KubeFoundry bug bash! This guide walks you through real-world sce
 - (Optional) A HuggingFace account for testing gated models like Llama
 - (Optional) GPU nodes for GPU-accelerated inference
 
-**Getting KubeFoundry running:**
-- Download from releases and run `./kubefoundry`, OR
-- Deploy to your cluster with `kubectl apply -f deploy/kubernetes/kubefoundry.yaml`
+**Getting KubeAIRunway running:**
+- Download from releases and run `./kubeairunway`, OR
+- Deploy to your cluster with `kubectl apply -f deploy/kubernetes/kubeairunway.yaml`
 - Open http://localhost:3001 in your browser
 
 ---
 
 ## Scenario 1: First-Time Setup 🚀
 
-**Goal:** Set up KubeFoundry from scratch and install your first runtime.
+**Goal:** Set up KubeAIRunway from scratch and install your first runtime.
 
 ### Steps:
 
-1. **Open KubeFoundry**
+1. **Open KubeAIRunway**
    - Navigate to http://localhost:3001
    - ✅ The app loads without errors
    - ✅ You see the main dashboard or models page
@@ -117,10 +117,10 @@ Welcome to the KubeFoundry bug bash! This guide walks you through real-world sce
 3. **Start OAuth flow**
    - Click "Sign in with Hugging Face"
    - ✅ You're redirected to HuggingFace login page
-   - ✅ You can authorize KubeFoundry
+   - ✅ You can authorize KubeAIRunway
 
 4. **Complete sign-in**
-   - After authorizing, you return to KubeFoundry
+   - After authorizing, you return to KubeAIRunway
    - ✅ Your HuggingFace username/avatar appears
    - ✅ Status shows "Connected"
 

@@ -1,8 +1,8 @@
-# KubeFoundry Integration Testing Plan
+# KubeAIRunway Integration Testing Plan
 
 ## Overview
 
-This document outlines the integration testing strategy for KubeFoundry to validate end-to-end model deployment workflows.
+This document outlines the integration testing strategy for KubeAIRunway to validate end-to-end model deployment workflows.
 
 ## Summary of Decisions
 
@@ -14,7 +14,7 @@ This document outlines the integration testing strategy for KubeFoundry to valid
 | Model Types | Pre-made GGUF (`llama3.2:1b`) |
 | CI/CD | GitHub Actions with kind cluster |
 | Duration | < 10 minutes |
-| Infrastructure | Tests install everything via KubeFoundry API |
+| Infrastructure | Tests install everything via KubeAIRunway API |
 | Isolation | New kind cluster per run (ephemeral) |
 | Kind Config | Single node |
 | KAITO Install | Via `/api/installation/kaito` endpoint |
@@ -30,7 +30,7 @@ This document outlines the integration testing strategy for KubeFoundry to valid
 backend/src/integration/
 ├── setup/
 │   ├── kind.ts              # Kind cluster create/delete helpers
-│   ├── kaito-installer.ts   # Install KAITO via KubeFoundry API
+│   ├── kaito-installer.ts   # Install KAITO via KubeAIRunway API
 │   └── test-utils.ts        # Polling, timeouts, log capture
 ├── kaito-deployment.integration.ts   # Main integration test
 └── README.md                # How to run locally
@@ -87,7 +87,7 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
         with:
-          cluster_name: kubefoundry-test
+          cluster_name: kubeairunway-test
           
       - name: Start backend server
         run: |
@@ -105,7 +105,7 @@ jobs:
         run: |
           kubectl get pods -A
           kubectl describe pods -n kaito-workspace
-          kubectl logs -n kaito-workspace -l app.kubernetes.io/managed-by=kubefoundry --tail=500
+          kubectl logs -n kaito-workspace -l app.kubernetes.io/managed-by=kubeairunway --tail=500
           
       - name: Upload test artifacts
         if: always()
@@ -146,7 +146,7 @@ export async function isClusterAccessible(): Promise<boolean>;
 
 ```typescript
 /**
- * Install KAITO operator via KubeFoundry API.
+ * Install KAITO operator via KubeAIRunway API.
  * Calls POST /api/installation/kaito/install
  */
 export async function installKaito(baseUrl: string): Promise<void>;
@@ -227,7 +227,7 @@ describe('KAITO Integration Tests', () => {
     // Ensure cluster is accessible
     await waitForClusterReady();
     
-    // Install KAITO via KubeFoundry API
+    // Install KAITO via KubeAIRunway API
     await installKaito(BASE_URL);
     await waitForKaitoReady(BASE_URL);
   }, 300000); // 5 min timeout for setup
@@ -293,7 +293,7 @@ describe('KAITO Integration Tests', () => {
       `http://${DEPLOYMENT_NAME}.${TEST_NAMESPACE}.svc:8080`;
 
     // Use kubectl port-forward or proxy for in-cluster service
-    // For CI, we'll use the KubeFoundry proxy endpoint
+    // For CI, we'll use the KubeAIRunway proxy endpoint
     const proxyUrl = `${BASE_URL}/api/deployments/${TEST_NAMESPACE}/${DEPLOYMENT_NAME}/proxy`;
 
     const chatRes = await fetch(`${proxyUrl}/v1/chat/completions`, {
@@ -363,7 +363,7 @@ describe('KAITO Integration Tests', () => {
 
 ```bash
 # Create kind cluster (if not exists)
-kind create cluster --name kubefoundry-test
+kind create cluster --name kubeairunway-test
 
 # Start the backend server
 cd backend && bun run dev &
@@ -372,7 +372,7 @@ cd backend && bun run dev &
 bun run test:integration
 
 # Cleanup when done
-kind delete cluster --name kubefoundry-test
+kind delete cluster --name kubeairunway-test
 ```
 
 ### Debugging Failed Tests
@@ -384,7 +384,7 @@ When tests fail locally, resources are left in place for debugging:
 kubectl get pods -n kaito-workspace
 
 # View pod logs
-kubectl logs -n kaito-workspace -l app.kubernetes.io/managed-by=kubefoundry
+kubectl logs -n kaito-workspace -l app.kubernetes.io/managed-by=kubeairunway
 
 # Describe failing pod
 kubectl describe pod -n kaito-workspace <pod-name>

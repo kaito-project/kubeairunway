@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 )
 
 var _ = Describe("ModelDeployment Controller", func() {
@@ -40,13 +40,13 @@ var _ = Describe("ModelDeployment Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		modeldeployment := &kubefoundryv1alpha1.ModelDeployment{}
+		modeldeployment := &kubeairunwayv1alpha1.ModelDeployment{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind ModelDeployment")
 			err := k8sClient.Get(ctx, typeNamespacedName, modeldeployment)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &kubefoundryv1alpha1.ModelDeployment{
+				resource := &kubeairunwayv1alpha1.ModelDeployment{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,7 +59,7 @@ var _ = Describe("ModelDeployment Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &kubefoundryv1alpha1.ModelDeployment{}
+			resource := &kubeairunwayv1alpha1.ModelDeployment{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 

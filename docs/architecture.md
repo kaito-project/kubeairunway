@@ -2,7 +2,7 @@
 
 ## System Overview
 
-KubeFoundry consists of two main components:
+KubeAIRunway consists of two main components:
 
 1. **Kubernetes Controller** (Go + Kubebuilder)
    - Manages `ModelDeployment` and `InferenceProviderConfig` CRDs
@@ -19,7 +19,7 @@ KubeFoundry consists of two main components:
 │                         Kubernetes Cluster                              │
 │                                                                         │
 │  ┌─────────────────┐     ┌──────────────────────────────────────────┐  │
-│  │  KubeFoundry    │     │         Provider Controllers              │  │
+│  │  KubeAIRunway    │     │         Provider Controllers              │  │
 │  │  Controller     │────▶│  (KAITO, Dynamo, KubeRay, etc.)          │  │
 │  │  (core)         │     │                                          │  │
 │  └────────┬────────┘     └──────────────────────────────────────────┘  │
@@ -47,7 +47,7 @@ KubeFoundry consists of two main components:
 
 ## Controller Architecture
 
-The KubeFoundry controller follows a **two-tier reconciliation model**:
+The KubeAIRunway controller follows a **two-tier reconciliation model**:
 
 ### Core Controller
 The core controller (`modeldeployment_controller.go`) is intentionally minimal:
@@ -74,7 +74,7 @@ This separation allows:
 Unified API for deploying ML models. See [unified-crd-abstraction.md](design/unified-crd-abstraction.md) for full specification.
 
 ```yaml
-apiVersion: kubefoundry.kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: my-model
@@ -103,7 +103,7 @@ spec:
 Cluster-scoped resource for provider registration:
 
 ```yaml
-apiVersion: kubefoundry.kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: InferenceProviderConfig
 metadata:
   name: dynamo
@@ -148,7 +148,7 @@ The Web UI provides a graphical interface for managing deployments:
 When `AUTH_ENABLED=true`, the system uses Kubernetes OIDC tokens:
 
 ```
-┌──────────┐    kubefoundry login    ┌─────────────┐
+┌──────────┐    kubeairunway login    ┌─────────────┐
 │   CLI    │ ───────────────────────▶│  kubeconfig │
 │          │◀───────────────────────│  (OIDC)     │
 └────┬─────┘    extract token        └─────────────┘
@@ -177,7 +177,7 @@ When `AUTH_ENABLED=true`, the system uses Kubernetes OIDC tokens:
 
 ## Provider Abstraction
 
-KubeFoundry supports two deployment methods, both using the provider abstraction pattern:
+KubeAIRunway supports two deployment methods, both using the provider abstraction pattern:
 
 ### 1. CRD-Based Deployment (Recommended)
 Users create `ModelDeployment` CRs, and the controller + provider controllers handle the rest:
@@ -318,12 +318,12 @@ Settings are persisted in a Kubernetes ConfigMap:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubefoundry-config
-  namespace: kubefoundry-system
+  name: kubeairunway-config
+  namespace: kubeairunway-system
 data:
   config.json: |
     {
-      "defaultNamespace": "kubefoundry-system"
+      "defaultNamespace": "kubeairunway-system"
     }
 ```
 
@@ -407,7 +407,7 @@ Handles authentication when `AUTH_ENABLED=true`:
 - Validate tokens via Kubernetes TokenReview API
 - Extract OIDC tokens from kubeconfig (for CLI login)
 - Generate magic link URLs for browser authentication
-- Store/load/clear credentials locally (`~/.kubefoundry/credentials.json`)
+- Store/load/clear credentials locally (`~/.kubeairunway/credentials.json`)
 
 ### RegistryService
 Manages in-cluster container registry for KAITO image builds:

@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import type { ClusterGpuCapacity, NodeGpuInfo, GPUAvailability, GPUOperatorStatus } from './kubernetes';
-import type { ClusterStatus, PodStatus, DeploymentStatus, PodPhase } from '@kubefoundry/shared';
+import type { ClusterStatus, PodStatus, DeploymentStatus, PodPhase } from '@kubeairunway/shared';
 
 describe('KubernetesService - Type Definitions', () => {
   describe('ClusterGpuCapacity', () => {
@@ -333,7 +333,7 @@ describe('KubernetesService - Protected Namespaces', () => {
 
   test('allows deletion of non-protected namespaces', () => {
     expect(protectedNamespaces.includes('my-namespace')).toBe(false);
-    expect(protectedNamespaces.includes('kubefoundry-system')).toBe(false);
+    expect(protectedNamespaces.includes('kubeairunway-system')).toBe(false);
     expect(protectedNamespaces.includes('dynamo')).toBe(false);
   });
 });

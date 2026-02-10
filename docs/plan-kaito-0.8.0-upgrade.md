@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the plan to upgrade KubeFoundry's KAITO provider from version **0.6.0** to **0.8.0**.
+This document outlines the plan to upgrade KubeAIRunway's KAITO provider from version **0.6.0** to **0.8.0**.
 
 **Date Created:** January 9, 2026  
 **Status:** Planning
@@ -50,7 +50,7 @@ This document outlines the plan to upgrade KubeFoundry's KAITO provider from ver
 
 ### 3. Always Disable Node Auto-Provisioning
 
-**Rationale:** KubeFoundry is designed for BYO (Bring Your Own) node scenarios. Disabling NAP:
+**Rationale:** KubeAIRunway is designed for BYO (Bring Your Own) node scenarios. Disabling NAP:
 - Simplifies the user experience
 - Avoids conflicts with cloud-provider-specific auto-provisioners
 - Aligns with KAITO 0.8.0's BYO node improvements

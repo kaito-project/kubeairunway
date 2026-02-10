@@ -1,6 +1,6 @@
-# KubeFoundry
+# KubeAIRunway
 
-<img src="./frontend/public/logo.png" alt="KubeFoundry Logo" width="200">
+<img src="./frontend/public/logo.png" alt="KubeAIRunway Logo" width="200">
 
 A web-based platform for deploying and managing large language models on Kubernetes with support for multiple inference providers.
 
@@ -35,10 +35,10 @@ A web-based platform for deploying and managing large language models on Kuberne
 
 ## Architecture
 
-KubeFoundry provides a **unified CRD abstraction** (`ModelDeployment`) that works across all providers:
+KubeAIRunway provides a **unified CRD abstraction** (`ModelDeployment`) that works across all providers:
 
 ```yaml
-apiVersion: kubefoundry.kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: my-model
@@ -75,7 +75,7 @@ See [architecture.md](docs/architecture.md) for details.
 Download the latest release for your platform and run:
 
 ```bash
-./kubefoundry
+./kubeairunway
 ```
 
 Open the web UI at **http://localhost:3001**
@@ -84,16 +84,16 @@ Open the web UI at **http://localhost:3001**
 
 > **macOS users:** If you see a quarantine warning, remove it with:
 > ```bash
-> xattr -dr com.apple.quarantine kubefoundry
+> xattr -dr com.apple.quarantine kubeairunway
 > ```
 
 ### Option B: Deploy to Kubernetes
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/sozercan/kube-foundry/main/deploy/kubernetes/kubefoundry.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/kubernetes/kubeairunway.yaml
 
 # Access via port-forward
-kubectl port-forward -n kubefoundry-system svc/kubefoundry 3001:80
+kubectl port-forward -n kubeairunway-system svc/kubeairunway 3001:80
 ```
 
 Open the web UI at **http://localhost:3001**
@@ -104,14 +104,14 @@ See [Kubernetes Deployment](deploy/kubernetes/README.md) for configuration optio
 
 ### 0. Install the Controller (Optional but Recommended)
 
-For CRD-based deployments, install the KubeFoundry controller:
+For CRD-based deployments, install the KubeAIRunway controller:
 
 ```bash
 # Install CRDs
-kubectl apply -f https://raw.githubusercontent.com/sozercan/kube-foundry/main/controller/config/crd/bases/
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/controller/config/crd/bases/
 
 # Deploy controller
-kubectl apply -f https://raw.githubusercontent.com/sozercan/kube-foundry/main/controller/config/manager/
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/controller/config/manager/
 ```
 
 This enables you to create `ModelDeployment` resources directly via kubectl.
@@ -172,7 +172,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 ## Supported Models
 
-KubeFoundry supports **any HuggingFace model** with a compatible architecture. Browse the curated catalog for tested models, or search HuggingFace Hub for thousands more.
+KubeAIRunway supports **any HuggingFace model** with a compatible architecture. Browse the curated catalog for tested models, or search HuggingFace Hub for thousands more.
 
 ### Supported Architectures
 
@@ -186,20 +186,20 @@ When searching HuggingFace, models are filtered by architecture compatibility:
 
 ## Authentication (Optional)
 
-KubeFoundry supports optional authentication using your existing kubeconfig OIDC credentials.
+KubeAIRunway supports optional authentication using your existing kubeconfig OIDC credentials.
 
 To enable, start the server with:
 
 ```bash
-AUTH_ENABLED=true ./kubefoundry
+AUTH_ENABLED=true ./kubeairunway
 ```
 
 Then use the CLI to login:
 
 ```bash
-kubefoundry login                              # Uses current kubeconfig context
-kubefoundry login --server https://example.com # Specify server URL
-kubefoundry login --context my-cluster         # Use specific context
+kubeairunway login                              # Uses current kubeconfig context
+kubeairunway login --server https://example.com # Specify server URL
+kubeairunway login --context my-cluster         # Use specific context
 ```
 
 The login command extracts your OIDC token and opens the browser automatically.

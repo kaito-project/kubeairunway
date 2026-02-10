@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -12,20 +12,20 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func newTestMD(name, namespace string) *kubefoundryv1alpha1.ModelDeployment {
-	return &kubefoundryv1alpha1.ModelDeployment{
+func newTestMD(name, namespace string) *kubeairunwayv1alpha1.ModelDeployment {
+	return &kubeairunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-			Model: kubefoundryv1alpha1.ModelSpec{
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
 				ID:     "meta-llama/Llama-2-7b-chat-hf",
-				Source: kubefoundryv1alpha1.ModelSourceHuggingFace,
+				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
 			},
-			Engine: kubefoundryv1alpha1.EngineSpec{
-				Type: kubefoundryv1alpha1.EngineTypeVLLM,
+			Engine: kubeairunwayv1alpha1.EngineSpec{
+				Type: kubeairunwayv1alpha1.EngineTypeVLLM,
 			},
 		},
 	}
@@ -68,11 +68,11 @@ func TestTransformVLLM(t *testing.T) {
 
 	// Check labels
 	labels := ws.GetLabels()
-	if labels["kubefoundry.ai/managed-by"] != "kubefoundry" {
-		t.Errorf("expected managed-by label 'kubefoundry', got %s", labels["kubefoundry.ai/managed-by"])
+	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" {
+		t.Errorf("expected managed-by label 'kubeairunway', got %s", labels["kubeairunway.ai/managed-by"])
 	}
-	if labels["kubefoundry.ai/engine-type"] != "vllm" {
-		t.Errorf("expected engine-type label 'vllm', got %s", labels["kubefoundry.ai/engine-type"])
+	if labels["kubeairunway.ai/engine-type"] != "vllm" {
+		t.Errorf("expected engine-type label 'vllm', got %s", labels["kubeairunway.ai/engine-type"])
 	}
 
 	// Check inference preset for vLLM
@@ -99,7 +99,7 @@ func TestTransformVLLM(t *testing.T) {
 func TestTransformVLLMWithScaling(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
 		Replicas: 3,
 	}
 
@@ -118,7 +118,7 @@ func TestTransformVLLMWithScaling(t *testing.T) {
 func TestTransformLlamaCpp(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
 	md.Spec.Model.ServedName = "my-model"
 
@@ -185,7 +185,7 @@ func TestTransformLlamaCpp(t *testing.T) {
 func TestTransformLlamaCppNoImage(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	// No image set
 
 	_, err := tr.Transform(context.Background(), md)
@@ -197,7 +197,7 @@ func TestTransformLlamaCppNoImage(t *testing.T) {
 func TestTransformUnsupportedEngine(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 
 	_, err := tr.Transform(context.Background(), md)
 	if err == nil {
@@ -232,12 +232,12 @@ func TestTransformWithNodeSelector(t *testing.T) {
 func TestTransformWithEnvVars(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
 	md.Spec.Env = []corev1.EnvVar{
 		{Name: "FOO", Value: "bar"},
 	}
-	md.Spec.Secrets = &kubefoundryv1alpha1.SecretsSpec{
+	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{
 		HuggingFaceToken: "my-hf-secret",
 	}
 
@@ -274,7 +274,7 @@ func TestTransformWithEnvVars(t *testing.T) {
 func TestTransformWithEnvFromSecret(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
 	md.Spec.Env = []corev1.EnvVar{
 		{
@@ -319,9 +319,9 @@ func TestTransformWithEnvFromSecret(t *testing.T) {
 func TestTransformWithResources(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
-	md.Spec.Resources = &kubefoundryv1alpha1.ResourceSpec{
+	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
 		Memory: "16Gi",
 		CPU:    "4",
 	}
@@ -351,8 +351,8 @@ func TestTransformWithResources(t *testing.T) {
 func TestTransformWithPodTemplateLabels(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.PodTemplate = &kubefoundryv1alpha1.PodTemplateSpec{
-		Metadata: &kubefoundryv1alpha1.PodTemplateMetadata{
+	md.Spec.PodTemplate = &kubeairunwayv1alpha1.PodTemplateSpec{
+		Metadata: &kubeairunwayv1alpha1.PodTemplateMetadata{
 			Labels: map[string]string{
 				"custom-label": "custom-value",
 			},
@@ -389,13 +389,13 @@ func TestBuildResourceRequests(t *testing.T) {
 	}
 
 	// Empty spec
-	result = tr.buildResourceRequests(&kubefoundryv1alpha1.ResourceSpec{})
+	result = tr.buildResourceRequests(&kubeairunwayv1alpha1.ResourceSpec{})
 	if result != nil {
 		t.Errorf("expected nil for empty spec, got %v", result)
 	}
 
 	// Only memory
-	result = tr.buildResourceRequests(&kubefoundryv1alpha1.ResourceSpec{Memory: "8Gi"})
+	result = tr.buildResourceRequests(&kubeairunwayv1alpha1.ResourceSpec{Memory: "8Gi"})
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -405,7 +405,7 @@ func TestBuildResourceRequests(t *testing.T) {
 	}
 
 	// Both
-	result = tr.buildResourceRequests(&kubefoundryv1alpha1.ResourceSpec{Memory: "8Gi", CPU: "2"})
+	result = tr.buildResourceRequests(&kubeairunwayv1alpha1.ResourceSpec{Memory: "8Gi", CPU: "2"})
 	requests, _ = result["requests"].(map[string]interface{})
 	if requests["cpu"] != "2" {
 		t.Errorf("expected cpu 2, got %v", requests["cpu"])
@@ -476,7 +476,7 @@ func TestApplyOverrides(t *testing.T) {
 	}
 
 	// With overrides - should merge into workspace
-	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
 		Overrides: &runtime.RawExtension{
 			Raw: []byte(`{
 				"resource": {
@@ -517,7 +517,7 @@ func TestApplyOverrides(t *testing.T) {
 func TestApplyOverridesInvalidJSON(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
 		Overrides: &runtime.RawExtension{
 			Raw: []byte("not valid json"),
 		},
@@ -549,7 +549,7 @@ func TestTransformVLLMDefaultReplicas(t *testing.T) {
 func TestTransformVLLMZeroReplicas(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Scaling = &kubefoundryv1alpha1.ScalingSpec{
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
 		Replicas: 0,
 	}
 
@@ -569,7 +569,7 @@ func TestTransformVLLMZeroReplicas(t *testing.T) {
 func TestTransformLlamaCppWithServedName(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
 	md.Spec.Model.ServedName = "my-alias"
 
@@ -622,7 +622,7 @@ func TestTransformEmptyNodeSelector(t *testing.T) {
 func TestTransformSGLangUnsupported(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 
 	_, err := tr.Transform(context.Background(), md)
 	if err == nil {
@@ -633,7 +633,7 @@ func TestTransformSGLangUnsupported(t *testing.T) {
 func TestTransformTRTLLMUnsupported(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeTRTLLM
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeTRTLLM
 
 	_, err := tr.Transform(context.Background(), md)
 	if err == nil {
@@ -644,7 +644,7 @@ func TestTransformTRTLLMUnsupported(t *testing.T) {
 func TestTransformWithNilResources(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
 	md.Spec.Resources = nil
 
@@ -668,9 +668,9 @@ func TestTransformWithNilResources(t *testing.T) {
 func TestTransformWithHFSecret(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
-	md.Spec.Secrets = &kubefoundryv1alpha1.SecretsSpec{
+	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{
 		HuggingFaceToken: "my-hf-secret",
 	}
 
@@ -706,7 +706,7 @@ func TestTransformWithHFSecret(t *testing.T) {
 func TestTransformOverrideCanSetRootFields(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Provider = &kubefoundryv1alpha1.ProviderSpec{
+	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
 		Overrides: &runtime.RawExtension{
 			Raw: []byte(`{
 				"resource": {
@@ -737,8 +737,8 @@ func TestTransformOverrideCanSetRootFields(t *testing.T) {
 func TestBuildResourceRequestsGPUOnly(t *testing.T) {
 	tr := NewTransformer()
 	// GPU-only spec — KAITO buildResourceRequests doesn't handle GPU
-	result := tr.buildResourceRequests(&kubefoundryv1alpha1.ResourceSpec{
-		GPU: &kubefoundryv1alpha1.GPUSpec{Count: 4},
+	result := tr.buildResourceRequests(&kubeairunwayv1alpha1.ResourceSpec{
+		GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 4},
 	})
 	if result != nil {
 		t.Errorf("expected nil when only GPU is specified (KAITO doesn't put GPU in requests), got %v", result)
@@ -748,7 +748,7 @@ func TestBuildResourceRequestsGPUOnly(t *testing.T) {
 func TestTransformPreservesOwnerReference(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.APIVersion = "kubefoundry.kubefoundry.ai/v1alpha1"
+	md.APIVersion = "kubeairunway.ai/v1alpha1"
 	md.Kind = "ModelDeployment"
 
 	resources, err := tr.Transform(context.Background(), md)

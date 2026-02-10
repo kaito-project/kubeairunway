@@ -11,7 +11,7 @@
 ### TypeScript
 - No `any` types - use proper typing
 - Use Zod for runtime validation (integrated with Hono via `@hono/zod-validator`)
-- Import shared types from `@kubefoundry/shared` (do not duplicate type definitions)
+- Import shared types from `@kubeairunway/shared` (do not duplicate type definitions)
 - Use path aliases (`@/`) for imports in frontend
 
 ### React

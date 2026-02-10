@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: kubefoundry
+    app.kubernetes.io/name: kubeairunway
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: kustomize
   name: system
@@ -15,14 +15,14 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: kubefoundry
+    app.kubernetes.io/name: kubeairunway
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
       control-plane: controller-manager
-      app.kubernetes.io/name: kubefoundry
+      app.kubernetes.io/name: kubeairunway
   replicas: 1
   template:
     metadata:
@@ -30,7 +30,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
-        app.kubernetes.io/name: kubefoundry
+        app.kubernetes.io/name: kubeairunway
         app.kubernetes.io/component: controller
     spec:
       securityContext:

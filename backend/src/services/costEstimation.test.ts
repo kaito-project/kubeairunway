@@ -7,7 +7,7 @@ import {
   costEstimationService,
   getGpuInfo,
 } from './costEstimation';
-import type { NodePoolInfo } from '@kubefoundry/shared';
+import type { NodePoolInfo } from '@kubeairunway/shared';
 
 describe('normalizeGpuModel', () => {
   test('normalizes A100-80GB variants', () => {

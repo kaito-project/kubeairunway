@@ -44,7 +44,7 @@ export interface MetricsResponse {
   timestamp: string;
   /** Raw metric values from the inference service */
   metrics: RawMetricValue[];
-  /** True if KubeFoundry is running outside the cluster (metrics require in-cluster deployment) */
+  /** True if KubeAIRunway is running outside the cluster (metrics require in-cluster deployment) */
   runningOffCluster?: boolean;
 }
 
@@ -93,6 +93,6 @@ export interface ComputedMetrics {
   lastUpdated: Date;
   /** Computed metric values */
   metrics: ComputedMetric[];
-  /** True if KubeFoundry is running outside the cluster (metrics require in-cluster deployment) */
+  /** True if KubeAIRunway is running outside the cluster (metrics require in-cluster deployment) */
   runningOffCluster?: boolean;
 }

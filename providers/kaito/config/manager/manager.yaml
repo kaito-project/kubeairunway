@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kubefoundry-kaito-provider
-  namespace: kubefoundry-system
+  name: kubeairunway-kaito-provider
+  namespace: kubeairunway-system
   labels:
     control-plane: kaito-provider
-    app.kubernetes.io/name: kubefoundry
+    app.kubernetes.io/name: kubeairunway
     app.kubernetes.io/component: kaito-provider
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
       control-plane: kaito-provider
-      app.kubernetes.io/name: kubefoundry
+      app.kubernetes.io/name: kubeairunway
   replicas: 1
   template:
     metadata:
@@ -20,7 +20,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: kaito-provider
-        app.kubernetes.io/name: kubefoundry
+        app.kubernetes.io/name: kubeairunway
         app.kubernetes.io/component: kaito-provider
     spec:
       securityContext:
@@ -66,5 +66,5 @@ spec:
           requests:
             cpu: 100m
             memory: 128Mi
-      serviceAccountName: kubefoundry-kaito-provider
+      serviceAccountName: kubeairunway-kaito-provider
       terminationGracePeriodSeconds: 10

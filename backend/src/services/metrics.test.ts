@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import type { RawMetricValue, MetricsResponse } from '@kubefoundry/shared';
+import type { RawMetricValue, MetricsResponse } from '@kubeairunway/shared';
 
 describe('MetricsService - buildMetricsUrl', () => {
   // Test the URL building logic (unit test the pattern)
@@ -52,7 +52,7 @@ describe('MetricsService - Error Message Handling', () => {
   // Test error message mapping logic
   function mapErrorMessage(errorMessage: string): string {
     if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-      return 'Cannot resolve service DNS. KubeFoundry must be running in-cluster to fetch metrics.';
+      return 'Cannot resolve service DNS. KubeAIRunway must be running in-cluster to fetch metrics.';
     } else if (errorMessage.includes('ECONNREFUSED')) {
       return 'Connection refused. The deployment may not be ready yet.';
     } else if (errorMessage.includes('abort')) {
@@ -62,7 +62,7 @@ describe('MetricsService - Error Message Handling', () => {
     } else if (errorMessage.includes('HTTP 503')) {
       return 'Service unavailable. The deployment is starting up.';
     } else if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
-      return 'Cannot connect to metrics endpoint. KubeFoundry must be running in-cluster.';
+      return 'Cannot connect to metrics endpoint. KubeAIRunway must be running in-cluster.';
     }
     return errorMessage;
   }
@@ -107,7 +107,7 @@ describe('MetricsService - MetricsResponse structure', () => {
   test('creates unavailable response for off-cluster', () => {
     const response: MetricsResponse = {
       available: false,
-      error: 'Metrics are only available when KubeFoundry is deployed inside the Kubernetes cluster.',
+      error: 'Metrics are only available when KubeAIRunway is deployed inside the Kubernetes cluster.',
       timestamp: new Date().toISOString(),
       metrics: [],
       runningOffCluster: true,

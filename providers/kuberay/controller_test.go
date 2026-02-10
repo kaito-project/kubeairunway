@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,23 +17,23 @@ import (
 
 func newScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = kubefoundryv1alpha1.AddToScheme(s)
+	_ = kubeairunwayv1alpha1.AddToScheme(s)
 	return s
 }
 
-func newMDForController(name, ns string) *kubefoundryv1alpha1.ModelDeployment {
-	return &kubefoundryv1alpha1.ModelDeployment{
+func newMDForController(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
+	return &kubeairunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 		},
-		Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-			Model:     kubefoundryv1alpha1.ModelSpec{ID: "test-model", Source: kubefoundryv1alpha1.ModelSourceHuggingFace},
-			Engine:    kubefoundryv1alpha1.EngineSpec{Type: kubefoundryv1alpha1.EngineTypeVLLM},
-			Resources: &kubefoundryv1alpha1.ResourceSpec{GPU: &kubefoundryv1alpha1.GPUSpec{Count: 1}},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model:     kubeairunwayv1alpha1.ModelSpec{ID: "test-model", Source: kubeairunwayv1alpha1.ModelSourceHuggingFace},
+			Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+			Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
 		},
-		Status: kubefoundryv1alpha1.ModelDeploymentStatus{
-			Provider: &kubefoundryv1alpha1.ProviderStatus{Name: ProviderName},
+		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: ProviderName},
 		},
 	}
 }
@@ -48,26 +48,26 @@ func TestValidateCompatibility(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		md      *kubefoundryv1alpha1.ModelDeployment
+		md      *kubeairunwayv1alpha1.ModelDeployment
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "vllm with GPU is compatible",
-			md: &kubefoundryv1alpha1.ModelDeployment{
-				Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-					Engine:    kubefoundryv1alpha1.EngineSpec{Type: kubefoundryv1alpha1.EngineTypeVLLM},
-					Resources: &kubefoundryv1alpha1.ResourceSpec{GPU: &kubefoundryv1alpha1.GPUSpec{Count: 1}},
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "sglang is incompatible",
-			md: &kubefoundryv1alpha1.ModelDeployment{
-				Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-					Engine:    kubefoundryv1alpha1.EngineSpec{Type: kubefoundryv1alpha1.EngineTypeSGLang},
-					Resources: &kubefoundryv1alpha1.ResourceSpec{GPU: &kubefoundryv1alpha1.GPUSpec{Count: 1}},
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeSGLang},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: true,
@@ -75,10 +75,10 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "llamacpp is incompatible",
-			md: &kubefoundryv1alpha1.ModelDeployment{
-				Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-					Engine:    kubefoundryv1alpha1.EngineSpec{Type: kubefoundryv1alpha1.EngineTypeLlamaCpp},
-					Resources: &kubefoundryv1alpha1.ResourceSpec{GPU: &kubefoundryv1alpha1.GPUSpec{Count: 1}},
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeLlamaCpp},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: true,
@@ -86,10 +86,10 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "trtllm is incompatible",
-			md: &kubefoundryv1alpha1.ModelDeployment{
-				Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-					Engine:    kubefoundryv1alpha1.EngineSpec{Type: kubefoundryv1alpha1.EngineTypeTRTLLM},
-					Resources: &kubefoundryv1alpha1.ResourceSpec{GPU: &kubefoundryv1alpha1.GPUSpec{Count: 1}},
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeTRTLLM},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: true,
@@ -97,9 +97,9 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "no GPU is incompatible",
-			md: &kubefoundryv1alpha1.ModelDeployment{
-				Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-					Engine: kubefoundryv1alpha1.EngineSpec{Type: kubefoundryv1alpha1.EngineTypeVLLM},
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
 				},
 			},
 			wantErr: true,
@@ -107,15 +107,15 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated with prefill GPU is compatible",
-			md: &kubefoundryv1alpha1.ModelDeployment{
-				Spec: kubefoundryv1alpha1.ModelDeploymentSpec{
-					Engine: kubefoundryv1alpha1.EngineSpec{Type: kubefoundryv1alpha1.EngineTypeVLLM},
-					Serving: &kubefoundryv1alpha1.ServingSpec{
-						Mode: kubefoundryv1alpha1.ServingModeDisaggregated,
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{
+						Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
 					},
-					Scaling: &kubefoundryv1alpha1.ScalingSpec{
-						Prefill: &kubefoundryv1alpha1.ComponentScalingSpec{
-							GPU: &kubefoundryv1alpha1.GPUSpec{Count: 2},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 2},
 						},
 					},
 				},
@@ -145,7 +145,7 @@ func TestValidateCompatibility(t *testing.T) {
 
 func TestSetCondition(t *testing.T) {
 	r := &KubeRayProviderReconciler{}
-	md := &kubefoundryv1alpha1.ModelDeployment{}
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
 
 	r.setCondition(md, "TestCondition", "True", "TestReason", "test message")
 	if len(md.Status.Conditions) != 1 {
@@ -175,8 +175,8 @@ func TestControllerConstants(t *testing.T) {
 	if ProviderName != "kuberay" {
 		t.Errorf("expected provider name 'kuberay', got %s", ProviderName)
 	}
-	if FinalizerName != "kubefoundry.ai/kuberay-provider" {
-		t.Errorf("expected finalizer 'kubefoundry.ai/kuberay-provider', got %s", FinalizerName)
+	if FinalizerName != "kubeairunway.ai/kuberay-provider" {
+		t.Errorf("expected finalizer 'kubeairunway.ai/kuberay-provider', got %s", FinalizerName)
 	}
 }
 
@@ -218,7 +218,7 @@ func TestReconcileWrongProvider(t *testing.T) {
 func TestReconcilePaused(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
-	md.Annotations = map[string]string{"kubefoundry.ai/reconcile-paused": "true"}
+	md.Annotations = map[string]string{"kubeairunway.ai/reconcile-paused": "true"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
@@ -251,7 +251,7 @@ func TestReconcileAddsFinalizer(t *testing.T) {
 		t.Error("should requeue after adding finalizer")
 	}
 
-	var updated kubefoundryv1alpha1.ModelDeployment
+	var updated kubeairunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
 	if !controllerutil.ContainsFinalizer(&updated, FinalizerName) {
 		t.Error("expected finalizer to be added")
@@ -261,7 +261,7 @@ func TestReconcileAddsFinalizer(t *testing.T) {
 func TestReconcileIncompatibleEngine(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
-	md.Spec.Engine.Type = kubefoundryv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 	controllerutil.AddFinalizer(md, FinalizerName)
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
@@ -274,9 +274,9 @@ func TestReconcileIncompatibleEngine(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var updated kubefoundryv1alpha1.ModelDeployment
+	var updated kubeairunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
-	if updated.Status.Phase != kubefoundryv1alpha1.DeploymentPhaseFailed {
+	if updated.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase, got %s", updated.Status.Phase)
 	}
 }
@@ -343,7 +343,7 @@ func TestReconcileHandleDeletion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var updated kubefoundryv1alpha1.ModelDeployment
+	var updated kubeairunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
 	if controllerutil.ContainsFinalizer(&updated, FinalizerName) {
 		t.Error("expected finalizer to be removed")
@@ -467,7 +467,7 @@ func TestSyncStatusNotFound(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
 
-	md := &kubefoundryv1alpha1.ModelDeployment{}
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setRayServiceGVK(desired)
 	desired.SetName("test")
@@ -495,7 +495,7 @@ func TestSyncStatusRunning(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rs).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
 
-	md := &kubefoundryv1alpha1.ModelDeployment{}
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setRayServiceGVK(desired)
 	desired.SetName("test")
@@ -505,7 +505,7 @@ func TestSyncStatusRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if md.Status.Phase != kubefoundryv1alpha1.DeploymentPhaseRunning {
+	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running, got %s", md.Status.Phase)
 	}
 }
@@ -531,7 +531,7 @@ func TestSyncStatusFailed(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rs).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
 
-	md := &kubefoundryv1alpha1.ModelDeployment{}
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setRayServiceGVK(desired)
 	desired.SetName("test")
@@ -541,7 +541,7 @@ func TestSyncStatusFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if md.Status.Phase != kubefoundryv1alpha1.DeploymentPhaseFailed {
+	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed, got %s", md.Status.Phase)
 	}
 }
@@ -562,7 +562,7 @@ func TestSyncStatusDeploying(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(rs).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
 
-	md := &kubefoundryv1alpha1.ModelDeployment{}
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setRayServiceGVK(desired)
 	desired.SetName("test")
@@ -572,7 +572,7 @@ func TestSyncStatusDeploying(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if md.Status.Phase != kubefoundryv1alpha1.DeploymentPhaseDeploying {
+	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying, got %s", md.Status.Phase)
 	}
 }

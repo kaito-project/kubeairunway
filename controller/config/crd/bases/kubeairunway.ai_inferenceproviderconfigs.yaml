@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: inferenceproviderconfigs.kubefoundry.kubefoundry.ai
+  name: inferenceproviderconfigs.kubeairunway.ai
 spec:
-  group: kubefoundry.kubefoundry.ai
+  group: kubeairunway.ai
   names:
     kind: InferenceProviderConfig
     listKind: InferenceProviderConfigList

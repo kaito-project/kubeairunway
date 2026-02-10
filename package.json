@@ -1,5 +1,5 @@
 {
-  "name": "kubefoundry",
+  "name": "kubeairunway",
   "version": "1.0.0",
   "description": "Kubernetes ML Model Deployment Platform",
   "private": true,
@@ -9,17 +9,17 @@
     "shared"
   ],
   "scripts": {
-    "dev": "bun run --filter '@kubefoundry/frontend' dev & bun run --filter '@kubefoundry/backend' dev",
-    "dev:frontend": "bun run --filter '@kubefoundry/frontend' dev",
-    "dev:backend": "bun run --filter '@kubefoundry/backend' dev",
+    "dev": "bun run --filter '@kubeairunway/frontend' dev & bun run --filter '@kubeairunway/backend' dev",
+    "dev:frontend": "bun run --filter '@kubeairunway/frontend' dev",
+    "dev:backend": "bun run --filter '@kubeairunway/backend' dev",
     "build": "bun run build:shared && bun run build:frontend && bun run build:backend",
-    "build:shared": "bun run --filter '@kubefoundry/shared' build",
-    "build:frontend": "bun run --filter '@kubefoundry/frontend' build",
-    "build:backend": "bun run --filter '@kubefoundry/backend' build",
-    "compile": "bun run build:frontend && bun run --filter '@kubefoundry/backend' compile",
-    "lint": "bun run --filter '@kubefoundry/frontend' lint && bun run --filter '@kubefoundry/backend' lint",
-    "test": "bun run --filter '@kubefoundry/frontend' test && bun run --filter '@kubefoundry/backend' test",
-    "test:e2e": "bun run --filter '@kubefoundry/frontend' test:e2e"
+    "build:shared": "bun run --filter '@kubeairunway/shared' build",
+    "build:frontend": "bun run --filter '@kubeairunway/frontend' build",
+    "build:backend": "bun run --filter '@kubeairunway/backend' build",
+    "compile": "bun run build:frontend && bun run --filter '@kubeairunway/backend' compile",
+    "lint": "bun run --filter '@kubeairunway/frontend' lint && bun run --filter '@kubeairunway/backend' lint",
+    "test": "bun run --filter '@kubeairunway/frontend' test && bun run --filter '@kubeairunway/backend' test",
+    "test:e2e": "bun run --filter '@kubeairunway/frontend' test:e2e"
   },
   "keywords": [
     "nvidia",

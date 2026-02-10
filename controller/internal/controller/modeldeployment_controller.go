@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubefoundryv1alpha1 "github.com/kubefoundry/kubefoundry/controller/api/v1alpha1"
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 )
 
 // ModelDeploymentReconciler reconciles a ModelDeployment object
@@ -42,10 +42,10 @@ type ModelDeploymentReconciler struct {
 	EnableProviderSelector bool
 }
 
-// +kubebuilder:rbac:groups=kubefoundry.kubefoundry.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubefoundry.kubefoundry.ai,resources=modeldeployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubefoundry.kubefoundry.ai,resources=modeldeployments/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kubefoundry.kubefoundry.ai,resources=inferenceproviderconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch
 
 // Reconcile handles the reconciliation loop for ModelDeployment resources.
 //
@@ -61,7 +61,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	logger := log.FromContext(ctx)
 
 	// Fetch the ModelDeployment
-	var md kubefoundryv1alpha1.ModelDeployment
+	var md kubeairunwayv1alpha1.ModelDeployment
 	if err := r.Get(ctx, req.NamespacedName, &md); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -69,7 +69,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	logger.Info("Reconciling ModelDeployment", "name", md.Name, "namespace", md.Namespace)
 
 	// Check for pause annotation
-	if md.Annotations != nil && md.Annotations["kubefoundry.ai/reconcile-paused"] == "true" {
+	if md.Annotations != nil && md.Annotations["kubeairunway.ai/reconcile-paused"] == "true" {
 		logger.Info("Reconciliation paused", "name", md.Name)
 		return ctrl.Result{}, nil
 	}
@@ -81,24 +81,24 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Initialize status if needed
 	if md.Status.Phase == "" {
-		md.Status.Phase = kubefoundryv1alpha1.DeploymentPhasePending
+		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhasePending
 	}
 
 	// Step 1: Validate the spec
 	if err := r.validateSpec(ctx, &md); err != nil {
 		logger.Error(err, "Validation failed", "name", md.Name)
-		r.setCondition(&md, kubefoundryv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
-		md.Status.Phase = kubefoundryv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
+		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = fmt.Sprintf("Validation failed: %s", err.Error())
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
-	r.setCondition(&md, kubefoundryv1alpha1.ConditionTypeValidated, metav1.ConditionTrue, "ValidationPassed", "Schema validation passed")
+	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionTrue, "ValidationPassed", "Schema validation passed")
 
 	// Step 2: Run provider selection if needed
 	if r.EnableProviderSelector {
 		if err := r.selectProvider(ctx, &md); err != nil {
 			logger.Error(err, "Provider selection failed", "name", md.Name)
-			r.setCondition(&md, kubefoundryv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
 			md.Status.Message = fmt.Sprintf("Provider selection failed: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
 		}
@@ -109,14 +109,14 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if md.Status.Provider == nil || md.Status.Provider.Name == "" {
 		if md.Spec.Provider != nil && md.Spec.Provider.Name != "" {
 			// User explicitly specified a provider
-			md.Status.Provider = &kubefoundryv1alpha1.ProviderStatus{
+			md.Status.Provider = &kubeairunwayv1alpha1.ProviderStatus{
 				Name:           md.Spec.Provider.Name,
 				SelectedReason: "explicit provider selection",
 			}
-			r.setCondition(&md, kubefoundryv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "ExplicitSelection", "Provider explicitly specified in spec")
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "ExplicitSelection", "Provider explicitly specified in spec")
 		} else if !r.EnableProviderSelector {
 			// No provider specified and selector disabled
-			r.setCondition(&md, kubefoundryv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "NoProvider", "No provider specified and provider-selector not enabled")
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "NoProvider", "No provider specified and provider-selector not enabled")
 			md.Status.Message = "No provider specified and provider-selector not enabled"
 		}
 	}
@@ -140,11 +140,11 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 // validateSpec performs validation on the ModelDeployment spec
-func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubefoundryv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	spec := &md.Spec
 
 	// Validate model.id is required for huggingface source
-	if spec.Model.Source == kubefoundryv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
+	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
 		if spec.Model.ID == "" {
 			return fmt.Errorf("model.id is required when source is huggingface")
 		}
@@ -162,20 +162,20 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubefo
 	}
 
 	switch spec.Engine.Type {
-	case kubefoundryv1alpha1.EngineTypeVLLM, kubefoundryv1alpha1.EngineTypeSGLang, kubefoundryv1alpha1.EngineTypeTRTLLM:
+	case kubeairunwayv1alpha1.EngineTypeVLLM, kubeairunwayv1alpha1.EngineTypeSGLang, kubeairunwayv1alpha1.EngineTypeTRTLLM:
 		// These engines require GPU (unless in disaggregated mode with component-level GPUs)
-		servingMode := kubefoundryv1alpha1.ServingModeAggregated
+		servingMode := kubeairunwayv1alpha1.ServingModeAggregated
 		if spec.Serving != nil && spec.Serving.Mode != "" {
 			servingMode = spec.Serving.Mode
 		}
 
-		if servingMode == kubefoundryv1alpha1.ServingModeAggregated && gpuCount == 0 {
+		if servingMode == kubeairunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
 			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", spec.Engine.Type)
 		}
 	}
 
 	// Validate disaggregated mode configuration
-	if spec.Serving != nil && spec.Serving.Mode == kubefoundryv1alpha1.ServingModeDisaggregated {
+	if spec.Serving != nil && spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
 		// Cannot specify resources.gpu in disaggregated mode
 		if spec.Resources != nil && spec.Resources.GPU != nil && spec.Resources.GPU.Count > 0 {
 			return fmt.Errorf("cannot specify both resources.gpu and scaling.prefill/decode in disaggregated mode")
@@ -201,7 +201,7 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubefo
 }
 
 // selectProvider runs the provider selection algorithm
-func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kubefoundryv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Skip if provider is already selected (either in spec or status)
@@ -213,7 +213,7 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 	}
 
 	// List all InferenceProviderConfigs
-	var providerConfigs kubefoundryv1alpha1.InferenceProviderConfigList
+	var providerConfigs kubeairunwayv1alpha1.InferenceProviderConfigList
 	if err := r.List(ctx, &providerConfigs); err != nil {
 		return fmt.Errorf("failed to list provider configs: %w", err)
 	}
@@ -223,7 +223,7 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 	}
 
 	// Filter to ready providers
-	var readyProviders []kubefoundryv1alpha1.InferenceProviderConfig
+	var readyProviders []kubeairunwayv1alpha1.InferenceProviderConfig
 	for _, pc := range providerConfigs.Items {
 		if pc.Status.Ready {
 			readyProviders = append(readyProviders, pc)
@@ -242,17 +242,17 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 
 	logger.Info("Provider selected", "provider", selectedProvider, "reason", reason)
 
-	md.Status.Provider = &kubefoundryv1alpha1.ProviderStatus{
+	md.Status.Provider = &kubeairunwayv1alpha1.ProviderStatus{
 		Name:           selectedProvider,
 		SelectedReason: reason,
 	}
-	r.setCondition(md, kubefoundryv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Provider %s auto-selected", selectedProvider))
+	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Provider %s auto-selected", selectedProvider))
 
 	return nil
 }
 
 // runSelectionAlgorithm implements the provider selection algorithm
-func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha1.ModelDeployment, providers []kubefoundryv1alpha1.InferenceProviderConfig) (string, string) {
+func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alpha1.ModelDeployment, providers []kubeairunwayv1alpha1.InferenceProviderConfig) (string, string) {
 	spec := &md.Spec
 
 	// Determine GPU requirements
@@ -260,7 +260,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha
 	if spec.Resources != nil && spec.Resources.GPU != nil && spec.Resources.GPU.Count > 0 {
 		hasGPU = true
 	}
-	if spec.Serving != nil && spec.Serving.Mode == kubefoundryv1alpha1.ServingModeDisaggregated {
+	if spec.Serving != nil && spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
 		hasGPU = true
 	}
 
@@ -302,7 +302,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha
 		}
 
 		// Check serving mode support
-		servingMode := kubefoundryv1alpha1.ServingModeAggregated
+		servingMode := kubeairunwayv1alpha1.ServingModeAggregated
 		if spec.Serving != nil && spec.Serving.Mode != "" {
 			servingMode = spec.Serving.Mode
 		}
@@ -354,7 +354,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubefoundryv1alpha
 }
 
 // setCondition updates a condition on the ModelDeployment
-func (r *ModelDeploymentReconciler) setCondition(md *kubefoundryv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
+func (r *ModelDeploymentReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
@@ -369,13 +369,13 @@ func (r *ModelDeploymentReconciler) setCondition(md *kubefoundryv1alpha1.ModelDe
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModelDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubefoundryv1alpha1.ModelDeployment{}).
+		For(&kubeairunwayv1alpha1.ModelDeployment{}).
 		Named("modeldeployment").
 		Complete(r)
 }
 
 // specToMap converts a ModelDeploymentSpec to a map for CEL evaluation
-func specToMap(spec *kubefoundryv1alpha1.ModelDeploymentSpec) map[string]any {
+func specToMap(spec *kubeairunwayv1alpha1.ModelDeploymentSpec) map[string]any {
 	data, err := json.Marshal(spec)
 	if err != nil {
 		return map[string]any{}

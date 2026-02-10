@@ -248,7 +248,7 @@ const installation = new Hono()
     // the CRD itself, we delete the InferenceProviderConfig for this provider
     try {
       await kubernetesService.deleteCRD(
-        `inferenceproviderconfigs.kubefoundry.kubefoundry.ai`
+        `inferenceproviderconfigs.kubeairunway.ai`
       );
       return c.json({
         success: true,
