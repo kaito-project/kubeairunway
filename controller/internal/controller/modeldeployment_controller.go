@@ -66,6 +66,10 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Save a deep copy as the patch base so we only send changed status fields.
+	// This avoids clobbering status fields set by out-of-tree provider controllers.
+	base := md.DeepCopy()
+
 	logger.Info("Reconciling ModelDeployment", "name", md.Name, "namespace", md.Namespace)
 
 	// Check for pause annotation
@@ -90,7 +94,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
 		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = fmt.Sprintf("Validation failed: %s", err.Error())
-		return ctrl.Result{}, r.Status().Update(ctx, &md)
+		return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
 	}
 	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionTrue, "ValidationPassed", "Schema validation passed")
 
@@ -100,7 +104,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			logger.Error(err, "Provider selection failed", "name", md.Name)
 			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
 			md.Status.Message = fmt.Sprintf("Provider selection failed: %s", err.Error())
-			return ctrl.Result{}, r.Status().Update(ctx, &md)
+			return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
 		}
 	}
 
@@ -136,7 +140,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	logger.Info("Reconciliation complete", "name", md.Name, "phase", md.Status.Phase, "provider", md.Status.Provider)
 
-	return ctrl.Result{}, r.Status().Update(ctx, &md)
+	return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
 }
 
 // validateSpec performs validation on the ModelDeployment spec
@@ -235,7 +239,10 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 	}
 
 	// Run selection algorithm
-	selectedProvider, reason := r.runSelectionAlgorithm(md, readyProviders)
+	selectedProvider, reason, err := r.runSelectionAlgorithm(md, readyProviders)
+	if err != nil {
+		return fmt.Errorf("provider selection failed: %w", err)
+	}
 	if selectedProvider == "" {
 		return fmt.Errorf("no compatible provider found for this configuration")
 	}
@@ -252,7 +259,7 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 }
 
 // runSelectionAlgorithm implements the provider selection algorithm
-func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alpha1.ModelDeployment, providers []kubeairunwayv1alpha1.InferenceProviderConfig) (string, string) {
+func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alpha1.ModelDeployment, providers []kubeairunwayv1alpha1.InferenceProviderConfig) (string, string, error) {
 	spec := &md.Spec
 
 	// Determine GPU requirements
@@ -265,7 +272,10 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 	}
 
 	// Convert spec to map for CEL evaluation
-	specMap := specToMap(spec)
+	specMap, err := specToMap(spec)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to convert spec for CEL evaluation: %w", err)
+	}
 
 	// Build candidate list with scores
 	type candidate struct {
@@ -339,7 +349,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 	}
 
 	if len(candidates) == 0 {
-		return "", ""
+		return "", "", nil
 	}
 
 	// Select highest priority candidate; use name as stable tiebreaker
@@ -350,7 +360,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 		}
 	}
 
-	return best.name, best.reason
+	return best.name, best.reason, nil
 }
 
 // setCondition updates a condition on the ModelDeployment
@@ -375,16 +385,16 @@ func (r *ModelDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // specToMap converts a ModelDeploymentSpec to a map for CEL evaluation
-func specToMap(spec *kubeairunwayv1alpha1.ModelDeploymentSpec) map[string]any {
+func specToMap(spec *kubeairunwayv1alpha1.ModelDeploymentSpec) (map[string]any, error) {
 	data, err := json.Marshal(spec)
 	if err != nil {
-		return map[string]any{}
+		return nil, fmt.Errorf("failed to marshal spec: %w", err)
 	}
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		return map[string]any{}
+		return nil, fmt.Errorf("failed to unmarshal spec: %w", err)
 	}
-	return m
+	return m, nil
 }
 
 // evaluateCEL evaluates a CEL expression against the spec map

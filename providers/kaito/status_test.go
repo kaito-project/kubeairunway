@@ -26,10 +26,8 @@ func newWorkspaceWithStatus(conditions []interface{}) *unstructured.Unstructured
 
 func newWorkspaceWithResourceCount(count int64, conditions []interface{}) *unstructured.Unstructured {
 	ws := newWorkspaceWithStatus(conditions)
-	ws.Object["spec"] = map[string]interface{}{
-		"resource": map[string]interface{}{
-			"count": count,
-		},
+	ws.Object["resource"] = map[string]interface{}{
+		"count": count,
 	}
 	return ws
 }
@@ -188,6 +186,36 @@ func TestTranslateStatusEndpoint(t *testing.T) {
 	}
 	if result.Endpoint.Port != defaultKAITOPort {
 		t.Errorf("expected port %d, got %d", defaultKAITOPort, result.Endpoint.Port)
+	}
+}
+
+func TestTranslateStatusEndpointLlamaCpp(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithStatus([]interface{}{
+		map[string]interface{}{
+			"type":   "WorkspaceSucceeded",
+			"status": "True",
+		},
+	})
+	// Set inference.template to simulate a llamacpp workspace
+	ws.Object["inference"] = map[string]interface{}{
+		"template": map[string]interface{}{
+			"name": "llamacpp",
+		},
+	}
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Endpoint == nil {
+		t.Fatal("expected non-nil endpoint")
+	}
+	if result.Endpoint.Service != "test-ws" {
+		t.Errorf("expected service name test-ws, got %s", result.Endpoint.Service)
+	}
+	if result.Endpoint.Port != DefaultLlamaCppPort {
+		t.Errorf("expected port %d for llamacpp template, got %d", DefaultLlamaCppPort, result.Endpoint.Port)
 	}
 }
 

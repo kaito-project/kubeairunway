@@ -143,8 +143,8 @@ func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo
 func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured, condMap map[string]conditionInfo) *kubeairunwayv1alpha1.ReplicaStatus {
 	replicas := &kubeairunwayv1alpha1.ReplicaStatus{}
 
-	// Try spec.resource.count for desired replicas
-	if count, found, _ := unstructured.NestedInt64(upstream.Object, "spec", "resource", "count"); found {
+	// Try resource.count for desired replicas (resource is at root level in KAITO Workspace)
+	if count, found, _ := unstructured.NestedInt64(upstream.Object, "resource", "count"); found {
 		replicas.Desired = int32(count)
 	}
 
@@ -159,11 +159,15 @@ func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured, 
 
 // extractEndpoint extracts service endpoint information for the Workspace
 func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *kubeairunwayv1alpha1.EndpointStatus {
+	port := defaultKAITOPort
+	// Template-based workspaces (e.g. llamacpp) use a different port
+	if _, hasTemplate, _ := unstructured.NestedMap(upstream.Object, "inference", "template"); hasTemplate {
+		port = DefaultLlamaCppPort
+	}
 	return &kubeairunwayv1alpha1.EndpointStatus{
 		// KAITO creates a service with the same name as the Workspace
 		Service: upstream.GetName(),
-		// Default port for KAITO preset deployments; template-based may differ
-		Port: defaultKAITOPort,
+		Port:    port,
 	}
 }
 
