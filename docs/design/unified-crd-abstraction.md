@@ -36,12 +36,12 @@ This document proposes the introduction of a unified KubeAIRunway Custom Resourc
 
 ### 3.1 Design Principles
 
-> **Recommendation:** This plugin architecture is the recommended approach for KubeAIRunway. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need third-party providers.
+> **Recommendation:** This plugin architecture is the recommended approach for KubeAIRunway. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need external providers.
 
 1. **Core has zero provider knowledge** - The core controller only handles ModelDeployment CRD validation and defaults
 2. **Providers are adapters** - Each provider controller is a "shim" (like dockershim for CRI) that translates ModelDeployment to provider CRs
 3. **Independent releases** - Provider controllers are versioned and released independently from core
-4. **Third-party extensibility** - Anyone can add a new provider without modifying KubeAIRunway core
+4. **External extensibility** - Anyone can add a new provider without modifying KubeAIRunway core
 
 ### 3.2 The CRI Analogy
 
@@ -300,7 +300,7 @@ Each provider is a separate controller deployment that acts as an adapter (shim)
 github.com/kubeairunway/kaito-provider/
 github.com/kubeairunway/dynamo-provider/
 github.com/kubeairunway/kuberay-provider/
-github.com/third-party/their-provider/   # Third-party providers welcome
+github.com/external/their-provider/   # External providers welcome
 ```
 
 Provider controllers:
@@ -326,7 +326,7 @@ kubeairunway-system namespace:
 ├── kaito-provider      ─┐
 ├── dynamo-provider      ├── independently versioned & released
 ├── kuberay-provider    ─┘
-└── third-party-provider     (installed separately)
+└── external-provider     (installed separately)
 ```
 
 ### 3.8 Installation Options
@@ -342,7 +342,7 @@ kubeairunway provider install kaito
 kubeairunway provider install dynamo
 kubeairunway provider install kuberay
 
-# Third-party provider
+# External provider
 kubectl apply -f https://example.com/provider.yaml
 ```
 
@@ -660,7 +660,7 @@ New providers can be added without any changes to KubeAIRunway core:
 5. Auto-create `InferenceProviderConfig` on startup
 
 ```go
-// third-party-provider/main.go
+// external-provider/main.go
 func main() {
     // Register this provider
     providerConfig := &kubeairunwayv1alpha1.InferenceProviderConfig{
@@ -1983,7 +1983,7 @@ engine:
 
 ## Appendix A: Alternative Architecture - Monolithic Controller
 
-> **Note:** This appendix describes a simpler alternative architecture where all provider knowledge is embedded in a single controller. **This is NOT the recommended approach** — see Section 3 for the recommended plugin architecture. This alternative trades extensibility for simplicity and may be appropriate for teams that don't need third-party providers or custom selection logic.
+> **Note:** This appendix describes a simpler alternative architecture where all provider knowledge is embedded in a single controller. **This is NOT the recommended approach** — see Section 3 for the recommended plugin architecture. This alternative trades extensibility for simplicity and may be appropriate for teams that don't need external providers or custom selection logic.
 
 ### A.1 Overview
 
@@ -2112,14 +2112,14 @@ kubectl apply -f https://raw.githubusercontent.com/kubeairunway/kubeairunway/mai
 | Provider version pinning      | No                          | Yes (per provider)             |
 | Custom selection logic        | No                          | Yes (replaceable selector)     |
 | Installation complexity       | Single deployment           | Multiple deployments           |
-| Third-party providers         | Requires core changes       | Just deploy controller         |
+| External providers            | Requires core changes       | Just deploy controller         |
 
 ### A.7 When to Use Monolithic
 
 The monolithic architecture may be appropriate when:
 
 1. **Simplicity is paramount** - You want the easiest possible deployment
-2. **No third-party providers** - You only use KAITO, Dynamo, and KubeRay
+2. **No external providers** - You only use KAITO, Dynamo, and KubeRay
 3. **Centralized releases are acceptable** - You're OK waiting for a full controller release to get provider fixes
 4. **No custom selection needed** - The built-in selection algorithm meets your needs
 
@@ -2134,7 +2134,7 @@ The monolithic architecture may be appropriate when:
 **Disadvantages:**
 - Tight coupling - all provider code in one repo
 - Blast radius - bug in KAITO transformer affects all users
-- No third-party extensibility without forking
+- No external extensibility without forking
 - Cannot pin individual provider versions
 - Cannot replace selection algorithm
 
