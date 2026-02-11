@@ -22,7 +22,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@kubefoundry/shared';
+import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@kubeairunway/shared';
 import { MetricsPanel } from '../components/MetricsPanel';
 import { LogsViewer } from '../components/LogsViewer';
 import { ConnectionError } from '../components/ConnectionBanner';

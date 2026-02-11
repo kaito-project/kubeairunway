@@ -19,7 +19,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { DeploymentStatus, DeploymentPhase } from '@kubefoundry/shared';
+import type { DeploymentStatus, DeploymentPhase } from '@kubeairunway/shared';
 import { ConnectionError } from '../components/ConnectionBanner';
 
 // Status color mapping

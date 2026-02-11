@@ -15,7 +15,7 @@
     "tsc": "tsc --noEmit"
   },
   "dependencies": {
-    "@kubefoundry/shared": "workspace:*"
+    "@kubeairunway/shared": "workspace:*"
   },
   "devDependencies": {
     "@kinvolk/headlamp-plugin": "^0.9.0",

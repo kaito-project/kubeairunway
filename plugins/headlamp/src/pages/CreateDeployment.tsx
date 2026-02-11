@@ -16,7 +16,7 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { DeploymentConfig, Engine, Model, RuntimeStatus, ModelTask } from '@kubefoundry/shared';
+import type { DeploymentConfig, Engine, Model, RuntimeStatus, ModelTask } from '@kubeairunway/shared';
 import { getBadgeColors } from '../lib/theme';
 
 type RuntimeId = 'kaito' | 'kuberay' | 'dynamo';

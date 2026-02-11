@@ -15,7 +15,7 @@ import { Router } from '@kinvolk/headlamp-plugin/lib';
 import Button from '@mui/material/Button';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { Model, HfModelSearchResult } from '@kubefoundry/shared';
+import type { Model, HfModelSearchResult } from '@kubeairunway/shared';
 import { ConnectionError } from '../components/ConnectionBanner';
 import { getBadgeColors } from '../lib/theme';
 

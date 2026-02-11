@@ -16,7 +16,7 @@ import {
   StatusLabelProps,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { useApiClient } from '../lib/api-client';
-import type { RuntimesStatusResponse, RuntimeStatus } from '@kubefoundry/shared';
+import type { RuntimesStatusResponse, RuntimeStatus } from '@kubeairunway/shared';
 import { ConnectionError } from '../components/ConnectionBanner';
 
 function getStatusColor(runtime: RuntimeStatus): StatusLabelProps['status'] {

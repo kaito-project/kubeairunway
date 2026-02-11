@@ -4,7 +4,7 @@
  * Displays deployment metrics in a clean panel format.
  */
 
-import type { MetricsResponse, RawMetricValue } from '@kubefoundry/shared';
+import type { MetricsResponse, RawMetricValue } from '@kubeairunway/shared';
 
 interface MetricsPanelProps {
   metrics: MetricsResponse | null;
