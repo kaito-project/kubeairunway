@@ -26,6 +26,19 @@ export interface HelmChart {
 }
 
 /**
+ * Convert a values object to --set-json arguments
+ * Helm's --set-json expects format: key=jsonvalue (e.g., --set-json 'featureGates={"enabled":true}')
+ * NOT a single JSON object like: --set-json '{"featureGates":{"enabled":true}}'
+ */
+function valuesToSetJsonArgs(values: Record<string, unknown>): string[] {
+  const args: string[] = [];
+  for (const [key, value] of Object.entries(values)) {
+    args.push('--set-json', `${key}=${JSON.stringify(value)}`);
+  }
+  return args;
+}
+
+/**
  * NVIDIA GPU Operator Helm configuration
  */
 export const GPU_OPERATOR_REPO: HelmRepo = {
@@ -383,7 +396,7 @@ class HelmService {
     }
 
     if (chart.values) {
-      args.push('--set-json', JSON.stringify(chart.values));
+      args.push(...valuesToSetJsonArgs(chart.values));
     }
 
     // Skip CRDs if specified (useful when CRDs already exist from another operator)
@@ -420,7 +433,7 @@ class HelmService {
     }
 
     if (chart.values) {
-      args.push('--set-json', JSON.stringify(chart.values));
+      args.push(...valuesToSetJsonArgs(chart.values));
     }
 
     args.push('--wait', '--timeout', '10m');

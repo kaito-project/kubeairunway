@@ -19,11 +19,14 @@
 - `frontend/src/` - React components, hooks, pages
 - `backend/src/` - Hono app, providers, services
 - `shared/types/` - Shared TypeScript definitions
+- `plugins/headlamp/` - Headlamp dashboard plugin
 - `docs/` - Detailed documentation (read as needed)
 
 **Core pattern**: Provider abstraction via CRDs:
 - `ModelDeployment` - Unified API for deploying ML models
 - `InferenceProviderConfig` - Provider registration with capabilities and selection rules
+
+**Headlamp plugin**: When working on `plugins/headlamp/`, read [plugins/headlamp/README.md](plugins/headlamp/README.md) for patterns and best practices. Key rules: use Headlamp's built-in components (`SectionBox`, `SimpleTable`, etc.), never bundle React, use `@kubefoundry/shared` for types/API.
 
 ## HOW: Development Commands
 
@@ -50,6 +53,20 @@ make compile-all         # Cross-compile for all platforms
 ```bash
 cd controller && make manifests generate
 ```
+
+### Headlamp Plugin Commands
+
+```bash
+cd plugins/headlamp
+bun install              # Install plugin dependencies
+bun run build            # Build plugin
+bun run start            # Development mode with auto-rebuild
+bun run test             # Run plugin tests
+make setup               # Install deps, build, and deploy to Headlamp
+make dev                 # Build and deploy for development
+```
+
+**Always run `bun run test` after implementing functionality to verify both frontend and backend changes.**
 
 **Always validate changes immediately after editing files:**
 - After editing Go files: Run `go build ./...` and `go test ./...`
@@ -103,3 +120,5 @@ Read these files **only when relevant** to your task:
 | [docs/architecture.md](docs/architecture.md) | Understanding system design, provider pattern |
 | [docs/api.md](docs/api.md) | Working on REST endpoints or API client |
 | [docs/development.md](docs/development.md) | Setup issues, build process, testing |
+| [docs/standards.md](docs/standards.md) | Code style questions (prefer running linters instead) |
+| [plugins/headlamp/README.md](plugins/headlamp/README.md) | Headlamp plugin development, patterns, components |

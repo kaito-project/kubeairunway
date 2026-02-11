@@ -10,6 +10,11 @@
       "types": "./types/index.ts",
       "import": "./types/index.ts",
       "default": "./types/index.ts"
+    },
+    "./api": {
+      "types": "./api/index.ts",
+      "import": "./api/index.ts",
+      "default": "./api/index.ts"
     }
   },
   "scripts": {

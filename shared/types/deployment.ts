@@ -13,6 +13,41 @@ export type PodPhase = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown
 export type DeploymentMode = ServingMode;
 export type GgufRunMode = 'build' | 'direct';
 export type RouterMode = 'none' | 'kv' | 'round-robin';
+export type KaitoResourceType = 'workspace' | 'inferenceset';
+
+export interface DeploymentConfig {
+  name: string;
+  namespace: string;
+  modelId: string;
+  engine: Engine;
+  mode: DeploymentMode;
+  provider?: 'dynamo' | 'kuberay' | 'kaito';
+  servedModelName?: string;
+  routerMode: RouterMode;
+  replicas: number;
+  hfTokenSecret?: string;
+  contextLength?: number;
+  enforceEager: boolean;
+  enablePrefixCaching: boolean;
+  trustRemoteCode: boolean;
+  resources?: {
+    gpu: number;
+    memory?: string;
+  };
+  engineArgs?: Record<string, unknown>;
+  prefillReplicas?: number;
+  decodeReplicas?: number;
+  prefillGpus?: number;
+  decodeGpus?: number;
+  modelSource?: 'premade' | 'huggingface' | 'vllm';
+  premadeModel?: string;
+  ggufFile?: string;
+  ggufRunMode?: GgufRunMode;
+  imageRef?: string;
+  computeType?: 'cpu' | 'gpu';
+  maxModelLen?: number;
+  kaitoResourceType?: KaitoResourceType;
+}
 
 export interface ModelSpec {
   id: string;
