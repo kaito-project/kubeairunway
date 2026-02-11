@@ -532,6 +532,8 @@ var KAITOTransformers = map[string]KAITOTransformer{
 
 > **Unknown schema handling:** When a provider encounters an unrecognized CRD schema (e.g., the upstream provider was upgraded to a version the provider controller doesn't know about), the `handleUnknownSchema` fallback is invoked. This sets the `ProviderCompatible` condition to `False` with a message indicating the unsupported schema version, and the `ModelDeployment` enters a `Failed` phase. The provider controller must be updated to add a new transformer for the unknown schema version. This ensures explicit failure rather than silent data corruption when providers break backward compatibility.
 
+> **Provider version incompatibility detection:** Currently, incompatibility between the installed upstream provider (e.g., KAITO installed via Helm) and the KubeAIRunway provider controller is detected **reactively** — if the provider controller generates a CR that doesn't match the installed CRD schema, the apply fails at the API server and the error is surfaced in `ModelDeployment.status.conditions` as `ResourceCreated: False`. Each provider records the upstream CRD version it was built for in `InferenceProviderConfig.status.upstreamCRDVersion` (e.g., `kaito.sh/v1beta1`). **Planned improvement:** The `SchemaDetector` (Section 3.12) will enable **proactive** detection by hashing the installed CRD schema on startup and matching it against known transformer versions. If the schema hash doesn't match any known transformer, the provider will immediately report incompatibility via `ProviderCompatible: False` before any ModelDeployment reconciliation attempts. See also Section 13.1 (Known Limitations) for additional mitigation plans.
+
 ### 3.13 Semantic Translation
 
 Provider controllers handle two types of translation, similar to how Kubernetes dockershim translated between CRI and Docker:
@@ -707,7 +709,8 @@ spec:
   # Provider selection (optional - auto-selected if not specified)
   provider:
     name: "dynamo"                           # dynamo | kaito | kuberay
-    # Provider-specific overrides (optional escape hatch, see Section 4.15)
+    # Provider-specific overrides — an untyped map[string]interface{} that allows
+    # provider-specific configuration. No compile-time validation. See Section 4.15.
     overrides: {}
       # Dynamo example:
       # routerMode: "kv"
