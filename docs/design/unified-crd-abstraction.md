@@ -30,94 +30,6 @@ This document proposes the introduction of a unified KubeFoundry Custom Resource
 
 ---
 
-## 2. Behavior Changes
-
-> **Important:** This section documents significant changes from previous KubeFoundry behavior.
-
-### 2.1 Controller Required
-
-KubeFoundry now requires the controller to be installed in the cluster before deployments can be created.
-
-**Before:**
-- `kubefoundry` binary generated and applied provider manifests directly
-- Worked immediately with just kubeconfig access
-
-**After:**
-- `kubefoundry` binary creates `ModelDeployment` CRDs
-- Controller (running in-cluster) reconciles CRDs into provider resources
-- Must run `kubefoundry controller install` before first use
-
-**Option A: Using the CLI**
-```bash
-$ kubefoundry controller install
-Installing kubefoundry-controller...
-  - CRDs: ModelDeployment
-  - Deployment: kubefoundry-controller
-  - RBAC: ServiceAccount, ClusterRole, ClusterRoleBinding
-Done. Controller running in namespace kubefoundry-system.
-
-$ kubefoundry start
-Starting UI at http://localhost:3000
-```
-
-**Option B: Using kubectl directly**
-```bash
-# One-command install
-kubectl apply -f https://raw.githubusercontent.com/kubefoundry/kubefoundry/main/manifests/install.yaml
-
-# Or with kustomize for customization
-kubectl apply -k https://github.com/kubefoundry/kubefoundry/manifests
-```
-
-**Upgrading the controller:**
-```bash
-# Option A: CLI
-$ kubefoundry controller upgrade
-
-# Option B: kubectl (re-apply latest manifests)
-kubectl apply -f https://raw.githubusercontent.com/kubefoundry/kubefoundry/main/manifests/install.yaml
-```
-
-If controller isn't installed:
-```bash
-$ kubefoundry start
-Error: kubefoundry-controller not found in cluster.
-Run 'kubefoundry controller install' first.
-```
-
-### 2.2 TypeScript Binary Role Change
-
-| Function                    | Before                       | After                                                     |
-| --------------------------- | ---------------------------- | --------------------------------------------------------- |
-| Generate provider manifests | Yes                          | No (controller does this)                                 |
-| Apply provider CRDs         | Yes                          | No (controller does this)                                 |
-| Parse provider status       | Yes                          | No (reads ModelDeployment.status)                         |
-| Web UI                      | Yes                          | Yes (unchanged)                                           |
-| Create deployments          | Direct to provider           | Creates ModelDeployment CRD                               |
-| Install controller          | Applies controller manifests | Applies controller manifests (also available via kubectl) |
-
-### 2.3 Manifest Generation Location
-
-All manifest generation logic moves from TypeScript to the Go controller. The TypeScript codebase no longer contains provider-specific manifest templates.
-
-### 2.4 KubeRay Requires Explicit Selection
-
-KubeRay is never auto-selected by the provider selection algorithm. Users must explicitly specify `provider.name: kuberay` to use it.
-
-**Rationale:**
-- KubeRay's primary differentiator is autoscaling via Ray Serve, which is out of scope for v1alpha1
-- KubeRay requires more setup knowledge and Ray-specific configuration
-- Auto-selecting KubeRay could confuse users who aren't familiar with Ray
-
-**Usage:**
-```yaml
-spec:
-  provider:
-    name: kuberay  # Must be explicit - will not be auto-selected
-```
-
----
-
 ## 3. Architecture: Provider Plugin Model
 
 > This architecture treats all providers (KAITO, Dynamo, KubeRay, and future providers) as external plugins rather than built-in components. This approach is inspired by the Kubernetes Container Runtime Interface (CRI) and Cluster API provider patterns.
@@ -127,7 +39,7 @@ spec:
 > **Recommendation:** This plugin architecture is the recommended approach for KubeFoundry. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need third-party providers.
 
 1. **Core has zero provider knowledge** - The core controller only handles ModelDeployment CRD validation and defaults
-2. **Providers are adapters** - Each provider controller is a "shim" (like dockershim for CRI) that translates ModelDeployment to upstream CRDs
+2. **Providers are adapters** - Each provider controller is a "shim" (like dockershim for CRI) that translates ModelDeployment to provider CRs
 3. **Independent releases** - Provider controllers are versioned and released independently from core
 4. **Third-party extensibility** - Anyone can add a new provider without modifying KubeFoundry core
 
@@ -140,7 +52,7 @@ CRI Pattern:
    kubelet ──► CRI Interface ──► containerd/CRI-O/dockershim ──► containers
 
 KubeFoundry Provider Pattern:
-   core ──► Provider Interface ──► kaito-provider/dynamo-provider ──► upstream CRDs
+   core ──► Provider Interface ──► kaito-provider/dynamo-provider ──► provider CRs
 ```
 
 Just as `dockershim` was an adapter that made Docker (which predates CRI) work with the CRI interface, `kaito-provider` is an adapter that makes KAITO (which doesn't know about KubeFoundry) work with the KubeFoundry provider interface.
@@ -162,7 +74,7 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                    User                                          │
+│                                    User or Client                                │
 └──────────────────────────────────────┬──────────────────────────────────────────┘
                                        │
                                        │ kubectl apply
@@ -216,6 +128,15 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+> **Admission Validation:** The core webhook currently performs schema validation (required fields, immutable fields, GPU requirements). Provider-capability validation (e.g., checking that the requested engine type is supported by the selected provider) can be performed at admission time by reading the `InferenceProviderConfig` CRD, since it is a core resource. This is a planned capability.
+
+> **`selectedReason` field:** A free-form string set by the core controller during provider selection. It is informational only (for observability) and is not consumed by any logic. Examples from real deployments:
+> - Auto-selected: `"matched capabilities: engine=llamacpp, gpu=false, mode=aggregated"`
+> - Auto-selected: `"matched capabilities: engine=vllm, gpu=true, mode=aggregated"`
+> - Explicit: `"explicit provider selection"`
+
+> **Ownership model:** Provider CRs (Workspace, DynamoGraphDeployment, RayService) are owned by the ModelDeployment via `ownerReferences` with `controller: true` and `blockOwnerDeletion: true`. Deleting a ModelDeployment cascade-deletes the associated provider CR. Direct modifications to provider CRs (e.g., via `kubectl edit`) are overwritten by the provider controller on the next reconciliation — ModelDeployment is the source of truth.
+
 ### 3.4 Data Flow
 
 ```
@@ -254,13 +175,14 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                                                                ▼
                                                     ┌─────────────────────┐
                                                     │ Provider creates    │
-                                                    │ upstream resource   │
-                                                    │ (Workspace, etc.)   │
+                                                    │ provider resource   │
+                                                    │ (Kaito Workspace or │
+                                                    │ Dynamo DGD, etc.)   │
                                                     └─────────┬───────────┘
                                                               │
                                                               ▼
                                                     ┌─────────────────────┐
-                                                    │ Upstream operator   │
+                                                    │ Provider operator   │
                                                     │ reconciles pods     │
                                                     └─────────┬───────────┘
                                                               │
@@ -270,6 +192,48 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                                                     │ status back to      │
                                                     │ ModelDeployment     │
                                                     └─────────────────────┘
+```
+
+#### Example: Status from Provider to ModelDeployment
+
+Below is a real example of a Dynamo provider populating ModelDeployment status after a successful deployment:
+
+```yaml
+status:
+  conditions:
+    - type: Validated
+      status: "True"
+      reason: ValidationPassed
+      message: Schema validation passed
+    - type: ProviderSelected
+      status: "True"
+      reason: AutoSelected
+      message: Provider dynamo auto-selected
+    - type: ProviderCompatible
+      status: "True"
+      reason: CompatibilityVerified
+      message: Configuration compatible with Dynamo
+    - type: ResourceCreated
+      status: "True"
+      reason: ResourceCreated
+      message: DynamoGraphDeployment created successfully
+    - type: Ready
+      status: "True"
+      reason: DeploymentReady
+      message: All replicas are ready
+  phase: Running
+  endpoint:
+    service: qwen-gpu-test-frontend
+    port: 8000
+  provider:
+    name: dynamo
+    resourceKind: DynamoGraphDeployment
+    resourceName: qwen-gpu-test
+    selectedReason: "matched capabilities: engine=vllm, gpu=true, mode=aggregated"
+  replicas:
+    desired: 2
+    ready: 2
+    available: 2
 ```
 
 ### 3.5 Component Breakdown
@@ -308,6 +272,26 @@ Organizations can replace this with custom selectors for:
 - Cost-based selection ("Prefer cheapest provider")
 - Availability-based selection ("Use provider with most capacity")
 
+**Custom selector mechanism:** A custom selector is a Kubernetes controller that:
+1. Disables the built-in provider-selector (`--enable-provider-selector=false`)
+2. Watches `ModelDeployment` resources where both `spec.provider.name` and `status.provider.name` are empty
+3. Applies custom selection logic (e.g., check team labels, query cost APIs, check node capacity)
+4. Sets `status.provider.name` and `status.provider.selectedReason`
+5. Sets the `ProviderSelected` condition to `True`
+
+**Selection algorithm (when using built-in provider-selector):**
+1. Filter compatible providers by engine type, GPU/CPU support, and serving mode
+2. Evaluate CEL selection rules from each `InferenceProviderConfig` to compute priority scores
+3. Select the provider with the highest priority
+4. If multiple providers have the same priority, use alphabetical name as a stable tiebreaker
+
+**InferenceProviderConfig lifecycle:** Provider selection is a one-time operation by design. Once `status.provider.name` is set, it is not re-evaluated. This means:
+- **Provider config removed:** Existing ModelDeployments continue running (provider already selected in status). New deployments will not select the removed provider.
+- **Capabilities changed:** Existing ModelDeployments are unaffected. Only future selections use the updated capabilities.
+- **Provider controller removed:** Provider resources remain but stop being reconciled; status becomes stale.
+
+This is intentional to avoid disrupting running workloads due to administrative configuration changes.
+
 #### 3.5.3 Provider Controllers
 
 Each provider is a separate controller deployment that acts as an adapter (shim):
@@ -320,9 +304,9 @@ github.com/third-party/their-provider/   # Third-party providers welcome
 ```
 
 Provider controllers:
-1. Register themselves by creating an `InferenceProviderConfig`
+1. Register themselves by auto-creating an `InferenceProviderConfig` on startup (no manual user step required)
 2. Watch `ModelDeployment` filtered by `status.provider.name == "their-name"`
-3. Transform `ModelDeployment` spec to upstream CRD (e.g., Workspace)
+3. Transform `ModelDeployment` spec to provider CR (e.g., Kaito Workspace)
 4. Write status back to `ModelDeployment` using server-side apply
 5. Handle upstream schema changes with version-specific transformers
 
@@ -347,6 +331,8 @@ kubefoundry-system namespace:
 ```
 
 ### 3.8 Installation Options
+
+> **Note:** The provider YAMLs below install only the KubeAIRunway provider controller (shim), not the upstream provider itself. The upstream provider (e.g., KAITO, Dynamo) must be installed separately via its own Helm chart, as documented in `InferenceProviderConfig.spec.installation`.
 
 ```bash
 # Full bundle (core + selector + all built-in providers)
@@ -373,7 +359,7 @@ kubefoundry provider install https://example.com/provider.yaml  # Third-party
 
 ### 3.9 InferenceProviderConfig CRD
 
-Each provider registers itself by creating an `InferenceProviderConfig` resource:
+Each provider controller automatically creates/updates its `InferenceProviderConfig` resource on startup (no manual user step required):
 
 ```yaml
 apiVersion: kubefoundry.ai/v1alpha1
@@ -460,6 +446,8 @@ status:
 
   observedGeneration: 1
 ```
+
+> **Version skew:** All providers are currently in-tree (same repository) and compiled against the same `ModelDeploymentStatus` types, so there is no version skew risk today. The status fields are intentionally generic — `phase`, `message`, `conditions`, `replicas`, `endpoint` — following standard Kubernetes patterns to minimize breaking changes. When/if providers move out-of-tree, they would import the types package as a Go module dependency and manage version compatibility through Go module versioning.
 
 ### 3.11 Provider Controller Implementation
 
@@ -553,6 +541,8 @@ var KAITOTransformers = map[string]KAITOTransformer{
 }
 ```
 
+> **Unknown schema handling:** When a provider encounters an unrecognized CRD schema (e.g., the upstream provider was upgraded to a version the provider controller doesn't know about), the `handleUnknownSchema` fallback is invoked. This sets the `ProviderCompatible` condition to `False` with a message indicating the unsupported schema version, and the `ModelDeployment` enters a `Failed` phase. The provider controller must be updated to add a new transformer for the unknown schema version. This ensures explicit failure rather than silent data corruption when providers break backward compatibility.
+
 ### 3.13 Semantic Translation
 
 Provider controllers handle two types of translation, similar to how Kubernetes dockershim translated between CRI and Docker:
@@ -644,6 +634,8 @@ func (t *DynamoTransformer) TranslateStatus(dgd *unstructured.Unstructured) (*Mo
 }
 ```
 
+> **Conditions extensibility:** ModelDeployment uses the standard Kubernetes `metav1.Condition` pattern via `meta.SetStatusCondition()`. This is inherently extensible — providers can add new condition types (e.g., a provider-specific `GPUHealthy` condition) without schema changes. Existing conditions are preserved when new ones are added, and consumers only look for condition types they understand. When a provider introduces new status information (e.g., a new condition type), it is additive and does not break existing functionality.
+
 #### Additional Resource Creation
 
 Like dockershim creating pause containers, provider controllers may create additional resources:
@@ -668,13 +660,13 @@ func (t *DynamoTransformer) TranslateSpec(md *ModelDeployment) ([]*unstructured.
 
 ### 3.14 Adding a New Provider
 
-Third parties can add providers without any changes to KubeFoundry core:
+New providers can be added without any changes to KubeAIRunway core:
 
 1. Create a controller that watches `ModelDeployment`
 2. Filter for `status.provider.name == "your-provider"`
-3. Transform to your upstream CRD
+3. Transform to your provider CR
 4. Write status back to `ModelDeployment`
-5. Create `InferenceProviderConfig` on startup
+5. Auto-create `InferenceProviderConfig` on startup
 
 ```go
 // third-party-provider/main.go
