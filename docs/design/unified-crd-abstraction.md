@@ -1,4 +1,4 @@
-# KubeFoundry Unified CRD Abstraction
+# KubeAIRunway Unified CRD Abstraction
 
 ## Design Document
 
@@ -11,7 +11,7 @@
 
 ## 1. Executive Summary
 
-This document proposes the introduction of a unified KubeFoundry Custom Resource Definition (CRD) that abstracts the underlying inference providers (KAITO, Dynamo, KubeRay). Users will deploy a `ModelDeployment` custom resource, and a KubeFoundry controller will reconcile this into the appropriate provider-specific resources.
+This document proposes the introduction of a unified KubeAIRunway Custom Resource Definition (CRD) that abstracts the underlying inference providers (KAITO, Dynamo, KubeRay). Users will deploy a `ModelDeployment` custom resource, and a KubeAIRunway controller will reconcile this into the appropriate provider-specific resources.
 
 ### Goals
 - Provide a single, unified API for deploying LLM inference workloads
@@ -36,12 +36,12 @@ This document proposes the introduction of a unified KubeFoundry Custom Resource
 
 ### 3.1 Design Principles
 
-> **Recommendation:** This plugin architecture is the recommended approach for KubeFoundry. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need third-party providers.
+> **Recommendation:** This plugin architecture is the recommended approach for KubeAIRunway. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need third-party providers.
 
 1. **Core has zero provider knowledge** - The core controller only handles ModelDeployment CRD validation and defaults
 2. **Providers are adapters** - Each provider controller is a "shim" (like dockershim for CRI) that translates ModelDeployment to provider CRs
 3. **Independent releases** - Provider controllers are versioned and released independently from core
-4. **Third-party extensibility** - Anyone can add a new provider without modifying KubeFoundry core
+4. **Third-party extensibility** - Anyone can add a new provider without modifying KubeAIRunway core
 
 ### 3.2 The CRI Analogy
 
@@ -51,11 +51,11 @@ This design follows the same pattern as Kubernetes Container Runtime Interface (
 CRI Pattern:
    kubelet ──► CRI Interface ──► containerd/CRI-O/dockershim ──► containers
 
-KubeFoundry Provider Pattern:
+KubeAIRunway Provider Pattern:
    core ──► Provider Interface ──► kaito-provider/dynamo-provider ──► provider CRs
 ```
 
-Just as `dockershim` was an adapter that made Docker (which predates CRI) work with the CRI interface, `kaito-provider` is an adapter that makes KAITO (which doesn't know about KubeFoundry) work with the KubeFoundry provider interface.
+Just as `dockershim` was an adapter that made Docker (which predates CRI) work with the CRI interface, `kaito-provider` is an adapter that makes KAITO (which doesn't know about KubeAIRunway) work with the KubeAIRunway provider interface.
 
 #### Lessons from Dockershim
 
@@ -81,16 +81,16 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                             ModelDeployment                                      │
-│                          kubefoundry.ai/v1alpha1                                 │
+│                          kubeairunway.ai/v1alpha1                                 │
 │                                                                                  │
 │  spec:                                                                           │
 │    model: {id: "meta-llama/Llama-3.1-8B", source: huggingface}                  │
 │    engine: {type: vllm}                                                          │
-│    provider: {name: kaito}   ◄─── explicit, or let provider-selector choose     │
+│    provider: {name: kaito}   ◄─── explicit, or let controller auto-select     │
 │    resources: {...}                                                              │
 │                                                                                  │
 │  status:                                                                         │
-│    provider:                       ◄─── set by provider-selector or user        │
+│    provider:                       ◄─── set by controller or user        │
 │      name: kaito                                                                 │
 │      selectedReason: "..."                                                       │
 │    phase: Running                  ◄─── set by provider controller              │
@@ -98,31 +98,31 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
 │    conditions: [...]               ◄─── set by provider controller              │
 └──────────────────────────────────────┬──────────────────────────────────────────┘
                                        │
-         ┌─────────────────────────────┼─────────────────────────────┐
-         │                             │                             │
-         ▼                             ▼                             ▼
-┌─────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
-│  kubefoundry-core   │  │   provider-selector     │  │   provider controllers  │
-│  (webhooks only)    │  │   (optional component)  │  │                         │
-│                     │  │                         │  │  ┌───────────────────┐  │
-│  • Validate schema  │  │  • Watches MD where     │  │  │  kaito-provider   │  │
-│  • Set defaults     │  │    provider.name empty  │  │  └───────────────────┘  │
-│  • NO provider      │  │  • Queries registered   │  │  ┌───────────────────┐  │
-│    knowledge        │  │    providers            │  │  │  dynamo-provider  │  │
-│                     │  │  • Runs selection algo  │  │  └───────────────────┘  │
-│                     │  │  • Sets provider.name   │  │  ┌───────────────────┐  │
-│                     │  │                         │  │  │  kuberay-provider │  │
-│                     │  │  Can be replaced with   │  │  └───────────────────┘  │
-│                     │  │  custom selector!       │  │  ┌───────────────────┐  │
-│                     │  │                         │  │  │  your-provider    │  │
-│                     │  │                         │  │  └───────────────────┘  │
-└─────────────────────┘  └─────────────────────────┘  └─────────────────────────┘
+         ┌──────────────────────────────────────────┼─────────────────┐
+         │                                                            │
+         ▼                                                            ▼
+┌──────────────────────────────────────────────────┐  ┌─────────────────────────┐
+│  kubeairunway-controller                         │  │   provider controllers  │
+│  (single binary)                                 │  │                         │
+│                                                  │  │  ┌───────────────────┐  │
+│  • Validate schema (webhook)                     │  │  │  kaito-provider   │  │
+│  • Set defaults (webhook)                        │  │  └───────────────────┘  │
+│  • Provider selection (--enable-provider-selector│  │  ┌───────────────────┐  │
+│    flag, default true)                           │  │  │  dynamo-provider  │  │
+│  • Queries InferenceProviderConfig resources     │  │  └───────────────────┘  │
+│  • Runs CEL-based selection algorithm            │  │  ┌───────────────────┐  │
+│  • Sets status.provider.name                     │  │  │  kuberay-provider │  │
+│                                                  │  │  └───────────────────┘  │
+│  Can be replaced with custom selector            │  │  ┌───────────────────┐  │
+│  (--enable-provider-selector=false)              │  │  │  your-provider    │  │
+│                                                  │  │  └───────────────────┘  │
+└──────────────────────────────────────────────────┘  └─────────────────────────┘
                                        │
                                        │ reads
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                       InferenceProviderConfig                              │
-│                          kubefoundry.ai/v1alpha1                                 │
+│                          kubeairunway.ai/v1alpha1                                 │
 │                                                                                  │
 │  Each provider registers itself with capabilities and selection rules            │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -147,7 +147,7 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                                              │
                                              ▼
                                     ┌─────────────────┐
-                                    │ kubefoundry-    │
+                                    │ kubeairunway-    │
                                     │ core webhooks   │
                                     │ (validation)    │
                                     └────────┬────────┘
@@ -163,9 +163,9 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                           │                                    │
                           ▼                                    │
                ┌─────────────────────┐                         │
-               │ provider-selector   │                         │
-               │ picks best match    │                         │
-               │ from configs        │                         │
+               │ built-in provider   │                         │
+               │ selection algorithm │                         │
+               │ (CEL-based)         │                         │
                └─────────┬───────────┘                         │
                          │                                     │
                          │ sets status.provider.name           │
@@ -238,32 +238,32 @@ status:
 
 ### 3.5 Component Breakdown
 
-#### 3.5.1 kubefoundry-core (Minimal)
+#### 3.5.1 kubeairunway-controller
 
-The core component contains only:
+The core controller is a single binary that contains:
 - `ModelDeployment` CRD definition
 - `InferenceProviderConfig` CRD definition
 - Validating webhook (schema validation only, no provider knowledge)
 - Mutating webhook (defaults only)
+- Provider selection algorithm (enabled via `--enable-provider-selector` flag, default `true`)
 
 The core does NOT contain:
 - Provider-specific transformation logic
-- Provider selection algorithm (this is in provider-selector)
 - Knowledge of Workspace, DynamoGraphDeployment, or RayService schemas
 
-#### 3.5.2 provider-selector (Conditionally Required, Replaceable)
+#### 3.5.2 Provider Selection (Built-in, Replaceable)
 
-A separate component that handles auto-selection:
-- Watches `ModelDeployment` resources where `status.provider.name` is empty
+Provider selection is built into the core controller, enabled by default via `--enable-provider-selector` flag:
+- During reconciliation, selects a provider for `ModelDeployment` resources where `status.provider.name` is empty
 - Queries all `InferenceProviderConfig` resources
-- Runs selection algorithm based on provider capabilities
+- Runs selection algorithm based on provider capabilities and CEL rules
 - Sets `status.provider.name` and `status.provider.selectedReason`
 
-**When is provider-selector required?**
-- **Required** if `spec.provider.name` is omitted (auto-selection needed)
-- **Not required** if user explicitly specifies `spec.provider.name`
+**When does provider selection run?**
+- **Runs** if `spec.provider.name` is omitted and `--enable-provider-selector=true` (default)
+- **Skipped** if user explicitly specifies `spec.provider.name`
 
-If provider-selector is not installed and no provider is specified, the `ModelDeployment` remains in `Pending` status with condition `ProviderSelected: False` and message "No provider specified and provider-selector not installed".
+If provider selection is disabled (`--enable-provider-selector=false`) and no provider is specified, the `ModelDeployment` remains in `Pending` status with condition `ProviderSelected: False` and message "No provider specified and provider-selector not installed".
 
 **No healthy providers:** If all `InferenceProviderConfig` resources report `ready: false`, the `ModelDeployment` remains in `Pending` status with message "No healthy providers available".
 
@@ -279,7 +279,7 @@ Organizations can replace this with custom selectors for:
 4. Sets `status.provider.name` and `status.provider.selectedReason`
 5. Sets the `ProviderSelected` condition to `True`
 
-**Selection algorithm (when using built-in provider-selector):**
+**Selection algorithm (when using built-in provider selection):**
 1. Filter compatible providers by engine type, GPU/CPU support, and serving mode
 2. Evaluate CEL selection rules from each `InferenceProviderConfig` to compute priority scores
 3. Select the provider with the highest priority
@@ -297,9 +297,9 @@ This is intentional to avoid disrupting running workloads due to administrative 
 Each provider is a separate controller deployment that acts as an adapter (shim):
 
 ```
-github.com/kubefoundry/kaito-provider/
-github.com/kubefoundry/dynamo-provider/
-github.com/kubefoundry/kuberay-provider/
+github.com/kubeairunway/kaito-provider/
+github.com/kubeairunway/dynamo-provider/
+github.com/kubeairunway/kuberay-provider/
 github.com/third-party/their-provider/   # Third-party providers welcome
 ```
 
@@ -321,9 +321,8 @@ Provider controllers:
 ### 3.7 Deployment Topology
 
 ```
-kubefoundry-system namespace:
-├── kubefoundry-core         (webhooks, minimal resources)
-├── provider-selector        (optional, replaceable)
+kubeairunway-system namespace:
+├── kubeairunway-controller  (webhooks + provider selection)
 ├── kaito-provider      ─┐
 ├── dynamo-provider      ├── independently versioned & released
 ├── kuberay-provider    ─┘
@@ -335,26 +334,16 @@ kubefoundry-system namespace:
 > **Note:** The provider YAMLs below install only the KubeAIRunway provider controller (shim), not the upstream provider itself. The upstream provider (e.g., KAITO, Dynamo) must be installed separately via its own Helm chart, as documented in `InferenceProviderConfig.spec.installation`.
 
 ```bash
-# Full bundle (core + selector + all built-in providers)
-kubectl apply -f https://kubefoundry.io/install.yaml
+# Install core controller (includes webhooks + provider selection)
+kubeairunway controller install
 
-# À la carte installation
-kubectl apply -f https://kubefoundry.io/core.yaml
-kubectl apply -f https://kubefoundry.io/provider-selector.yaml
-kubectl apply -f https://kubefoundry.io/providers/kaito.yaml
-kubectl apply -f https://kubefoundry.io/providers/dynamo.yaml
+# Install built-in providers
+kubeairunway provider install kaito
+kubeairunway provider install dynamo
+kubeairunway provider install kuberay
 
 # Third-party provider
-kubectl apply -f https://newframework.io/kubefoundry-provider.yaml
-```
-
-Or with CLI:
-
-```bash
-kubefoundry controller install                    # Core only
-kubefoundry provider install kaito                # Built-in provider
-kubefoundry provider install dynamo
-kubefoundry provider install https://example.com/provider.yaml  # Third-party
+kubectl apply -f https://example.com/provider.yaml
 ```
 
 ### 3.9 InferenceProviderConfig CRD
@@ -362,7 +351,7 @@ kubefoundry provider install https://example.com/provider.yaml  # Third-party
 Each provider controller automatically creates/updates its `InferenceProviderConfig` resource on startup (no manual user step required):
 
 ```yaml
-apiVersion: kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: InferenceProviderConfig
 metadata:
   name: kaito
@@ -383,7 +372,7 @@ spec:
       priority: 100  # Only llamacpp provider
 
   # Documentation link
-  documentation: "https://github.com/kubefoundry/kaito-provider"
+  documentation: "https://github.com/kubeairunway/kaito-provider"
 
 status:
   # Written by the provider controller on startup
@@ -405,17 +394,17 @@ status:
 Multiple controllers write to `ModelDeployment.status` using server-side apply with distinct field managers.
 
 **Conflict Resolution:** Server-side apply (SSA) handles conflicts via field ownership. Each controller uses a unique `fieldManager` identifier and owns distinct, non-overlapping fields. This means:
-- `provider-selector` owns `status.provider.name` and `status.provider.selectedReason`
+- Core controller owns `status.provider.name` and `status.provider.selectedReason`
 - Provider controllers own `status.phase`, `status.endpoint`, `status.replicas`, etc.
 - No conflicts occur because fields don't overlap
 - If a controller attempts to write a field owned by another, SSA rejects the update (this indicates a bug)
 
 ```yaml
 status:
-  # Written by provider-selector (fieldManager: "provider-selector")
+  # Written by core controller (fieldManager: "kubeairunway-controller")
   provider:
     name: kaito
-    selectedReason: "no GPU requested → kaito"
+    selectedReason: "matched capabilities: engine=llamacpp, gpu=false, mode=aggregated"
     # Written by provider controller (fieldManager: "kaito-provider")
     resourceName: my-llm
     resourceKind: Workspace
@@ -435,7 +424,7 @@ status:
   conditions:
     - type: Validated           # core webhook
       status: "True"
-    - type: ProviderSelected    # provider-selector
+    - type: ProviderSelected    # core controller
       status: "True"
     - type: ProviderCompatible  # provider controller
       status: "True"
@@ -461,7 +450,7 @@ type KAITOProviderController struct {
 }
 
 func (r *KAITOProviderController) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-    var md kubefoundryv1alpha1.ModelDeployment
+    var md kubeairunwayv1alpha1.ModelDeployment
     if err := r.client.Get(ctx, req.NamespacedName, &md); err != nil {
         return ctrl.Result{}, client.IgnoreNotFound(err)
     }
@@ -495,9 +484,9 @@ func (r *KAITOProviderController) Reconcile(ctx context.Context, req ctrl.Reques
 
 func (r *KAITOProviderController) SetupWithManager(mgr ctrl.Manager) error {
     return ctrl.NewControllerManagedBy(mgr).
-        For(&kubefoundryv1alpha1.ModelDeployment{}).
+        For(&kubeairunwayv1alpha1.ModelDeployment{}).
         WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
-            md := obj.(*kubefoundryv1alpha1.ModelDeployment)
+            md := obj.(*kubeairunwayv1alpha1.ModelDeployment)
             return md.Status.Provider.Name == "kaito"
         })).
         Owns(&unstructured.Unstructured{/* Workspace */}).
@@ -672,15 +661,15 @@ New providers can be added without any changes to KubeAIRunway core:
 // third-party-provider/main.go
 func main() {
     // Register this provider
-    providerConfig := &kubefoundryv1alpha1.InferenceProviderConfig{
+    providerConfig := &kubeairunwayv1alpha1.InferenceProviderConfig{
         ObjectMeta: metav1.ObjectMeta{Name: "newframework"},
-        Spec: kubefoundryv1alpha1.ProviderConfigSpec{
-            Capabilities: kubefoundryv1alpha1.ProviderCapabilities{
+        Spec: kubeairunwayv1alpha1.ProviderConfigSpec{
+            Capabilities: kubeairunwayv1alpha1.ProviderCapabilities{
                 Engines:      []string{"vllm", "custom"},
                 ServingModes: []string{"aggregated"},
                 GPUSupport:   true,
             },
-            SelectionRules: []kubefoundryv1alpha1.SelectionRule{
+            SelectionRules: []kubeairunwayv1alpha1.SelectionRule{
                 {Condition: "spec.model.id.startsWith('newframework/')", Priority: 100},
             },
         },
@@ -699,14 +688,14 @@ func main() {
 ### 4.1 ModelDeployment CRD
 
 ```yaml
-apiVersion: kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: my-llm
   namespace: default
   annotations:
     # Optional: pause reconciliation for debugging
-    kubefoundry.ai/reconcile-paused: "false"
+    kubeairunway.ai/reconcile-paused: "false"
 spec:
   # Model specification (required)
   model:
@@ -806,7 +795,7 @@ status:
     name: "dynamo"
     resourceName: "my-llm"
     resourceKind: "DynamoGraphDeployment"
-    selectedReason: "default → dynamo (GPU inference default)"  # Explains auto-selection
+    selectedReason: "matched capabilities: engine=vllm, gpu=true, mode=aggregated"  # Explains auto-selection
 
   # Replica status
   replicas:
@@ -826,7 +815,7 @@ status:
       lastTransitionTime: "2026-01-30T09:50:00Z"
       reason: "ValidationPassed"
       message: "Schema validation passed"
-    - type: "ProviderSelected"                   # Set by provider-selector
+    - type: "ProviderSelected"                   # Set by core controller
       status: "True"
       lastTransitionTime: "2026-01-30T09:51:00Z"
       reason: "AutoSelected"
@@ -859,7 +848,7 @@ This section shows how `ModelDeployment` resources are transformed into provider
 
 **ModelDeployment (user creates):**
 ```yaml
-apiVersion: kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: llama-8b
@@ -891,7 +880,7 @@ metadata:
   name: llama-8b
   namespace: default
   ownerReferences:
-    - apiVersion: kubefoundry.ai/v1alpha1
+    - apiVersion: kubeairunway.ai/v1alpha1
       kind: ModelDeployment
       name: llama-8b
       controller: true
@@ -930,7 +919,7 @@ status:
     name: "dynamo"
     resourceName: "llama-8b"
     resourceKind: "DynamoGraphDeployment"
-    selectedReason: "default → dynamo (GPU inference default)"
+    selectedReason: "matched capabilities: engine=vllm, gpu=true, mode=aggregated"
   endpoint:
     service: "llama-8b-frontend"
     port: 8000
@@ -940,7 +929,7 @@ status:
 
 **ModelDeployment (user creates):**
 ```yaml
-apiVersion: kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: gemma-cpu
@@ -971,12 +960,12 @@ metadata:
   name: gemma-cpu
   namespace: default
   ownerReferences:
-    - apiVersion: kubefoundry.ai/v1alpha1
+    - apiVersion: kubeairunway.ai/v1alpha1
       kind: ModelDeployment
       name: gemma-cpu
       controller: true
   labels:
-    kubefoundry.ai/model-source: huggingface
+    kubeairunway.ai/model-source: huggingface
 resource:
   count: 1
   labelSelector:
@@ -1005,7 +994,7 @@ status:
     name: "kaito"
     resourceName: "gemma-cpu"
     resourceKind: "Workspace"
-    selectedReason: "no GPU requested → kaito (only CPU provider)"
+    selectedReason: "matched capabilities: engine=llamacpp, gpu=false, mode=aggregated"
   endpoint:
     service: "gemma-cpu"
     port: 80
@@ -1015,7 +1004,7 @@ status:
 
 **ModelDeployment (user creates):**
 ```yaml
-apiVersion: kubefoundry.ai/v1alpha1
+apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: llama-70b-pd
@@ -1062,7 +1051,7 @@ metadata:
   name: llama-70b-pd
   namespace: default
   ownerReferences:
-    - apiVersion: kubefoundry.ai/v1alpha1
+    - apiVersion: kubeairunway.ai/v1alpha1
       kind: ModelDeployment
       name: llama-70b-pd
       controller: true
@@ -1142,7 +1131,7 @@ status:
 │                      │                                          │
 │                      ▼                                          │
 │  2. Check for pause annotation                                  │
-│     - If kubefoundry.ai/reconcile-paused: "true", skip         │
+│     - If kubeairunway.ai/reconcile-paused: "true", skip         │
 │                      │                                          │
 │                      ▼                                          │
 │  3. Validate spec against schema (webhook)                      │
@@ -1244,7 +1233,7 @@ The controller enforces the ModelDeployment spec on the provider resource.
 ```yaml
 metadata:
   annotations:
-    kubefoundry.ai/reconcile-paused: "true"
+    kubeairunway.ai/reconcile-paused: "true"
 ```
 
 ### 4.7 Finalizer Handling
@@ -1263,13 +1252,13 @@ kubectl patch modeldeployment my-llm --type=merge \
 
 ### 4.8 Owner References and Garbage Collection
 
-The KubeFoundry controller sets `ownerReferences` on created provider resources:
+The KubeAIRunway controller sets `ownerReferences` on created provider resources:
 
 ```yaml
 # Provider resource (e.g., DynamoGraphDeployment)
 metadata:
   ownerReferences:
-    - apiVersion: kubefoundry.ai/v1alpha1
+    - apiVersion: kubeairunway.ai/v1alpha1
       kind: ModelDeployment
       name: my-llm
       uid: abc-123
@@ -1354,11 +1343,11 @@ The controller patches the provider resource in place for config field changes. 
 
 Labels from `ModelDeployment.metadata.labels` are selectively propagated:
 
-- **To provider resource:** Only labels with `kubefoundry.ai/` prefix are copied
+- **To provider resource:** Only labels with `kubeairunway.ai/` prefix are copied
 - **To pods:** Use `spec.podTemplate.metadata.labels` for pod-level labels
-- **Controller-managed:** The controller always adds `kubefoundry.ai/managed-by: kubefoundry`
+- **Controller-managed:** The controller always adds `kubeairunway.ai/managed-by: kubeairunway`
 
-This prevents accidental conflicts with provider-managed labels while allowing KubeFoundry-specific labels to flow through.
+This prevents accidental conflicts with provider-managed labels while allowing KubeAIRunway-specific labels to flow through.
 
 ### 4.13 Secret Handling
 
@@ -1420,8 +1409,8 @@ provider:
 
 | Key                     | Type              | Description                      | Default |
 | ----------------------- | ----------------- | -------------------------------- | ------- |
-| `head.resources.cpu`    | string            | CPU request for Ray head node    | `"2"`   |
-| `head.resources.memory` | string            | Memory request for Ray head node | `"4Gi"` |
+| `head.resources.cpu`    | string            | CPU request for Ray head node    | `"4"`   |
+| `head.resources.memory` | string            | Memory request for Ray head node | `"16Gi"` |
 | `head.rayStartParams`   | map[string]string | Ray head start parameters        | `{}`    |
 
 **Example:**
@@ -1465,9 +1454,10 @@ The following defaults are applied by provider controllers when not overridden:
 
 | Component | Field | Default Value |
 |-----------|-------|---------------|
-| Head | `resources.cpu` | `"2"` |
-| Head | `resources.memory` | `"4Gi"` |
+| Head | `resources.cpu` | `"4"` |
+| Head | `resources.memory` | `"16Gi"` |
 | Head | `rayStartParams` | `{}` |
+| Worker | `resources.memory` | `"32Gi"` |
 
 **KAITO Defaults:**
 
@@ -1518,7 +1508,7 @@ Each provider controller manages default container images for supported engines.
 
 **Controller Structure (Go + Kubebuilder):**
 ```
-kubefoundry-controller/
+kubeairunway-controller/
 ├── api/
 │   └── v1alpha1/
 │       ├── modeldeployment_types.go
@@ -1551,7 +1541,7 @@ kubefoundry-controller/
 ```
 
 **Deliverables:**
-- `kubefoundry controller install` installs controller and CRDs
+- `kubeairunway controller install` installs controller and CRDs
 - Published manifests at `manifests/install.yaml` for CLI-free installation
 - Kustomize base at `manifests/` for customization
 - `kubectl apply -f modeldeployment.yaml` creates provider deployment
@@ -1561,7 +1551,7 @@ kubefoundry-controller/
 ### Phase 2: Advanced Features
 
 **Scope:**
-- Dry-run capability (`kubefoundry.ai/dry-run: "true"` annotation)
+- Dry-run capability (`kubeairunway.ai/dry-run: "true"` annotation)
 - Provider migration support
 - Metrics and observability
 - Conversion webhooks for future API versions
@@ -1614,15 +1604,15 @@ The TypeScript binary becomes a thin client:
 
 ### 6.3 Controller Upgrades
 
-When upgrading the KubeFoundry controller:
+When upgrading the KubeAIRunway controller:
 
 **Upgrade process:**
 ```bash
 # Option A: CLI upgrade
-kubefoundry controller upgrade
+kubeairunway controller upgrade
 
 # Option B: kubectl
-kubectl apply -f https://raw.githubusercontent.com/kubefoundry/kubefoundry/main/manifests/install.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubeairunway/kubeairunway/main/manifests/install.yaml
 ```
 
 **Behavior during upgrade:**
@@ -1640,7 +1630,7 @@ kubectl apply -f https://raw.githubusercontent.com/kubefoundry/kubefoundry/main/
 **Rollback:**
 ```bash
 # Rollback to previous version
-kubectl rollout undo deployment/kubefoundry-controller -n kubefoundry-system
+kubectl rollout undo deployment/kubeairunway-controller -n kubeairunway-system
 ```
 
 **Version compatibility:**
@@ -1650,7 +1640,7 @@ kubectl rollout undo deployment/kubefoundry-controller -n kubefoundry-system
 
 ### 6.4 Version Compatibility Matrix
 
-| KubeFoundry Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
+| KubeAIRunway Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
 |------------------------|------------|----------------|-----------------|------------------|
 | v0.1.x                 | 1.26-1.30  | v0.3.x         | v0.1.x          | v1.1.x           |
 
@@ -1662,7 +1652,7 @@ kubectl rollout undo deployment/kubefoundry-controller -n kubefoundry-system
 | Dynamo   | v0.1.0          | nvidia.com/v1alpha1 | Requires NVIDIA GPU operator |
 | KubeRay  | v1.1.0          | ray.io/v1       | Optional: KubeRay autoscaler for scaling |
 
-> **Note:** This matrix will be updated with each release. Check the [release notes](https://github.com/kubefoundry/kubefoundry/releases) for the latest compatibility information.
+> **Note:** This matrix will be updated with each release. Check the [release notes](https://github.com/kubeairunway/kubeairunway/releases) for the latest compatibility information.
 
 ---
 
@@ -1742,14 +1732,14 @@ The controller includes a validating admission webhook (Phase 1).
 
 ```
 # Controller metrics
-kubefoundry_modeldeployment_total{namespace, phase}
-kubefoundry_reconciliation_duration_seconds{provider}
-kubefoundry_reconciliation_errors_total{provider, error_type}
-kubefoundry_provider_selection{provider, reason}
+kubeairunway_modeldeployment_total{namespace, phase}
+kubeairunway_reconciliation_duration_seconds{provider}
+kubeairunway_reconciliation_errors_total{provider, error_type}
+kubeairunway_provider_selection{provider, reason}
 
 # Deployment metrics
-kubefoundry_deployment_replicas{name, namespace, state}
-kubefoundry_deployment_phase{name, namespace, phase}
+kubeairunway_deployment_replicas{name, namespace, state}
+kubeairunway_deployment_phase{name, namespace, phase}
 ```
 
 ### Events
@@ -1758,7 +1748,7 @@ kubefoundry_deployment_phase{name, namespace, phase}
 Events:
   Type    Reason              Message
   ----    ------              -------
-  Normal  ProviderSelected    Selected provider 'dynamo': default → dynamo (GPU inference default)
+  Normal  ProviderSelected    Selected provider 'dynamo': matched capabilities: engine=vllm, gpu=true, mode=aggregated
   Normal  ResourceCreated     Created DynamoGraphDeployment 'my-llm'
   Warning SecretNotFound      Secret 'hf-token-secret' not found in namespace 'default'
   Warning ProviderError       Provider resource in error state: insufficient GPUs
@@ -1775,7 +1765,7 @@ Events:
 ```yaml
 # Controller ServiceAccount permissions
 rules:
-  - apiGroups: ["kubefoundry.ai"]
+  - apiGroups: ["kubeairunway.ai"]
     resources: ["modeldeployments", "modeldeployments/status"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["kaito.sh"]
@@ -1868,9 +1858,9 @@ The unified API abstracts common patterns, but providers may have features that 
 
 **Impact:** Users needing provider-specific features not exposed in the unified API must either:
 1. Use `provider.overrides` (limited to documented keys)
-2. Create provider resources directly, bypassing KubeFoundry
+2. Create provider resources directly, bypassing KubeAIRunway
 
-Mixed management (some resources via KubeFoundry, some direct) creates operational complexity and potential conflicts.
+Mixed management (some resources via KubeAIRunway, some direct) creates operational complexity and potential conflicts.
 
 **Mitigation (future):**
 - Expand `provider.overrides` as new provider features emerge
@@ -1881,7 +1871,7 @@ Mixed management (some resources via KubeFoundry, some direct) creates operation
 The design handles provider operator unavailability at deletion time (finalizer timeout, Section 4.7), but not during ongoing operations.
 
 **Impact:** If a provider operator crashes, is uninstalled, or becomes unavailable while `ModelDeployment` resources exist:
-- KubeFoundry controller continues creating/updating provider resources
+- KubeAIRunway controller continues creating/updating provider resources
 - Provider resources are not reconciled into actual workloads
 - `ModelDeployment.status` becomes stale (no status updates from provider)
 - No proactive detection or user notification
@@ -1927,7 +1917,7 @@ Use Helm charts with values-based provider selection.
 
 ### Alternative 4: Local Binary with Embedded Controller
 
-Run controller logic in the local kubefoundry binary instead of in-cluster.
+Run controller logic in the local kubeairunway binary instead of in-cluster.
 
 **Rejected because:**
 - No high availability (laptop closes, reconciliation stops)
@@ -1994,13 +1984,13 @@ engine:
 
 ### A.1 Overview
 
-Instead of separate provider controllers, a single `kubefoundry-controller` contains all provider transformation logic:
+Instead of separate provider controllers, a single `kubeairunway-controller` contains all provider transformation logic:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                     User's Machine                                │
 │  ┌─────────────────────────────────────────────────────────────┐ │
-│  │              kubefoundry binary (TypeScript)                │ │
+│  │              kubeairunway binary (TypeScript)                │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │ │
 │  │  │   Web UI     │  │   CLI        │  │ Controller       │  │ │
 │  │  │              │  │   Commands   │  │ Installer        │  │ │
@@ -2012,7 +2002,7 @@ Instead of separate provider controllers, a single `kubefoundry-controller` cont
 ┌───────────────────────────────────────────────────────────────────┐
 │                         K8s Cluster                                │
 │  ┌─────────────────────────────────────────────────────────────┐  │
-│  │              kubefoundry-controller (Go)                     │  │
+│  │              kubeairunway-controller (Go)                     │  │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │  │
 │  │  │ Reconciler   │  │  Provider    │  │ Status           │   │  │
 │  │  │              │  │  Transformers│  │ Aggregation      │   │  │
@@ -2030,7 +2020,7 @@ Instead of separate provider controllers, a single `kubefoundry-controller` cont
 ### A.2 Data Flow
 
 ```
-User Config → ModelDeployment CRD → KubeFoundry Controller → Provider CRD → Provider Operator → Pods/Services
+User Config → ModelDeployment CRD → KubeAIRunway Controller → Provider CRD → Provider Operator → Pods/Services
                      ↓
               Status Aggregation
 ```
@@ -2040,7 +2030,7 @@ User Config → ModelDeployment CRD → KubeFoundry Controller → Provider CRD 
 All provider logic lives in a single Go controller:
 
 ```
-kubefoundry-controller/
+kubeairunway-controller/
 ├── api/
 │   └── v1alpha1/
 │       ├── modeldeployment_types.go
@@ -2101,11 +2091,11 @@ DEFAULT:
 Single deployment:
 
 ```bash
-# One command installs everything
-kubectl apply -f https://kubefoundry.io/install.yaml
+# Install controller
+kubeairunway controller install
 
-# Or via CLI
-kubefoundry controller install
+# Or via kubectl with published manifests
+kubectl apply -f https://raw.githubusercontent.com/kubeairunway/kubeairunway/main/manifests/install.yaml
 ```
 
 ### A.6 Comparison: Monolithic vs Plugin Architecture
