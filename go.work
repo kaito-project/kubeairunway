@@ -1,8 +1,0 @@
-go 1.25.3
-
-use (
-	./controller
-	./providers/dynamo
-	./providers/kaito
-	./providers/kuberay
-)
