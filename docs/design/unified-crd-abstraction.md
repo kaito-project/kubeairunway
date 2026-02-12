@@ -30,106 +30,18 @@ This document proposes the introduction of a unified KubeAIRunway Custom Resourc
 
 ---
 
-## 2. Behavior Changes
-
-> **Important:** This section documents significant changes from previous KubeAIRunway behavior.
-
-### 2.1 Controller Required
-
-KubeAIRunway now requires the controller to be installed in the cluster before deployments can be created.
-
-**Before:**
-- `kubeairunway` binary generated and applied provider manifests directly
-- Worked immediately with just kubeconfig access
-
-**After:**
-- `kubeairunway` binary creates `ModelDeployment` CRDs
-- Controller (running in-cluster) reconciles CRDs into provider resources
-- Must run `kubeairunway controller install` before first use
-
-**Option A: Using the CLI**
-```bash
-$ kubeairunway controller install
-Installing kubeairunway-controller...
-  - CRDs: ModelDeployment
-  - Deployment: kubeairunway-controller
-  - RBAC: ServiceAccount, ClusterRole, ClusterRoleBinding
-Done. Controller running in namespace kubeairunway-system.
-
-$ kubeairunway start
-Starting UI at http://localhost:3000
-```
-
-**Option B: Using kubectl directly**
-```bash
-# One-command install
-kubectl apply -f https://raw.githubusercontent.com/kubeairunway/kubeairunway/main/manifests/install.yaml
-
-# Or with kustomize for customization
-kubectl apply -k https://github.com/kaito-project/kubeairunway/manifests
-```
-
-**Upgrading the controller:**
-```bash
-# Option A: CLI
-$ kubeairunway controller upgrade
-
-# Option B: kubectl (re-apply latest manifests)
-kubectl apply -f https://raw.githubusercontent.com/kubeairunway/kubeairunway/main/manifests/install.yaml
-```
-
-If controller isn't installed:
-```bash
-$ kubeairunway start
-Error: kubeairunway-controller not found in cluster.
-Run 'kubeairunway controller install' first.
-```
-
-### 2.2 TypeScript Binary Role Change
-
-| Function                    | Before                       | After                                                     |
-| --------------------------- | ---------------------------- | --------------------------------------------------------- |
-| Generate provider manifests | Yes                          | No (controller does this)                                 |
-| Apply provider CRDs         | Yes                          | No (controller does this)                                 |
-| Parse provider status       | Yes                          | No (reads ModelDeployment.status)                         |
-| Web UI                      | Yes                          | Yes (unchanged)                                           |
-| Create deployments          | Direct to provider           | Creates ModelDeployment CRD                               |
-| Install controller          | Applies controller manifests | Applies controller manifests (also available via kubectl) |
-
-### 2.3 Manifest Generation Location
-
-All manifest generation logic moves from TypeScript to the Go controller. The TypeScript codebase no longer contains provider-specific manifest templates.
-
-### 2.4 KubeRay Requires Explicit Selection
-
-KubeRay is never auto-selected by the provider selection algorithm. Users must explicitly specify `provider.name: kuberay` to use it.
-
-**Rationale:**
-- KubeRay's primary differentiator is autoscaling via Ray Serve, which is out of scope for v1alpha1
-- KubeRay requires more setup knowledge and Ray-specific configuration
-- Auto-selecting KubeRay could confuse users who aren't familiar with Ray
-
-**Usage:**
-```yaml
-spec:
-  provider:
-    name: kuberay  # Must be explicit - will not be auto-selected
-```
-
----
-
 ## 3. Architecture: Provider Plugin Model
 
 > This architecture treats all providers (KAITO, Dynamo, KubeRay, and future providers) as external plugins rather than built-in components. This approach is inspired by the Kubernetes Container Runtime Interface (CRI) and Cluster API provider patterns.
 
 ### 3.1 Design Principles
 
-> **Recommendation:** This plugin architecture is the recommended approach for KubeAIRunway. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need third-party providers.
+> **Recommendation:** This plugin architecture is the recommended approach for KubeAIRunway. It provides the best extensibility, independent release cycles, and follows proven Kubernetes patterns (CRI, Cluster API). See Appendix A for a simpler monolithic alternative suitable for teams that don't need external providers.
 
 1. **Core has zero provider knowledge** - The core controller only handles ModelDeployment CRD validation and defaults
-2. **Providers are adapters** - Each provider controller is a "shim" (like dockershim for CRI) that translates ModelDeployment to upstream CRDs
+2. **Providers are adapters** - Each provider controller is a "shim" (like dockershim for CRI) that translates ModelDeployment to provider CRs
 3. **Independent releases** - Provider controllers are versioned and released independently from core
-4. **Third-party extensibility** - Anyone can add a new provider without modifying KubeAIRunway core
+4. **External extensibility** - Anyone can add a new provider without modifying KubeAIRunway core
 
 ### 3.2 The CRI Analogy
 
@@ -140,7 +52,7 @@ CRI Pattern:
    kubelet ──► CRI Interface ──► containerd/CRI-O/dockershim ──► containers
 
 KubeAIRunway Provider Pattern:
-   core ──► Provider Interface ──► kaito-provider/dynamo-provider ──► upstream CRDs
+   core ──► Provider Interface ──► kaito-provider/dynamo-provider ──► provider CRs
 ```
 
 Just as `dockershim` was an adapter that made Docker (which predates CRI) work with the CRI interface, `kaito-provider` is an adapter that makes KAITO (which doesn't know about KubeAIRunway) work with the KubeAIRunway provider interface.
@@ -162,7 +74,7 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                    User                                          │
+│                                    User or Client                                │
 └──────────────────────────────────────┬──────────────────────────────────────────┘
                                        │
                                        │ kubectl apply
@@ -174,11 +86,11 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
 │  spec:                                                                           │
 │    model: {id: "meta-llama/Llama-3.1-8B", source: huggingface}                  │
 │    engine: {type: vllm}                                                          │
-│    provider: {name: kaito}   ◄─── explicit, or let provider-selector choose     │
+│    provider: {name: kaito}   ◄─── explicit, or let controller auto-select     │
 │    resources: {...}                                                              │
 │                                                                                  │
 │  status:                                                                         │
-│    provider:                       ◄─── set by provider-selector or user        │
+│    provider:                       ◄─── set by controller or user        │
 │      name: kaito                                                                 │
 │      selectedReason: "..."                                                       │
 │    phase: Running                  ◄─── set by provider controller              │
@@ -186,25 +98,25 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
 │    conditions: [...]               ◄─── set by provider controller              │
 └──────────────────────────────────────┬──────────────────────────────────────────┘
                                        │
-         ┌─────────────────────────────┼─────────────────────────────┐
-         │                             │                             │
-         ▼                             ▼                             ▼
-┌─────────────────────┐  ┌─────────────────────────┐  ┌─────────────────────────┐
-│  kubeairunway-core   │  │   provider-selector     │  │   provider controllers  │
-│  (webhooks only)    │  │   (optional component)  │  │                         │
-│                     │  │                         │  │  ┌───────────────────┐  │
-│  • Validate schema  │  │  • Watches MD where     │  │  │  kaito-provider   │  │
-│  • Set defaults     │  │    provider.name empty  │  │  └───────────────────┘  │
-│  • NO provider      │  │  • Queries registered   │  │  ┌───────────────────┐  │
-│    knowledge        │  │    providers            │  │  │  dynamo-provider  │  │
-│                     │  │  • Runs selection algo  │  │  └───────────────────┘  │
-│                     │  │  • Sets provider.name   │  │  ┌───────────────────┐  │
-│                     │  │                         │  │  │  kuberay-provider │  │
-│                     │  │  Can be replaced with   │  │  └───────────────────┘  │
-│                     │  │  custom selector!       │  │  ┌───────────────────┐  │
-│                     │  │                         │  │  │  your-provider    │  │
-│                     │  │                         │  │  └───────────────────┘  │
-└─────────────────────┘  └─────────────────────────┘  └─────────────────────────┘
+         ┌──────────────────────────────────────────┼─────────────────┐
+         │                                                            │
+         ▼                                                            ▼
+┌──────────────────────────────────────────────────┐  ┌─────────────────────────┐
+│  kubeairunway-controller                         │  │   provider controllers  │
+│  (single binary)                                 │  │                         │
+│                                                  │  │  ┌───────────────────┐  │
+│  • Validate schema (webhook)                     │  │  │  kaito-provider   │  │
+│  • Set defaults (webhook)                        │  │  └───────────────────┘  │
+│  • Provider selection (--enable-provider-selector│  │  ┌───────────────────┐  │
+│    flag, default true)                           │  │  │  dynamo-provider  │  │
+│  • Queries InferenceProviderConfig resources     │  │  └───────────────────┘  │
+│  • Runs CEL-based selection algorithm            │  │  ┌───────────────────┐  │
+│  • Sets status.provider.name                     │  │  │  kuberay-provider │  │
+│                                                  │  │  └───────────────────┘  │
+│  Can be replaced with custom selector            │  │  ┌───────────────────┐  │
+│  (--enable-provider-selector=false)              │  │  │  your-provider    │  │
+│                                                  │  │  └───────────────────┘  │
+└──────────────────────────────────────────────────┘  └─────────────────────────┘
                                        │
                                        │ reads
                                        ▼
@@ -215,6 +127,15 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
 │  Each provider registers itself with capabilities and selection rules            │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+> **Admission Validation:** The core webhook currently performs schema validation (required fields, immutable fields, GPU requirements). Provider-capability validation (e.g., checking that the requested engine type is supported by the selected provider) can be performed at admission time by reading the `InferenceProviderConfig` CRD, since it is a core resource. This is a planned capability.
+
+> **`selectedReason` field:** A free-form string set by the core controller during provider selection. It is informational only (for observability) and is not consumed by any logic. Examples from real deployments:
+> - Auto-selected: `"matched capabilities: engine=llamacpp, gpu=false, mode=aggregated"`
+> - Auto-selected: `"matched capabilities: engine=vllm, gpu=true, mode=aggregated"`
+> - Explicit: `"explicit provider selection"`
+
+> **Ownership model:** Provider CRs (Workspace, DynamoGraphDeployment, RayService) are owned by the ModelDeployment via `ownerReferences` with `controller: true` and `blockOwnerDeletion: true`. Deleting a ModelDeployment cascade-deletes the associated provider CR. Direct modifications to provider CRs (e.g., via `kubectl edit`) are overwritten by the provider controller on the next reconciliation — ModelDeployment is the source of truth.
 
 ### 3.4 Data Flow
 
@@ -242,9 +163,9 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                           │                                    │
                           ▼                                    │
                ┌─────────────────────┐                         │
-               │ provider-selector   │                         │
-               │ picks best match    │                         │
-               │ from configs        │                         │
+               │ built-in provider   │                         │
+               │ selection algorithm │                         │
+               │ (CEL-based)         │                         │
                └─────────┬───────────┘                         │
                          │                                     │
                          │ sets status.provider.name           │
@@ -254,13 +175,14 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                                                                ▼
                                                     ┌─────────────────────┐
                                                     │ Provider creates    │
-                                                    │ upstream resource   │
-                                                    │ (Workspace, etc.)   │
+                                                    │ provider resource   │
+                                                    │ (Kaito Workspace or │
+                                                    │ Dynamo DGD, etc.)   │
                                                     └─────────┬───────────┘
                                                               │
                                                               ▼
                                                     ┌─────────────────────┐
-                                                    │ Upstream operator   │
+                                                    │ Provider operator   │
                                                     │ reconciles pods     │
                                                     └─────────┬───────────┘
                                                               │
@@ -272,34 +194,76 @@ When dockershim was removed, Mirantis created `cri-dockerd` as an external adapt
                                                     └─────────────────────┘
 ```
 
+#### Example: Status from Provider to ModelDeployment
+
+Below is a real example of a Dynamo provider populating ModelDeployment status after a successful deployment:
+
+```yaml
+status:
+  conditions:
+    - type: Validated
+      status: "True"
+      reason: ValidationPassed
+      message: Schema validation passed
+    - type: ProviderSelected
+      status: "True"
+      reason: AutoSelected
+      message: Provider dynamo auto-selected
+    - type: ProviderCompatible
+      status: "True"
+      reason: CompatibilityVerified
+      message: Configuration compatible with Dynamo
+    - type: ResourceCreated
+      status: "True"
+      reason: ResourceCreated
+      message: DynamoGraphDeployment created successfully
+    - type: Ready
+      status: "True"
+      reason: DeploymentReady
+      message: All replicas are ready
+  phase: Running
+  endpoint:
+    service: qwen-gpu-test-frontend
+    port: 8000
+  provider:
+    name: dynamo
+    resourceKind: DynamoGraphDeployment
+    resourceName: qwen-gpu-test
+    selectedReason: "matched capabilities: engine=vllm, gpu=true, mode=aggregated"
+  replicas:
+    desired: 2
+    ready: 2
+    available: 2
+```
+
 ### 3.5 Component Breakdown
 
-#### 3.5.1 kubeairunway-core (Minimal)
+#### 3.5.1 kubeairunway-controller
 
-The core component contains only:
+The core controller is a single binary that contains:
 - `ModelDeployment` CRD definition
 - `InferenceProviderConfig` CRD definition
 - Validating webhook (schema validation only, no provider knowledge)
 - Mutating webhook (defaults only)
+- Provider selection algorithm (enabled via `--enable-provider-selector` flag, default `true`)
 
 The core does NOT contain:
 - Provider-specific transformation logic
-- Provider selection algorithm (this is in provider-selector)
 - Knowledge of Workspace, DynamoGraphDeployment, or RayService schemas
 
-#### 3.5.2 provider-selector (Conditionally Required, Replaceable)
+#### 3.5.2 Provider Selection (Built-in, Replaceable)
 
-A separate component that handles auto-selection:
-- Watches `ModelDeployment` resources where `status.provider.name` is empty
+Provider selection is built into the core controller, enabled by default via `--enable-provider-selector` flag:
+- During reconciliation, selects a provider for `ModelDeployment` resources where `status.provider.name` is empty
 - Queries all `InferenceProviderConfig` resources
-- Runs selection algorithm based on provider capabilities
+- Runs selection algorithm based on provider capabilities and CEL rules
 - Sets `status.provider.name` and `status.provider.selectedReason`
 
-**When is provider-selector required?**
-- **Required** if `spec.provider.name` is omitted (auto-selection needed)
-- **Not required** if user explicitly specifies `spec.provider.name`
+**When does provider selection run?**
+- **Runs** if `spec.provider.name` is omitted and `--enable-provider-selector=true` (default)
+- **Skipped** if user explicitly specifies `spec.provider.name`
 
-If provider-selector is not installed and no provider is specified, the `ModelDeployment` remains in `Pending` status with condition `ProviderSelected: False` and message "No provider specified and provider-selector not installed".
+If provider selection is disabled (`--enable-provider-selector=false`) and no provider is specified, the `ModelDeployment` remains in `Pending` status with condition `ProviderSelected: False` and message "No provider specified and provider-selector not installed".
 
 **No healthy providers:** If all `InferenceProviderConfig` resources report `ready: false`, the `ModelDeployment` remains in `Pending` status with message "No healthy providers available".
 
@@ -308,21 +272,41 @@ Organizations can replace this with custom selectors for:
 - Cost-based selection ("Prefer cheapest provider")
 - Availability-based selection ("Use provider with most capacity")
 
+**Custom selector mechanism:** A custom selector is a Kubernetes controller that:
+1. Disables the built-in provider-selector (`--enable-provider-selector=false`)
+2. Watches `ModelDeployment` resources where both `spec.provider.name` and `status.provider.name` are empty
+3. Applies custom selection logic (e.g., check team labels, query cost APIs, check node capacity)
+4. Sets `status.provider.name` and `status.provider.selectedReason`
+5. Sets the `ProviderSelected` condition to `True`
+
+**Selection algorithm (when using built-in provider selection):**
+1. Filter compatible providers by engine type, GPU/CPU support, and serving mode
+2. Evaluate CEL selection rules from each `InferenceProviderConfig` to compute priority scores
+3. Select the provider with the highest priority
+4. If multiple providers have the same priority, use alphabetical name as a stable tiebreaker
+
+**InferenceProviderConfig lifecycle:** Provider selection is a one-time operation by design. Once `status.provider.name` is set, it is not re-evaluated. This means:
+- **Provider config removed:** Existing ModelDeployments continue running (provider already selected in status). New deployments will not select the removed provider.
+- **Capabilities changed:** Existing ModelDeployments are unaffected. Only future selections use the updated capabilities.
+- **Provider controller removed:** Provider resources remain but stop being reconciled; status becomes stale.
+
+This is intentional to avoid disrupting running workloads due to administrative configuration changes.
+
 #### 3.5.3 Provider Controllers
 
 Each provider is a separate controller deployment that acts as an adapter (shim):
 
 ```
-github.com/kaito-project/kaito-provider/
-github.com/kaito-project/dynamo-provider/
-github.com/kaito-project/kuberay-provider/
-github.com/third-party/their-provider/   # Third-party providers welcome
+github.com/kubeairunway/kaito-provider/
+github.com/kubeairunway/dynamo-provider/
+github.com/kubeairunway/kuberay-provider/
+github.com/external/their-provider/   # External providers welcome
 ```
 
 Provider controllers:
-1. Register themselves by creating an `InferenceProviderConfig`
+1. Register themselves by auto-creating an `InferenceProviderConfig` on startup (no manual user step required)
 2. Watch `ModelDeployment` filtered by `status.provider.name == "their-name"`
-3. Transform `ModelDeployment` spec to upstream CRD (e.g., Workspace)
+3. Transform `ModelDeployment` spec to provider CR (e.g., Kaito Workspace)
 4. Write status back to `ModelDeployment` using server-side apply
 5. Handle upstream schema changes with version-specific transformers
 
@@ -338,42 +322,33 @@ Provider controllers:
 
 ```
 kubeairunway-system namespace:
-├── kubeairunway-core         (webhooks, minimal resources)
-├── provider-selector        (optional, replaceable)
+├── kubeairunway-controller  (webhooks + provider selection)
 ├── kaito-provider      ─┐
 ├── dynamo-provider      ├── independently versioned & released
 ├── kuberay-provider    ─┘
-└── third-party-provider     (installed separately)
+└── external-provider     (installed separately)
 ```
 
 ### 3.8 Installation Options
 
-```bash
-# Full bundle (core + selector + all built-in providers)
-kubectl apply -f https://kubeairunway.io/install.yaml
-
-# À la carte installation
-kubectl apply -f https://kubeairunway.io/core.yaml
-kubectl apply -f https://kubeairunway.io/provider-selector.yaml
-kubectl apply -f https://kubeairunway.io/providers/kaito.yaml
-kubectl apply -f https://kubeairunway.io/providers/dynamo.yaml
-
-# Third-party provider
-kubectl apply -f https://newframework.io/kubeairunway-provider.yaml
-```
-
-Or with CLI:
+> **Note:** The provider YAMLs below install only the KubeAIRunway provider controller (shim), not the upstream provider itself. The upstream provider (e.g., KAITO, Dynamo) must be installed separately via its own Helm chart, as documented in `InferenceProviderConfig.spec.installation`.
 
 ```bash
-kubeairunway controller install                    # Core only
-kubeairunway provider install kaito                # Built-in provider
+# Install core controller (includes webhooks + provider selection)
+kubeairunway controller install
+
+# Install built-in providers
+kubeairunway provider install kaito
 kubeairunway provider install dynamo
-kubeairunway provider install https://example.com/provider.yaml  # Third-party
+kubeairunway provider install kuberay
+
+# External provider
+kubectl apply -f https://example.com/provider.yaml
 ```
 
 ### 3.9 InferenceProviderConfig CRD
 
-Each provider registers itself by creating an `InferenceProviderConfig` resource:
+Each provider controller automatically creates/updates its `InferenceProviderConfig` resource on startup (no manual user step required):
 
 ```yaml
 apiVersion: kubeairunway.ai/v1alpha1
@@ -397,7 +372,7 @@ spec:
       priority: 100  # Only llamacpp provider
 
   # Documentation link
-  documentation: "https://github.com/kaito-project/kaito-provider"
+  documentation: "https://github.com/kubeairunway/kaito-provider"
 
 status:
   # Written by the provider controller on startup
@@ -419,17 +394,17 @@ status:
 Multiple controllers write to `ModelDeployment.status` using server-side apply with distinct field managers.
 
 **Conflict Resolution:** Server-side apply (SSA) handles conflicts via field ownership. Each controller uses a unique `fieldManager` identifier and owns distinct, non-overlapping fields. This means:
-- `provider-selector` owns `status.provider.name` and `status.provider.selectedReason`
+- Core controller owns `status.provider.name` and `status.provider.selectedReason`
 - Provider controllers own `status.phase`, `status.endpoint`, `status.replicas`, etc.
 - No conflicts occur because fields don't overlap
 - If a controller attempts to write a field owned by another, SSA rejects the update (this indicates a bug)
 
 ```yaml
 status:
-  # Written by provider-selector (fieldManager: "provider-selector")
+  # Written by core controller (fieldManager: "kubeairunway-controller")
   provider:
     name: kaito
-    selectedReason: "no GPU requested → kaito"
+    selectedReason: "matched capabilities: engine=llamacpp, gpu=false, mode=aggregated"
     # Written by provider controller (fieldManager: "kaito-provider")
     resourceName: my-llm
     resourceKind: Workspace
@@ -449,7 +424,7 @@ status:
   conditions:
     - type: Validated           # core webhook
       status: "True"
-    - type: ProviderSelected    # provider-selector
+    - type: ProviderSelected    # core controller
       status: "True"
     - type: ProviderCompatible  # provider controller
       status: "True"
@@ -460,6 +435,8 @@ status:
 
   observedGeneration: 1
 ```
+
+> **Version skew:** All providers are currently in-tree (same repository) and compiled against the same `ModelDeploymentStatus` types, so there is no version skew risk today. The status fields are intentionally generic — `phase`, `message`, `conditions`, `replicas`, `endpoint` — following standard Kubernetes patterns to minimize breaking changes. When/if providers move out-of-tree, they would import the types package as a Go module dependency and manage version compatibility through Go module versioning.
 
 ### 3.11 Provider Controller Implementation
 
@@ -553,6 +530,10 @@ var KAITOTransformers = map[string]KAITOTransformer{
 }
 ```
 
+> **Unknown schema handling:** When a provider encounters an unrecognized CRD schema (e.g., the upstream provider was upgraded to a version the provider controller doesn't know about), the `handleUnknownSchema` fallback is invoked. This sets the `ProviderCompatible` condition to `False` with a message indicating the unsupported schema version, and the `ModelDeployment` enters a `Failed` phase. The provider controller must be updated to add a new transformer for the unknown schema version. This ensures explicit failure rather than silent data corruption when providers break backward compatibility.
+
+> **Provider version incompatibility detection:** Currently, incompatibility between the installed upstream provider (e.g., KAITO installed via Helm) and the KubeAIRunway provider controller is detected **reactively** — if the provider controller generates a CR that doesn't match the installed CRD schema, the apply fails at the API server and the error is surfaced in `ModelDeployment.status.conditions` as `ResourceCreated: False`. Each provider records the upstream CRD version it was built for in `InferenceProviderConfig.status.upstreamCRDVersion` (e.g., `kaito.sh/v1beta1`). **Planned improvement:** The `SchemaDetector` (Section 3.12) will enable **proactive** detection by hashing the installed CRD schema on startup and matching it against known transformer versions. If the schema hash doesn't match any known transformer, the provider will immediately report incompatibility via `ProviderCompatible: False` before any ModelDeployment reconciliation attempts. See also Section 13.1 (Known Limitations) for additional mitigation plans.
+
 ### 3.13 Semantic Translation
 
 Provider controllers handle two types of translation, similar to how Kubernetes dockershim translated between CRI and Docker:
@@ -644,6 +625,8 @@ func (t *DynamoTransformer) TranslateStatus(dgd *unstructured.Unstructured) (*Mo
 }
 ```
 
+> **Conditions extensibility:** ModelDeployment uses the standard Kubernetes `metav1.Condition` pattern via `meta.SetStatusCondition()`. This is inherently extensible — providers can add new condition types (e.g., a provider-specific `GPUHealthy` condition) without schema changes. Existing conditions are preserved when new ones are added, and consumers only look for condition types they understand. When a provider introduces new status information (e.g., a new condition type), it is additive and does not break existing functionality.
+
 #### Additional Resource Creation
 
 Like dockershim creating pause containers, provider controllers may create additional resources:
@@ -668,16 +651,16 @@ func (t *DynamoTransformer) TranslateSpec(md *ModelDeployment) ([]*unstructured.
 
 ### 3.14 Adding a New Provider
 
-Third parties can add providers without any changes to KubeAIRunway core:
+New providers can be added without any changes to KubeAIRunway core:
 
 1. Create a controller that watches `ModelDeployment`
 2. Filter for `status.provider.name == "your-provider"`
-3. Transform to your upstream CRD
+3. Transform to your provider CR
 4. Write status back to `ModelDeployment`
-5. Create `InferenceProviderConfig` on startup
+5. Auto-create `InferenceProviderConfig` on startup
 
 ```go
-// third-party-provider/main.go
+// external-provider/main.go
 func main() {
     // Register this provider
     providerConfig := &kubeairunwayv1alpha1.InferenceProviderConfig{
@@ -726,7 +709,8 @@ spec:
   # Provider selection (optional - auto-selected if not specified)
   provider:
     name: "dynamo"                           # dynamo | kaito | kuberay
-    # Provider-specific overrides (optional escape hatch, see Section 4.15)
+    # Provider-specific overrides — an untyped map[string]interface{} that allows
+    # provider-specific configuration. No compile-time validation. See Section 4.15.
     overrides: {}
       # Dynamo example:
       # routerMode: "kv"
@@ -814,7 +798,7 @@ status:
     name: "dynamo"
     resourceName: "my-llm"
     resourceKind: "DynamoGraphDeployment"
-    selectedReason: "default → dynamo (GPU inference default)"  # Explains auto-selection
+    selectedReason: "matched capabilities: engine=vllm, gpu=true, mode=aggregated"  # Explains auto-selection
 
   # Replica status
   replicas:
@@ -834,7 +818,7 @@ status:
       lastTransitionTime: "2026-01-30T09:50:00Z"
       reason: "ValidationPassed"
       message: "Schema validation passed"
-    - type: "ProviderSelected"                   # Set by provider-selector
+    - type: "ProviderSelected"                   # Set by core controller
       status: "True"
       lastTransitionTime: "2026-01-30T09:51:00Z"
       reason: "AutoSelected"
@@ -938,7 +922,7 @@ status:
     name: "dynamo"
     resourceName: "llama-8b"
     resourceKind: "DynamoGraphDeployment"
-    selectedReason: "default → dynamo (GPU inference default)"
+    selectedReason: "matched capabilities: engine=vllm, gpu=true, mode=aggregated"
   endpoint:
     service: "llama-8b-frontend"
     port: 8000
@@ -1013,7 +997,7 @@ status:
     name: "kaito"
     resourceName: "gemma-cpu"
     resourceKind: "Workspace"
-    selectedReason: "no GPU requested → kaito (only CPU provider)"
+    selectedReason: "matched capabilities: engine=llamacpp, gpu=false, mode=aggregated"
   endpoint:
     service: "gemma-cpu"
     port: 80
@@ -1428,8 +1412,8 @@ provider:
 
 | Key                     | Type              | Description                      | Default |
 | ----------------------- | ----------------- | -------------------------------- | ------- |
-| `head.resources.cpu`    | string            | CPU request for Ray head node    | `"2"`   |
-| `head.resources.memory` | string            | Memory request for Ray head node | `"4Gi"` |
+| `head.resources.cpu`    | string            | CPU request for Ray head node    | `"4"`   |
+| `head.resources.memory` | string            | Memory request for Ray head node | `"16Gi"` |
 | `head.rayStartParams`   | map[string]string | Ray head start parameters        | `{}`    |
 
 **Example:**
@@ -1473,9 +1457,10 @@ The following defaults are applied by provider controllers when not overridden:
 
 | Component | Field | Default Value |
 |-----------|-------|---------------|
-| Head | `resources.cpu` | `"2"` |
-| Head | `resources.memory` | `"4Gi"` |
+| Head | `resources.cpu` | `"4"` |
+| Head | `resources.memory` | `"16Gi"` |
 | Head | `rayStartParams` | `{}` |
+| Worker | `resources.memory` | `"32Gi"` |
 
 **KAITO Defaults:**
 
@@ -1507,7 +1492,7 @@ Each provider controller manages default container images for supported engines.
 
 **Webhook TLS:** The validating webhook uses self-signed certificates managed by [cert-controller](https://github.com/open-policy-agent/cert-controller) (from the OPA project). This approach:
 - Automatically generates and rotates TLS certificates
-- No external dependency on cert-manager (cert-controller is an in-process library)
+- No external dependency on cert-manager
 - Certificates stored in Kubernetes secrets
 - Controller handles certificate rotation transparently
 
@@ -1670,7 +1655,7 @@ kubectl rollout undo deployment/kubeairunway-controller -n kubeairunway-system
 | Dynamo   | v0.1.0          | nvidia.com/v1alpha1 | Requires NVIDIA GPU operator |
 | KubeRay  | v1.1.0          | ray.io/v1       | Optional: KubeRay autoscaler for scaling |
 
-> **Note:** This matrix will be updated with each release. Check the [release notes](https://github.com/kaito-project/kubeairunway/releases) for the latest compatibility information.
+> **Note:** This matrix will be updated with each release. Check the [release notes](https://github.com/kubeairunway/kubeairunway/releases) for the latest compatibility information.
 
 ---
 
@@ -1766,7 +1751,7 @@ kubeairunway_deployment_phase{name, namespace, phase}
 Events:
   Type    Reason              Message
   ----    ------              -------
-  Normal  ProviderSelected    Selected provider 'dynamo': default → dynamo (GPU inference default)
+  Normal  ProviderSelected    Selected provider 'dynamo': matched capabilities: engine=vllm, gpu=true, mode=aggregated
   Normal  ResourceCreated     Created DynamoGraphDeployment 'my-llm'
   Warning SecretNotFound      Secret 'hf-token-secret' not found in namespace 'default'
   Warning ProviderError       Provider resource in error state: insufficient GPUs
@@ -1998,7 +1983,7 @@ engine:
 
 ## Appendix A: Alternative Architecture - Monolithic Controller
 
-> **Note:** This appendix describes a simpler alternative architecture where all provider knowledge is embedded in a single controller. **This is NOT the recommended approach** — see Section 3 for the recommended plugin architecture. This alternative trades extensibility for simplicity and may be appropriate for teams that don't need third-party providers or custom selection logic.
+> **Note:** This appendix describes a simpler alternative architecture where all provider knowledge is embedded in a single controller. **This is NOT the recommended approach** — see Section 3 for the recommended plugin architecture. This alternative trades extensibility for simplicity and may be appropriate for teams that don't need external providers or custom selection logic.
 
 ### A.1 Overview
 
@@ -2109,11 +2094,11 @@ DEFAULT:
 Single deployment:
 
 ```bash
-# One command installs everything
-kubectl apply -f https://kubeairunway.io/install.yaml
-
-# Or via CLI
+# Install controller
 kubeairunway controller install
+
+# Or via kubectl with published manifests
+kubectl apply -f https://raw.githubusercontent.com/kubeairunway/kubeairunway/main/manifests/install.yaml
 ```
 
 ### A.6 Comparison: Monolithic vs Plugin Architecture
@@ -2127,14 +2112,14 @@ kubeairunway controller install
 | Provider version pinning      | No                          | Yes (per provider)             |
 | Custom selection logic        | No                          | Yes (replaceable selector)     |
 | Installation complexity       | Single deployment           | Multiple deployments           |
-| Third-party providers         | Requires core changes       | Just deploy controller         |
+| External providers            | Requires core changes       | Just deploy controller         |
 
 ### A.7 When to Use Monolithic
 
 The monolithic architecture may be appropriate when:
 
 1. **Simplicity is paramount** - You want the easiest possible deployment
-2. **No third-party providers** - You only use KAITO, Dynamo, and KubeRay
+2. **No external providers** - You only use KAITO, Dynamo, and KubeRay
 3. **Centralized releases are acceptable** - You're OK waiting for a full controller release to get provider fixes
 4. **No custom selection needed** - The built-in selection algorithm meets your needs
 
@@ -2149,7 +2134,7 @@ The monolithic architecture may be appropriate when:
 **Disadvantages:**
 - Tight coupling - all provider code in one repo
 - Blast radius - bug in KAITO transformer affects all users
-- No third-party extensibility without forking
+- No external extensibility without forking
 - Cannot pin individual provider versions
 - Cannot replace selection algorithm
 
