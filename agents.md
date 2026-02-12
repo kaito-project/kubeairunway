@@ -117,7 +117,11 @@ Read these files **only when relevant** to your task:
 | File | When to read |
 |------|--------------|
 | [controller/AGENTS.md](controller/AGENTS.md) | Kubebuilder conventions, scaffolding rules |
-| [docs/architecture.md](docs/architecture.md) | Understanding system design, provider pattern |
+| [docs/architecture.md](docs/architecture.md) | System overview and component diagram |
+| [docs/controller-architecture.md](docs/controller-architecture.md) | Controller internals, reconciliation, webhooks, RBAC |
+| [docs/providers.md](docs/providers.md) | Provider selection and capabilities |
+| [docs/crd-reference.md](docs/crd-reference.md) | CRD specifications (ModelDeployment, InferenceProviderConfig) |
+| [docs/web-ui-architecture.md](docs/web-ui-architecture.md) | Web UI, auth flow, backend services |
 | [docs/api.md](docs/api.md) | Working on REST endpoints or API client |
 | [docs/development.md](docs/development.md) | Setup issues, build process, testing |
 | [docs/standards.md](docs/standards.md) | Code style questions (prefer running linters instead) |

@@ -18,12 +18,13 @@ A web-based platform for deploying and managing large language models on Kuberne
 - 📝 **Real-Time Logs**: Stream container logs directly from the UI
 - 📊 **Deployment Metrics**: View Prometheus metrics for running deployments (in-cluster)
 - 🔌 **Multi-Provider Support**: Extensible architecture supporting multiple inference runtimes
-- 🔧 **Multiple Engines**: vLLM, SGLang, and TensorRT-LLM (via NVIDIA Dynamo)
+- 🔧 **Multiple Engines**: vLLM, SGLang, TensorRT-LLM, and llama.cpp
 - 📥 **Installation Wizard**: Install providers via Helm directly from the UI
 - 🛠️ **Complete Uninstall**: Clean uninstallation with optional CRD removal
 - 🎨 **Dark Theme**: Modern dark UI with provider-specific accents
 - 🎯 **Unified CRD**: Single `ModelDeployment` API that works across all providers
 - 🤖 **Smart Provider Selection**: Automatic provider selection based on capabilities
+- 🔌 **Headlamp Plugin**: Full-featured [Headlamp](https://headlamp.dev/) dashboard plugin with model catalog, deployment management, and metrics
 
 ## Supported Providers
 
@@ -54,10 +55,12 @@ spec:
 
 The controller automatically:
 - Selects the best provider based on your configuration
-- Creates provider-specific resources (KAITO Workspace, DynamoGraphDeployment, etc.)
+- Creates provider-specific resources (KAITO Workspace, DynamoGraphDeployment, RayService, etc.)
 - Reports unified status across all providers
 
-See [architecture.md](docs/architecture.md) for details.
+Providers are **out-of-tree operators** that run independently alongside the core controller, each watching `ModelDeployment` resources and managing provider-specific lifecycle.
+
+See [architecture.md](docs/architecture.md) for an overview and links to detailed documentation.
 
 ## Prerequisites
 
@@ -207,9 +210,16 @@ The login command extracts your OIDC token and opens the browser automatically.
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md)
-- [Unified CRD Design](docs/design/unified-crd-abstraction.md)
+- [Controller Architecture](docs/controller-architecture.md)
+- [CRD Reference](docs/crd-reference.md)
+- [Providers](docs/providers.md)
+- [Web UI Architecture](docs/web-ui-architecture.md)
 - [API Reference](docs/api.md)
 - [Development Guide](docs/development.md)
+- [Design Decisions](docs/design-decisions.md)
+- [Observability](docs/observability.md)
+- [Versioning & Upgrades](docs/versioning-upgrades.md)
+- [Headlamp Plugin](docs/headlamp-plugin.md)
 - [Azure Cluster Autoscaling Setup](docs/azure-autoscaling.md)
 - [Kubernetes Deployment](deploy/kubernetes/README.md)
 

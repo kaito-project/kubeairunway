@@ -194,6 +194,32 @@ cd controller && go test -v ./...
 - **Integration tests** — controller reconciliation with mock K8s API, owner references, finalizer behavior, drift detection, webhook validation
 - **E2E tests** — full deployment lifecycle per provider, error recovery, controller restart resilience
 
+### Version Compatibility Matrix
+
+| KubeAIRunway Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
+|------------------------|------------|----------------|-----------------|------------------|
+| v0.1.x                 | 1.26-1.30  | v0.3.x         | v0.1.x          | v1.1.x           |
+
+| Provider | Minimum Version | CRD API Version | Notes |
+|----------|-----------------|-----------------|-------|
+| KAITO    | v0.3.0          | kaito.sh/v1beta1 | Requires GPU operator for GPU workloads |
+| Dynamo   | v0.1.0          | nvidia.com/v1alpha1 | Requires NVIDIA GPU operator |
+| KubeRay  | v1.1.0          | ray.io/v1       | Optional: KubeRay autoscaler for scaling |
+
+### Finalizer Handling
+
+The controller uses finalizers to ensure provider resource cleanup on deletion:
+
+1. Controller attempts cleanup for **5 minutes**
+2. After timeout, removes finalizer with warning event
+3. Orphaned provider resources may remain (logged for manual cleanup)
+
+**Manual escape (immediate — use when deletion is stuck):**
+```bash
+kubectl patch modeldeployment my-llm --type=merge \
+  -p '{"metadata":{"finalizers":[]}}'
+```
+
 ### Provider Development
 
 Provider controllers are independent operators in `providers/<name>/`:

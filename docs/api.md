@@ -40,7 +40,7 @@ kubectl describe modeldeployment qwen-demo
 kubectl delete modeldeployment qwen-demo
 ```
 
-See [architecture.md](architecture.md) for controller architecture and provider selection.
+See [controller-architecture.md](controller-architecture.md) for controller internals and [providers.md](providers.md) for provider selection.
 
 ### ModelDeployment Spec Reference
 
@@ -70,6 +70,24 @@ See [architecture.md](architecture.md) for controller architecture and provider 
 | `secrets.huggingFaceToken` | string | No | — | K8s secret name for HF token |
 | `nodeSelector` | map | No | `{}` | Node selector |
 | `tolerations` | []Toleration | No | `[]` | Tolerations |
+
+### Update Semantics
+
+When updating a `ModelDeployment`, changes are handled based on field type:
+
+**Identity fields** — changing these triggers delete + recreate (brief downtime):
+- `model.id`, `model.source`, `engine.type`, `provider.name`, `serving.mode`
+
+**Config fields** — changed in-place without recreation:
+- `model.servedName`, `scaling.*`, `env`, `resources`, `engine.args`, `engine.contextLength`, `image`, `secrets.*`, `podTemplate.metadata`, `nodeSelector`, `tolerations`, `provider.overrides`
+
+### API Versioning
+
+| Version | Status | Stability |
+|---------|--------|-----------|
+| `v1alpha1` | Current | Experimental — breaking changes allowed |
+| `v1beta1` | Planned | Feature complete — breaking changes with deprecation warnings |
+| `v1` | Future | Stable — no breaking changes, long-term support |
 
 ### Engine-Specific Parameters
 
@@ -287,23 +305,6 @@ Get current settings and available providers.
   "config": {
     "defaultNamespace": "kubeairunway-system"
   },
-  "providers": [
-    {
-      "id": "dynamo",
-      "name": "NVIDIA Dynamo",
-      "description": "GPU-accelerated inference with disaggregated serving"
-    },
-    {
-      "id": "kuberay",
-      "name": "KubeRay",
-      "description": "Ray-based distributed inference"
-    },
-    {
-      "id": "kaito",
-      "name": "KAITO",
-      "description": "CPU/GPU inference with pre-built GGUF models via llama.cpp"
-    }
-  ],
   "auth": {
     "enabled": false
   }
@@ -369,9 +370,6 @@ Install a provider via Helm.
   "message": "Provider installed successfully"
 }
 ```
-
-### POST /installation/providers/:id/upgrade
-Upgrade an installed provider.
 
 ### POST /installation/providers/:id/uninstall
 Uninstall a provider (preserves CRDs by default).
@@ -477,7 +475,6 @@ Get detailed GPU capacity information for the cluster.
 - `totalMemoryGb` is detected from `nvidia.com/gpu.memory` node label (MiB converted to GB)
 - Falls back to detecting memory from `nvidia.com/gpu.product` label if not available
 - Used by frontend to show GPU fit indicators for HuggingFace search results
-```
 
 ### POST /installation/gpu-operator/install
 Install the NVIDIA GPU Operator via Helm.
@@ -580,10 +577,6 @@ Get detailed autoscaler status from ConfigMap.
 ### GET /models
 Get the curated model catalog.
 
-**Query Parameters:**
-- `search` (optional) - Filter by name
-- `engine` (optional) - Filter by supported engine
-
 **Response:**
 ```json
 {
@@ -630,12 +623,30 @@ Get the curated model catalog.
 - `parameterCount` - Parameter count from safetensors metadata
 - `fromHfSearch` - True if model came from HuggingFace search
 
+### GET /models/:modelId/gguf-files
+Get available GGUF files for a HuggingFace model.
+
+**Headers:**
+- `X-HF-Token` (optional) - HuggingFace token for gated models
+
+**Response:**
+```json
+{
+  "files": [
+    {
+      "filename": "model-Q8_0.gguf",
+      "size": 1340000000
+    }
+  ]
+}
+```
+
 ### GET /models/search
 Search HuggingFace Hub for compatible models.
 
 **Query Parameters:**
 - `q` (required) - Search query
-- `limit` (optional) - Number of results (default: 20, max: 100)
+- `limit` (optional) - Number of results (default: 20, max: 50)
 - `offset` (optional) - Pagination offset
 
 **Headers:**
@@ -759,6 +770,30 @@ Get deployment details including pod status.
     }
   ],
   "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+### GET /deployments/:name/manifest
+Get the Kubernetes manifest resources for a deployment.
+
+**Query Parameters:**
+- `namespace` (optional)
+
+**Response:**
+```json
+{
+  "resources": [
+    {
+      "kind": "ModelDeployment",
+      "apiVersion": "kubeairunway.ai/v1alpha1",
+      "name": "qwen-deployment",
+      "manifest": { }
+    }
+  ],
+  "primaryResource": {
+    "kind": "ModelDeployment",
+    "apiVersion": "kubeairunway.ai/v1alpha1"
+  }
 }
 ```
 
@@ -954,6 +989,35 @@ Get OAuth configuration for initiating HuggingFace sign-in.
   "clientId": "e05817a1-7053-4b9e-b292-29cd219fccf8",
   "authorizeUrl": "https://huggingface.co/oauth/authorize",
   "scopes": ["openid", "profile", "read-repos"]
+}
+```
+
+### POST /oauth/huggingface/start
+Start an OAuth flow with PKCE. Generates a code verifier and state parameter.
+
+**Request Body:**
+```json
+{
+  "redirectUri": "http://localhost:3000/oauth/callback/huggingface"
+}
+```
+
+**Response:**
+```json
+{
+  "authorizationUrl": "https://huggingface.co/oauth/authorize?client_id=...&state=...",
+  "state": "random-state-string"
+}
+```
+
+### GET /oauth/huggingface/verifier/:state
+Retrieve the PKCE code verifier for a given OAuth state. One-time use — the verifier is deleted after retrieval.
+
+**Response:**
+```json
+{
+  "codeVerifier": "pkce_code_verifier_string",
+  "redirectUri": "http://localhost:3000/oauth/callback/huggingface"
 }
 ```
 
@@ -1531,7 +1595,6 @@ Get list of supported GPU models with specifications.
 - Returns GPU specifications only (memory, generation)
 - For real-time pricing, use `/costs/node-pools` or `/costs/instance-price` endpoints
 - GPU models are used for normalization and capacity planning
-```
 
 ### GET /costs/normalize-gpu
 Normalize a GPU label to a standard GPU model name.
