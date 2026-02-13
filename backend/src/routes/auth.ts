@@ -4,6 +4,7 @@ import { getOAuthProvider, getEnabledProviders } from '../services/oauth';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from '../services/oauth/pkce';
 import { sessionService } from '../services/session';
 import { userRepository, roleRepository } from '../services/database';
+import { logAuditEvent } from '../services/audit';
 import logger from '../lib/logger';
 
 // In-memory PKCE state store with TTL cleanup
@@ -127,6 +128,12 @@ const auth = new Hono()
       });
 
       logger.info({ userId: user.id, provider: providerType }, 'User logged in via OAuth');
+      logAuditEvent({
+        userId: user.id,
+        action: 'auth.login',
+        details: { provider: providerType },
+        ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown',
+      });
       return c.redirect('/');
     } catch (error) {
       logger.error({ error, provider: providerType }, 'OAuth callback failed');
@@ -140,8 +147,18 @@ const auth = new Hono()
   // Logout
   .post('/logout', async (c) => {
     const accessToken = getCookie(c, 'kf_access_token');
+    const user = c.get('hubUser') as { sub: string } | undefined;
+
     if (accessToken) {
       await sessionService.invalidateSession(accessToken);
+    }
+
+    if (user) {
+      logAuditEvent({
+        userId: user.sub,
+        action: 'auth.logout',
+        ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown',
+      });
     }
 
     deleteCookie(c, 'kf_access_token', { path: '/' });

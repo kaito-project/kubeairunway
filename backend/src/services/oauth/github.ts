@@ -21,7 +21,7 @@ export class GitHubOAuthProvider implements OAuthProvider {
     return `https://github.com/login/oauth/authorize?${params.toString()}`;
   }
 
-  async exchangeCode(code: string, redirectUri: string, _codeVerifier: string): Promise<OAuthTokens> {
+  async exchangeCode(code: string, redirectUri: string, codeVerifier: string): Promise<OAuthTokens> {
     const response = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
@@ -33,6 +33,7 @@ export class GitHubOAuthProvider implements OAuthProvider {
         client_secret: this.clientSecret,
         code,
         redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
       }),
     });
 
@@ -75,8 +76,10 @@ export class GitHubOAuthProvider implements OAuthProvider {
       email = await this.fetchPrimaryEmail(headers);
     }
 
-    // Fetch org memberships for groups
-    const groups = await this.fetchOrgMemberships(headers);
+    // Fetch org and team memberships for groups
+    const orgs = await this.fetchOrgMemberships(headers);
+    const teams = await this.fetchTeamMemberships(headers);
+    const groups = orgs || teams.length > 0 ? [...(orgs || []), ...teams] : undefined;
 
     return {
       email,
@@ -111,6 +114,19 @@ export class GitHubOAuthProvider implements OAuthProvider {
     } catch {
       logger.warn('Failed to fetch GitHub org memberships');
       return undefined;
+    }
+  }
+
+  private async fetchTeamMemberships(headers: Record<string, string>): Promise<string[]> {
+    try {
+      const response = await fetch('https://api.github.com/user/teams', { headers });
+      if (!response.ok) return [];
+
+      const teams: Array<{ slug: string; organization: { login: string } }> = await response.json();
+      return teams.map((t) => `${t.organization.login}/${t.slug}`);
+    } catch {
+      logger.warn('Failed to fetch GitHub team memberships');
+      return [];
     }
   }
 }

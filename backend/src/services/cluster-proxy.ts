@@ -3,6 +3,15 @@ import { credentialManager } from './credentials';
 import { instanceRepository } from './database';
 import logger from '../lib/logger';
 
+/**
+ * Typed cluster proxy that forwards requests to target Kubernetes clusters.
+ *
+ * Security: This proxy uses typed Kubernetes client methods (e.g., AppsV1Api)
+ * rather than raw HTTP pass-through. This design ensures only explicitly defined
+ * operations are possible — arbitrary K8s API paths (e.g., /api/v1/secrets) cannot
+ * be accessed, even if the stored credentials have broad cluster permissions.
+ * All new proxy operations must be added as explicit typed methods.
+ */
 class ClusterProxy {
   private instanceRepo: typeof instanceRepository;
   private credMgr: typeof credentialManager;

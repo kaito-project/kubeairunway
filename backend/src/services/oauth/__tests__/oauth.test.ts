@@ -172,6 +172,54 @@ describe('EntraOAuthProvider', () => {
     }
   });
 
+  test('getUserInfo handles group overage claim by fetching from Graph API', async () => {
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock((url: string) => {
+      if (url === 'https://graph.microsoft.com/v1.0/me') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ id: 'oid-overage', displayName: 'Overage User', mail: 'overage@test.com' }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url === 'https://graph.microsoft.com/v1.0/me/memberOf') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              value: [
+                { '@odata.type': '#microsoft.graph.group', id: 'graph-group-1' },
+                { '@odata.type': '#microsoft.graph.group', id: 'graph-group-2' },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response('', { status: 404 }));
+    });
+    globalThis.fetch = mockFetch;
+
+    try {
+      // ID token with _claim_names overage indicator (no groups array)
+      const idPayload = btoa(JSON.stringify({
+        oid: 'oid-overage',
+        _claim_names: { groups: 'src1' },
+        _claim_sources: { src1: { endpoint: 'https://graph.microsoft.com/v1.0/me/memberOf' } },
+      }));
+      const userInfo = await provider.getUserInfo({
+        accessToken: 'test-access-token',
+        idToken: `h.${idPayload}.s`,
+      });
+
+      // Should fetch groups from Graph API due to overage, not use ID token
+      expect(userInfo.groups).toEqual(['graph-group-1', 'graph-group-2']);
+      expect(userInfo.email).toBe('overage@test.com');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test('getUserInfo uses ID token groups claim when available', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(() =>
@@ -255,6 +303,7 @@ describe('GitHubOAuthProvider', () => {
       expect(body.client_id).toBe('gh-client-id');
       expect(body.client_secret).toBe('gh-client-secret');
       expect(body.code).toBe('auth-code');
+      expect(body.code_verifier).toBe('verifier');
 
       expect(tokens.accessToken).toBe('gho_mock_token');
     } finally {
@@ -304,6 +353,11 @@ describe('GitHubOAuthProvider', () => {
           new Response(JSON.stringify([{ login: 'org1' }, { login: 'org2' }]), { status: 200 }),
         );
       }
+      if (url === 'https://api.github.com/user/teams') {
+        return Promise.resolve(
+          new Response(JSON.stringify([]), { status: 200 }),
+        );
+      }
       return Promise.resolve(new Response('', { status: 404 }));
     });
     globalThis.fetch = mockFetch;
@@ -346,6 +400,11 @@ describe('GitHubOAuthProvider', () => {
       if (url === 'https://api.github.com/user/orgs') {
         return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
       }
+      if (url === 'https://api.github.com/user/teams') {
+        return Promise.resolve(
+          new Response(JSON.stringify([]), { status: 200 }),
+        );
+      }
       return Promise.resolve(new Response('', { status: 404 }));
     });
     globalThis.fetch = mockFetch;
@@ -356,6 +415,48 @@ describe('GitHubOAuthProvider', () => {
       expect(userInfo.email).toBe('primary@test.com');
       expect(userInfo.displayName).toBe('nomail');
       expect(userInfo.providerId).toBe('99');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+  test('getUserInfo fetches both org and team memberships', async () => {
+    const originalFetch = globalThis.fetch;
+    const mockFetch = mock((url: string) => {
+      if (url === 'https://api.github.com/user') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ id: 555, login: 'teamuser', name: 'Team User', email: 'team@test.com' }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url === 'https://api.github.com/user/orgs') {
+        return Promise.resolve(
+          new Response(JSON.stringify([{ login: 'myorg' }]), { status: 200 }),
+        );
+      }
+      if (url === 'https://api.github.com/user/teams') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              { slug: 'backend-team', organization: { login: 'myorg' } },
+              { slug: 'ml-team', organization: { login: 'myorg' } },
+            ]),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.resolve(new Response('', { status: 404 }));
+    });
+    globalThis.fetch = mockFetch;
+
+    try {
+      const userInfo = await provider.getUserInfo({ accessToken: 'gho_test' });
+
+      expect(userInfo.groups).toContain('myorg');
+      expect(userInfo.groups).toContain('myorg/backend-team');
+      expect(userInfo.groups).toContain('myorg/ml-team');
+      expect(userInfo.groups?.length).toBe(3);
     } finally {
       globalThis.fetch = originalFetch;
     }

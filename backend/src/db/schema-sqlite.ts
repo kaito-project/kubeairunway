@@ -116,3 +116,19 @@ export const oauthProviders = sqliteTable('oauth_providers', {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+export const auditLog = sqliteTable('audit_log', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  resourceType: text('resource_type'),
+  resourceId: text('resource_id'),
+  instanceId: text('instance_id').references(() => instances.id, { onDelete: 'set null' }),
+  details: text('details'),
+  ipAddress: text('ip_address'),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});

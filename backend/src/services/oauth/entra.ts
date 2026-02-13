@@ -73,7 +73,11 @@ export class EntraOAuthProvider implements OAuthProvider {
 
     // Extract groups from ID token claims if available, otherwise fetch from Graph
     let groups: string[] | undefined;
-    if (idClaims?.groups && Array.isArray(idClaims.groups)) {
+    if (idClaims?._claim_names && typeof idClaims._claim_names === 'object' && 'groups' in (idClaims._claim_names as object)) {
+      // Group overage: too many groups for ID token, fetch from Graph API
+      logger.info('Entra group overage detected, fetching groups from Microsoft Graph API');
+      groups = await this.fetchGroupMemberships(tokens.accessToken);
+    } else if (idClaims?.groups && Array.isArray(idClaims.groups)) {
       groups = idClaims.groups;
     } else {
       groups = await this.fetchGroupMemberships(tokens.accessToken);
