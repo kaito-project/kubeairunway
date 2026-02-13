@@ -335,7 +335,7 @@ func TestReconcileSuccessfulCreate(t *testing.T) {
 
 	dgd := &unstructured.Unstructured{}
 	setDGDGVK(dgd)
-	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: DynamoNamespace}, dgd)
+	err = c.Get(context.Background(), types.NamespacedName{Name: dynamoGraphDeploymentName("default", "test"), Namespace: DynamoNamespace}, dgd)
 	if err != nil {
 		t.Fatalf("expected DynamoGraphDeployment to be created: %v", err)
 	}
@@ -395,8 +395,12 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 
 	dgd := &unstructured.Unstructured{}
 	setDGDGVK(dgd)
-	dgd.SetName("test")
+	dgd.SetName(dynamoGraphDeploymentName("default", "test"))
 	dgd.SetNamespace(DynamoNamespace)
+	dgd.SetLabels(map[string]string{
+		"kubeairunway.ai/managed-by":           "kubeairunway",
+		"kubeairunway.ai/deployment-namespace": "default",
+	})
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, dgd).WithStatusSubresource(md).Build()
 	r := NewDynamoProviderReconciler(c, scheme)
@@ -417,13 +421,17 @@ func TestCreateOrUpdateResourceNew(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := NewDynamoProviderReconciler(c, scheme)
 
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+
 	dgd := &unstructured.Unstructured{}
 	setDGDGVK(dgd)
 	dgd.SetName("test")
 	dgd.SetNamespace("default")
 	dgd.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
-	err := r.createOrUpdateResource(context.Background(), dgd)
+	err := r.createOrUpdateResource(context.Background(), dgd, md)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -436,10 +444,18 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	setDGDGVK(existing)
 	existing.SetName("test")
 	existing.SetNamespace("default")
+	existing.SetLabels(map[string]string{
+		"kubeairunway.ai/managed-by":            "kubeairunway",
+		"kubeairunway.ai/deployment-namespace":  "default",
+	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewDynamoProviderReconciler(c, scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
 
 	updated := &unstructured.Unstructured{}
 	setDGDGVK(updated)
@@ -447,7 +463,7 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	updated.SetNamespace("default")
 	updated.Object["spec"] = map[string]interface{}{"backendFramework": "sglang"}
 
-	err := r.createOrUpdateResource(context.Background(), updated)
+	err := r.createOrUpdateResource(context.Background(), updated, md)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -460,10 +476,18 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	setDGDGVK(existing)
 	existing.SetName("test")
 	existing.SetNamespace("default")
+	existing.SetLabels(map[string]string{
+		"kubeairunway.ai/managed-by":            "kubeairunway",
+		"kubeairunway.ai/deployment-namespace":  "default",
+	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewDynamoProviderReconciler(c, scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
 
 	same := &unstructured.Unstructured{}
 	setDGDGVK(same)
@@ -471,7 +495,7 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	same.SetNamespace("default")
 	same.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
-	err := r.createOrUpdateResource(context.Background(), same)
+	err := r.createOrUpdateResource(context.Background(), same, md)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

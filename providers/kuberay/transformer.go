@@ -19,6 +19,7 @@ package kuberay
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
@@ -368,8 +369,14 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 		args = append(args, "--trust-remote-code")
 	}
 
-	// Add custom engine args
-	for key, value := range md.Spec.Engine.Args {
+	// Add custom engine args (sorted for deterministic output)
+	keys := make([]string, 0, len(md.Spec.Engine.Args))
+	for k := range md.Spec.Engine.Args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := md.Spec.Engine.Args[key]
 		if value != "" {
 			args = append(args, fmt.Sprintf("--%s", key), value)
 		} else {

@@ -1318,6 +1318,35 @@ class KubernetesService {
   }
 
   /**
+   * Delete an InferenceProviderConfig instance (cluster-scoped custom resource)
+   * @param name - The name of the InferenceProviderConfig to delete
+   */
+  async deleteInferenceProviderConfig(name: string): Promise<{ success: boolean; message: string }> {
+    try {
+      logger.info({ name }, 'Deleting InferenceProviderConfig');
+      await withRetry(
+        () => this.customObjectsApi.deleteClusterCustomObject(
+          MODEL_DEPLOYMENT_CRD.apiGroup,
+          MODEL_DEPLOYMENT_CRD.apiVersion,
+          'inferenceproviderconfigs',
+          name
+        ),
+        { operationName: `deleteInferenceProviderConfig:${name}`, maxRetries: 2 }
+      );
+      logger.info({ name }, 'InferenceProviderConfig deleted successfully');
+      return { success: true, message: `InferenceProviderConfig ${name} deleted` };
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.response?.statusCode;
+      if (statusCode === 404) {
+        logger.debug({ name }, 'InferenceProviderConfig not found (already deleted)');
+        return { success: true, message: `InferenceProviderConfig ${name} not found (already deleted)` };
+      }
+      logger.error({ error, name }, 'Error deleting InferenceProviderConfig');
+      return { success: false, message: `Failed to delete InferenceProviderConfig ${name}: ${error?.message || 'Unknown error'}` };
+    }
+  }
+
+  /**
    * Delete a namespace from the cluster
    * @param namespace - Namespace name to delete
    * @returns true if deleted or not found, false on error

@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
@@ -53,8 +54,9 @@ func TestTransformAggregated(t *testing.T) {
 	if dgd.GetKind() != DynamoGraphDeploymentKind {
 		t.Errorf("expected kind %s, got %s", DynamoGraphDeploymentKind, dgd.GetKind())
 	}
-	if dgd.GetName() != "test-model" {
-		t.Errorf("expected name 'test-model', got %s", dgd.GetName())
+	expectedName := dynamoGraphDeploymentName("default", "test-model")
+	if dgd.GetName() != expectedName {
+		t.Errorf("expected name %q, got %s", expectedName, dgd.GetName())
 	}
 	if dgd.GetAPIVersion() != "nvidia.com/v1alpha1" {
 		t.Errorf("expected apiVersion 'nvidia.com/v1alpha1', got %s", dgd.GetAPIVersion())
@@ -207,46 +209,100 @@ func TestGetImage(t *testing.T) {
 func TestBuildEngineArgs(t *testing.T) {
 	tr := NewTransformer()
 
-	// Basic vLLM
+	// Basic vLLM - args no longer include engine command
 	md := newTestMD("test", "default")
-	args := tr.buildEngineArgs(md)
-	if args != "python3 -m dynamo.vllm --model meta-llama/Llama-2-7b-chat-hf" {
-		t.Errorf("unexpected args: %s", args)
+	args, err := tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := []string{"--model", "meta-llama/Llama-2-7b-chat-hf"}
+	if !sliceEqual(args, expected) {
+		t.Errorf("unexpected args: %v, expected %v", args, expected)
 	}
 
 	// SGLang with context length
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 	ctxLen := int32(4096)
 	md.Spec.Engine.ContextLength = &ctxLen
-	args = tr.buildEngineArgs(md)
-	if args != "python3 -m dynamo.sglang --model meta-llama/Llama-2-7b-chat-hf --context-length 4096" {
-		t.Errorf("unexpected args: %s", args)
+	args, err = tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected = []string{"--model", "meta-llama/Llama-2-7b-chat-hf", "--context-length", "4096"}
+	if !sliceEqual(args, expected) {
+		t.Errorf("unexpected args: %v, expected %v", args, expected)
 	}
 
 	// vLLM with context length
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
-	args = tr.buildEngineArgs(md)
-	if args != "python3 -m dynamo.vllm --model meta-llama/Llama-2-7b-chat-hf --max-model-len 4096" {
-		t.Errorf("unexpected args: %s", args)
+	args, err = tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected = []string{"--model", "meta-llama/Llama-2-7b-chat-hf", "--max-model-len", "4096"}
+	if !sliceEqual(args, expected) {
+		t.Errorf("unexpected args: %v, expected %v", args, expected)
 	}
 
 	// TRT-LLM
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeTRTLLM
 	md.Spec.Engine.ContextLength = nil
-	args = tr.buildEngineArgs(md)
-	if args != "python3 -m dynamo.trtllm --model meta-llama/Llama-2-7b-chat-hf" {
-		t.Errorf("unexpected args: %s", args)
+	args, err = tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected = []string{"--model", "meta-llama/Llama-2-7b-chat-hf"}
+	if !sliceEqual(args, expected) {
+		t.Errorf("unexpected args: %v, expected %v", args, expected)
 	}
 
 	// With served name and trust remote code
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
 	md.Spec.Model.ServedName = "my-model"
 	md.Spec.Engine.TrustRemoteCode = true
-	args = tr.buildEngineArgs(md)
+	args, err = tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	expectedParts := []string{"--served-model-name", "my-model", "--trust-remote-code"}
 	for _, part := range expectedParts {
-		if !containsStr(args, part) {
-			t.Errorf("expected args to contain '%s', got: %s", part, args)
+		if !sliceContainsStr(args, part) {
+			t.Errorf("expected args to contain '%s', got: %v", part, args)
+		}
+	}
+}
+
+func TestEngineCommand(t *testing.T) {
+	tr := NewTransformer()
+
+	tests := []struct {
+		input    kubeairunwayv1alpha1.EngineType
+		expected []string
+	}{
+		{kubeairunwayv1alpha1.EngineTypeVLLM, []string{"python3", "-m", "dynamo.vllm"}},
+		{kubeairunwayv1alpha1.EngineTypeSGLang, []string{"python3", "-m", "dynamo.sglang"}},
+		{kubeairunwayv1alpha1.EngineTypeTRTLLM, []string{"python3", "-m", "dynamo.trtllm"}},
+	}
+
+	for _, tt := range tests {
+		result := tr.engineCommand(tt.input)
+		if !sliceEqual(result, tt.expected) {
+			t.Errorf("engineCommand(%s) = %v, expected %v", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestIsValidArgKey(t *testing.T) {
+	valid := []string{"tensor-parallel-size", "enable_feature", "maxBatchSize", "abc123"}
+	for _, k := range valid {
+		if !isValidArgKey(k) {
+			t.Errorf("expected %q to be valid", k)
+		}
+	}
+	invalid := []string{"", "key;drop", "a b", "foo$bar", "x&y", "a|b", "a`b"}
+	for _, k := range invalid {
+		if isValidArgKey(k) {
+			t.Errorf("expected %q to be invalid", k)
 		}
 	}
 }
@@ -262,6 +318,27 @@ func containsSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func sliceContainsStr(ss []string, item string) bool {
+	for _, s := range ss {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+func sliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestBuildResourceLimits(t *testing.T) {
@@ -414,7 +491,10 @@ func TestBuildAggregatedWorker(t *testing.T) {
 	md := newTestMD("test", "default")
 	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{Replicas: 2}
 
-	worker := tr.buildAggregatedWorker(md, "test-image:v1")
+	worker, err := tr.buildAggregatedWorker(md, "test-image:v1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if worker["replicas"] != int64(2) {
 		t.Errorf("expected replicas 2, got %v", worker["replicas"])
 	}
@@ -427,6 +507,11 @@ func TestBuildAggregatedWorker(t *testing.T) {
 	if mainContainer["image"] != "test-image:v1" {
 		t.Errorf("expected image 'test-image:v1', got %v", mainContainer["image"])
 	}
+	// Verify no shell execution
+	cmd, _ := mainContainer["command"].([]interface{})
+	if len(cmd) < 1 || cmd[0] != "python3" {
+		t.Errorf("expected command to start with python3, got %v", cmd)
+	}
 }
 
 func TestBuildAggregatedWorkerWithSecret(t *testing.T) {
@@ -434,7 +519,10 @@ func TestBuildAggregatedWorkerWithSecret(t *testing.T) {
 	md := newTestMD("test", "default")
 	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
 
-	worker := tr.buildAggregatedWorker(md, "img")
+	worker, err := tr.buildAggregatedWorker(md, "img")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if worker["envFromSecret"] != "hf-secret" {
 		t.Errorf("expected envFromSecret, got %v", worker["envFromSecret"])
 	}
@@ -538,7 +626,10 @@ func TestBuildPrefillWorkerWithSecret(t *testing.T) {
 		},
 	}
 
-	worker := tr.buildPrefillWorker(md, "img")
+	worker, err := tr.buildPrefillWorker(md, "img")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if worker["envFromSecret"] != "hf-secret" {
 		t.Errorf("expected envFromSecret, got %v", worker["envFromSecret"])
 	}
@@ -546,12 +637,15 @@ func TestBuildPrefillWorkerWithSecret(t *testing.T) {
 	eps, _ := worker["extraPodSpec"].(map[string]interface{})
 	mc, _ := eps["mainContainer"].(map[string]interface{})
 	args, _ := mc["args"].([]interface{})
-	if len(args) != 1 {
-		t.Fatalf("expected 1 arg string, got %d", len(args))
+	found := false
+	for _, a := range args {
+		if a == "--is-prefill-worker" {
+			found = true
+			break
+		}
 	}
-	argStr, _ := args[0].(string)
-	if !containsSubstring(argStr, "--is-prefill-worker") {
-		t.Errorf("expected --is-prefill-worker in args: %s", argStr)
+	if !found {
+		t.Errorf("expected --is-prefill-worker in args: %v", args)
 	}
 }
 
@@ -567,7 +661,10 @@ func TestBuildDecodeWorkerWithSecret(t *testing.T) {
 		},
 	}
 
-	worker := tr.buildDecodeWorker(md, "img")
+	worker, err := tr.buildDecodeWorker(md, "img")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if worker["envFromSecret"] != "hf-secret" {
 		t.Errorf("expected envFromSecret")
 	}
@@ -580,13 +677,57 @@ func TestBuildEngineArgsWithCustomArgs(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
 	md.Spec.Engine.Args = map[string]string{
-		"tensor-parallel-size": "4",
+		"tensor-parallel-size":  "4",
 		"enable-prefix-caching": "",
 	}
 
-	args := tr.buildEngineArgs(md)
-	if !containsSubstring(args, "--tensor-parallel-size 4") && !containsSubstring(args, "--tensor-parallel-size") {
-		t.Errorf("expected --tensor-parallel-size in args: %s", args)
+	args, err := tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sliceContainsStr(args, "--tensor-parallel-size") {
+		t.Errorf("expected --tensor-parallel-size in args: %v", args)
+	}
+}
+
+func TestBuildEngineArgsDeterministicOrder(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test", "default")
+	md.Spec.Engine.Args = map[string]string{
+		"zebra-param":         "z",
+		"alpha-param":         "a",
+		"middle-param":        "m",
+		"beta-param":          "b",
+		"enable-some-feature": "",
+		"data-path":           "/data",
+	}
+
+	// Run multiple times and verify identical output
+	first, err := tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		result, err := tr.buildEngineArgs(md)
+		if err != nil {
+			t.Fatalf("unexpected error on iteration %d: %v", i, err)
+		}
+		if !sliceEqual(result, first) {
+			t.Fatalf("non-deterministic output on iteration %d:\n  first: %v\n  got:   %v", i, first, result)
+		}
+	}
+
+	// Verify alphabetical key order of custom args
+	joined := strings.Join(first, " ")
+	alphaIdx := strings.Index(joined, "--alpha-param")
+	betaIdx := strings.Index(joined, "--beta-param")
+	dataIdx := strings.Index(joined, "--data-path")
+	enableIdx := strings.Index(joined, "--enable-some-feature")
+	middleIdx := strings.Index(joined, "--middle-param")
+	zebraIdx := strings.Index(joined, "--zebra-param")
+
+	if alphaIdx > betaIdx || betaIdx > dataIdx || dataIdx > enableIdx || enableIdx > middleIdx || middleIdx > zebraIdx {
+		t.Errorf("custom args not in alphabetical order: %v", first)
 	}
 }
 
@@ -596,9 +737,12 @@ func TestBuildEngineArgsTrustRemoteCodeSGLang(t *testing.T) {
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
 	md.Spec.Engine.TrustRemoteCode = true
 
-	args := tr.buildEngineArgs(md)
-	if !containsSubstring(args, "--trust-remote-code") {
-		t.Errorf("expected --trust-remote-code for sglang: %s", args)
+	args, err := tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sliceContainsStr(args, "--trust-remote-code") {
+		t.Errorf("expected --trust-remote-code for sglang: %v", args)
 	}
 }
 
@@ -609,10 +753,13 @@ func TestBuildEngineArgsTRTLLMContextLength(t *testing.T) {
 	ctxLen := int32(8192)
 	md.Spec.Engine.ContextLength = &ctxLen
 
-	args := tr.buildEngineArgs(md)
+	args, err := tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	// TRT-LLM doesn't use context length at runtime
-	if containsSubstring(args, "8192") {
-		t.Errorf("TRT-LLM should not include context length: %s", args)
+	if sliceContainsStr(args, "8192") {
+		t.Errorf("TRT-LLM should not include context length: %v", args)
 	}
 }
 
@@ -627,7 +774,10 @@ func TestBuildPrefillWorkerWithCustomGPUType(t *testing.T) {
 		},
 	}
 
-	worker := tr.buildPrefillWorker(md, "img")
+	worker, err := tr.buildPrefillWorker(md, "img")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	resources, _ := worker["resources"].(map[string]interface{})
 	limits, _ := resources["limits"].(map[string]interface{})
 	if limits["gpu"] != "2" {
@@ -773,12 +923,12 @@ func TestTransformSGLangEngine(t *testing.T) {
 	worker, _ := services["VllmWorker"].(map[string]interface{})
 	eps, _ := worker["extraPodSpec"].(map[string]interface{})
 	mc, _ := eps["mainContainer"].(map[string]interface{})
-	argsSlice, _ := mc["args"].([]interface{})
-	if len(argsSlice) == 0 {
-		t.Fatal("expected engine args")
+	cmdSlice, _ := mc["command"].([]interface{})
+	if len(cmdSlice) < 3 {
+		t.Fatal("expected engine command with at least 3 elements")
 	}
-	if !containsSubstring(argsSlice[0].(string), "dynamo.sglang") {
-		t.Errorf("expected sglang runner in args, got %v", argsSlice[0])
+	if cmdSlice[2] != "dynamo.sglang" {
+		t.Errorf("expected sglang runner in command, got %v", cmdSlice)
 	}
 }
 

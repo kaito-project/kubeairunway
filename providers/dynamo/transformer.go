@@ -18,8 +18,10 @@ package dynamo
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
@@ -93,7 +95,7 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 	dgd := &unstructured.Unstructured{}
 	dgd.SetAPIVersion(fmt.Sprintf("%s/%s", DynamoAPIGroup, DynamoAPIVersion))
 	dgd.SetKind(DynamoGraphDeploymentKind)
-	dgd.SetName(md.Name)
+	dgd.SetName(dynamoGraphDeploymentName(md.Namespace, md.Name))
 	dgd.SetNamespace(DynamoNamespace)
 
 	// Add labels (owner reference cannot cross namespaces, so we track the source via labels)
@@ -184,11 +186,23 @@ func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, ov
 			return nil, fmt.Errorf("spec.scaling.decode is required for disaggregated serving mode")
 		}
 		// Disaggregated mode: separate prefill and decode workers
-		services["VllmPrefillWorker"] = t.buildPrefillWorker(md, image)
-		services["VllmDecodeWorker"] = t.buildDecodeWorker(md, image)
+		prefillWorker, err := t.buildPrefillWorker(md, image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build prefill worker: %w", err)
+		}
+		services["VllmPrefillWorker"] = prefillWorker
+		decodeWorker, err := t.buildDecodeWorker(md, image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build decode worker: %w", err)
+		}
+		services["VllmDecodeWorker"] = decodeWorker
 	} else {
 		// Aggregated mode: single worker
-		services["VllmWorker"] = t.buildAggregatedWorker(md, image)
+		aggregatedWorker, err := t.buildAggregatedWorker(md, image)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build aggregated worker: %w", err)
+		}
+		services["VllmWorker"] = aggregatedWorker
 	}
 
 	return services, nil
@@ -247,7 +261,7 @@ func (t *Transformer) buildFrontendService(md *kubeairunwayv1alpha1.ModelDeploym
 }
 
 // buildAggregatedWorker creates the worker service for aggregated mode
-func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) map[string]interface{} {
+func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) (map[string]interface{}, error) {
 	// Get replicas
 	replicas := int64(1)
 	if md.Spec.Scaling != nil && md.Spec.Scaling.Replicas > 0 {
@@ -258,7 +272,10 @@ func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeploy
 	resources := t.buildResourceLimits(md.Spec.Resources)
 
 	// Build engine arguments
-	args := t.buildEngineArgs(md)
+	args, err := t.buildEngineArgs(md)
+	if err != nil {
+		return nil, err
+	}
 
 	worker := map[string]interface{}{
 		"componentType":   ComponentTypeWorker,
@@ -268,8 +285,8 @@ func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeploy
 		"extraPodSpec": map[string]interface{}{
 			"mainContainer": map[string]interface{}{
 				"image":   image,
-				"command": []interface{}{"/bin/sh", "-c"},
-				"args":    []interface{}{args},
+				"command": toInterfaceSlice(t.engineCommand(md.ResolvedEngineType())),
+				"args":    toInterfaceSlice(args),
 			},
 		},
 	}
@@ -282,11 +299,11 @@ func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeploy
 	// Add node selector and tolerations
 	t.addSchedulingConfig(worker, md)
 
-	return worker
+	return worker, nil
 }
 
 // buildPrefillWorker creates the prefill worker for disaggregated mode
-func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) map[string]interface{} {
+func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) (map[string]interface{}, error) {
 	prefillSpec := md.Spec.Scaling.Prefill
 
 	// Build resource limits and requests from component spec
@@ -308,7 +325,11 @@ func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeploymen
 	}
 
 	// Build engine arguments with prefill flag
-	args := t.buildEngineArgs(md) + " --is-prefill-worker"
+	args, err := t.buildEngineArgs(md)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, "--is-prefill-worker")
 
 	worker := map[string]interface{}{
 		"componentType":    ComponentTypeWorker,
@@ -319,8 +340,8 @@ func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeploymen
 		"extraPodSpec": map[string]interface{}{
 			"mainContainer": map[string]interface{}{
 				"image":   image,
-				"command": []interface{}{"/bin/sh", "-c"},
-				"args":    []interface{}{args},
+				"command": toInterfaceSlice(t.engineCommand(md.ResolvedEngineType())),
+				"args":    toInterfaceSlice(args),
 			},
 		},
 	}
@@ -333,11 +354,11 @@ func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeploymen
 	// Add node selector and tolerations
 	t.addSchedulingConfig(worker, md)
 
-	return worker
+	return worker, nil
 }
 
 // buildDecodeWorker creates the decode worker for disaggregated mode
-func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) map[string]interface{} {
+func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment, image string) (map[string]interface{}, error) {
 	decodeSpec := md.Spec.Scaling.Decode
 
 	// Build resource limits and requests from component spec
@@ -359,7 +380,10 @@ func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment
 	}
 
 	// Build engine arguments (decode workers don't need special flags)
-	args := t.buildEngineArgs(md)
+	args, err := t.buildEngineArgs(md)
+	if err != nil {
+		return nil, err
+	}
 
 	worker := map[string]interface{}{
 		"componentType":    ComponentTypeWorker,
@@ -370,8 +394,8 @@ func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment
 		"extraPodSpec": map[string]interface{}{
 			"mainContainer": map[string]interface{}{
 				"image":   image,
-				"command": []interface{}{"/bin/sh", "-c"},
-				"args":    []interface{}{args},
+				"command": toInterfaceSlice(t.engineCommand(md.ResolvedEngineType())),
+				"args":    toInterfaceSlice(args),
 			},
 		},
 	}
@@ -384,7 +408,7 @@ func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment
 	// Add node selector and tolerations
 	t.addSchedulingConfig(worker, md)
 
-	return worker
+	return worker, nil
 }
 
 // buildResourceLimits creates resource limits and requests from ResourceSpec
@@ -419,19 +443,9 @@ func (t *Transformer) buildResourceLimits(spec *kubeairunwayv1alpha1.ResourceSpe
 	}
 }
 
-// buildEngineArgs constructs the engine command line arguments
-func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) string {
+// buildEngineArgs constructs the engine command line arguments (without the engine runner command)
+func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) ([]string, error) {
 	var args []string
-
-	// Start with the engine runner
-	switch md.ResolvedEngineType() {
-	case kubeairunwayv1alpha1.EngineTypeVLLM:
-		args = append(args, "python3 -m dynamo.vllm")
-	case kubeairunwayv1alpha1.EngineTypeSGLang:
-		args = append(args, "python3 -m dynamo.sglang")
-	case kubeairunwayv1alpha1.EngineTypeTRTLLM:
-		args = append(args, "python3 -m dynamo.trtllm")
-	}
 
 	// Add model
 	args = append(args, "--model", md.Spec.Model.ID)
@@ -460,8 +474,17 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 		}
 	}
 
-	// Add custom engine args
-	for key, value := range md.Spec.Engine.Args {
+	// Add custom engine args with key validation (sorted for deterministic output)
+	keys := make([]string, 0, len(md.Spec.Engine.Args))
+	for k := range md.Spec.Engine.Args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !isValidArgKey(key) {
+			return nil, fmt.Errorf("invalid engine arg key %q: must contain only alphanumeric characters, hyphens, and underscores", key)
+		}
+		value := md.Spec.Engine.Args[key]
 		if value != "" {
 			args = append(args, fmt.Sprintf("--%s", key), value)
 		} else {
@@ -469,7 +492,48 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 		}
 	}
 
-	return strings.Join(args, " ")
+	return args, nil
+}
+
+// engineCommand returns the command slice for the given engine type
+func (t *Transformer) engineCommand(engineType kubeairunwayv1alpha1.EngineType) []string {
+	switch engineType {
+	case kubeairunwayv1alpha1.EngineTypeVLLM:
+		return []string{"python3", "-m", "dynamo.vllm"}
+	case kubeairunwayv1alpha1.EngineTypeSGLang:
+		return []string{"python3", "-m", "dynamo.sglang"}
+	case kubeairunwayv1alpha1.EngineTypeTRTLLM:
+		return []string{"python3", "-m", "dynamo.trtllm"}
+	default:
+		return []string{"python3", "-m", fmt.Sprintf("dynamo.%s", engineType)}
+	}
+}
+
+// isValidArgKey checks that an arg key contains only alphanumeric chars, hyphens, and underscores,
+// and does not start with a hyphen.
+func isValidArgKey(key string) bool {
+	if len(key) == 0 {
+		return false
+	}
+	// Must not start with a hyphen to prevent option injection
+	if key[0] == '-' {
+		return false
+	}
+	for _, r := range key {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// toInterfaceSlice converts a string slice to an interface slice for unstructured construction
+func toInterfaceSlice(ss []string) []interface{} {
+	result := make([]interface{}, len(ss))
+	for i, s := range ss {
+		result[i] = s
+	}
+	return result
 }
 
 // defaultImages contains the default container images for each engine type
@@ -527,6 +591,20 @@ func (t *Transformer) addSchedulingConfig(service map[string]interface{}, md *ku
 		}
 		extraPodSpec["tolerations"] = tolerations
 	}
+}
+
+// dynamoGraphDeploymentName returns a unique DGD name by combining the source
+// namespace and name. This prevents collisions when multiple ModelDeployments
+// with the same name exist in different namespaces but all DGDs land in dynamo-system.
+func dynamoGraphDeploymentName(namespace, name string) string {
+	result := fmt.Sprintf("%s-%s", namespace, name)
+	if len(result) > 253 {
+		// Use a hash suffix to preserve uniqueness after truncation
+		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(result)))
+		suffix := hash[:8]
+		result = result[:253-9] + "-" + suffix
+	}
+	return result
 }
 
 // sanitizeLabelValue ensures a value is valid for a Kubernetes label

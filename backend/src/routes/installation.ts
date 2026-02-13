@@ -245,14 +245,12 @@ const installation = new Hono()
     logger.info({ providerId }, `Removing CRDs for ${providerId}`);
 
     // The CRD name is typically plural.apiGroup — but since we don't store that in
-    // the CRD itself, we delete the InferenceProviderConfig for this provider
+    // the CRD itself, we delete the InferenceProviderConfig instance for this provider
     try {
-      await kubernetesService.deleteCRD(
-        `inferenceproviderconfigs.kubeairunway.ai`
-      );
+      await kubernetesService.deleteInferenceProviderConfig(providerId);
       return c.json({
         success: true,
-        message: `${providerId} CRDs removed successfully`,
+        message: `${providerId} provider config removed successfully`,
       });
     } catch (error) {
       throw new HTTPException(500, {

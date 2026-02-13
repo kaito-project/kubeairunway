@@ -373,6 +373,7 @@ func TestReconcileSuccessfulCreate(t *testing.T) {
 func TestReconcileAlreadyRunning(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
+	md.UID = "test-uid"
 	controllerutil.AddFinalizer(md, FinalizerName)
 
 	// Create an upstream workspace that matches what the transformer would produce
@@ -381,6 +382,9 @@ func TestReconcileAlreadyRunning(t *testing.T) {
 	setWorkspaceGVK(ws)
 	ws.SetName("test")
 	ws.SetNamespace("default")
+	ws.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
 	ws.Object["resource"] = map[string]interface{}{
 		"count": int64(1),
 		"labelSelector": map[string]interface{}{
@@ -477,6 +481,7 @@ func TestReconcileDeletionNoFinalizer(t *testing.T) {
 func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
+	md.UID = "test-uid"
 	controllerutil.AddFinalizer(md, FinalizerName)
 	now := metav1.Now()
 	md.DeletionTimestamp = &now
@@ -486,6 +491,9 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 	setWorkspaceGVK(ws)
 	ws.SetName("test")
 	ws.SetNamespace("default")
+	ws.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, ws).WithStatusSubresource(md).Build()
 	r := NewKaitoProviderReconciler(c, scheme)
@@ -507,13 +515,18 @@ func TestCreateOrUpdateResourceNew(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := NewKaitoProviderReconciler(c, scheme)
 
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
+
 	ws := &unstructured.Unstructured{}
 	setWorkspaceGVK(ws)
 	ws.SetName("test")
 	ws.SetNamespace("default")
 	ws.Object["resource"] = map[string]interface{}{"count": int64(1)}
 
-	err := r.createOrUpdateResource(context.Background(), ws)
+	err := r.createOrUpdateResource(context.Background(), ws, md)
 	if err != nil {
 		t.Fatalf("unexpected error creating resource: %v", err)
 	}
@@ -534,10 +547,18 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	setWorkspaceGVK(existing)
 	existing.SetName("test")
 	existing.SetNamespace("default")
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
 	existing.Object["resource"] = map[string]interface{}{"count": int64(1)}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewKaitoProviderReconciler(c, scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
 
 	// Update with different resource
 	updated := &unstructured.Unstructured{}
@@ -546,7 +567,7 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	updated.SetNamespace("default")
 	updated.Object["resource"] = map[string]interface{}{"count": int64(3)}
 
-	err := r.createOrUpdateResource(context.Background(), updated)
+	err := r.createOrUpdateResource(context.Background(), updated, md)
 	if err != nil {
 		t.Fatalf("unexpected error updating resource: %v", err)
 	}
@@ -559,11 +580,19 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	setWorkspaceGVK(existing)
 	existing.SetName("test")
 	existing.SetNamespace("default")
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
 	existing.Object["resource"] = map[string]interface{}{"count": int64(1)}
 	existing.Object["inference"] = map[string]interface{}{"preset": map[string]interface{}{"name": "test"}}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewKaitoProviderReconciler(c, scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
 
 	// Same resource
 	same := &unstructured.Unstructured{}
@@ -573,7 +602,7 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	same.Object["resource"] = map[string]interface{}{"count": int64(1)}
 	same.Object["inference"] = map[string]interface{}{"preset": map[string]interface{}{"name": "test"}}
 
-	err := r.createOrUpdateResource(context.Background(), same)
+	err := r.createOrUpdateResource(context.Background(), same, md)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

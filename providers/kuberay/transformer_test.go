@@ -277,6 +277,40 @@ func TestBuildEngineArgsWithCustomArgs(t *testing.T) {
 	}
 }
 
+func TestBuildEngineArgsDeterministicOrder(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test", "default")
+	md.Spec.Engine.Args = map[string]string{
+		"zebra-param":         "z",
+		"alpha-param":         "a",
+		"middle-param":        "m",
+		"beta-param":          "b",
+		"enable-some-feature": "",
+		"data-path":           "/data",
+	}
+
+	// Run multiple times and verify identical output
+	first := tr.buildEngineArgs(md)
+	for i := 0; i < 20; i++ {
+		result := tr.buildEngineArgs(md)
+		if result != first {
+			t.Fatalf("non-deterministic output on iteration %d:\n  first: %s\n  got:   %s", i, first, result)
+		}
+	}
+
+	// Verify alphabetical key order of custom args
+	alphaIdx := strings.Index(first, "--alpha-param")
+	betaIdx := strings.Index(first, "--beta-param")
+	dataIdx := strings.Index(first, "--data-path")
+	enableIdx := strings.Index(first, "--enable-some-feature")
+	middleIdx := strings.Index(first, "--middle-param")
+	zebraIdx := strings.Index(first, "--zebra-param")
+
+	if alphaIdx > betaIdx || betaIdx > dataIdx || dataIdx > enableIdx || enableIdx > middleIdx || middleIdx > zebraIdx {
+		t.Errorf("custom args not in alphabetical order: %s", first)
+	}
+}
+
 func TestBuildEnvVars(t *testing.T) {
 	tr := NewTransformer()
 

@@ -18,6 +18,7 @@ package dynamo
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"time"
 
@@ -141,9 +142,14 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Create or update the DynamoGraphDeployment
 	for _, resource := range resources {
-		if err := r.createOrUpdateResource(ctx, resource); err != nil {
+		if err := r.createOrUpdateResource(ctx, resource, &md); err != nil {
 			logger.Error(err, "Failed to create/update resource", "name", resource.GetName(), "kind", resource.GetKind())
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "CreateFailed", err.Error())
+			reason := "CreateFailed"
+			if isResourceConflict(err) {
+				reason = "ResourceConflict"
+				r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
+			}
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
 			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Failed to create DynamoGraphDeployment: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
@@ -153,7 +159,7 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "DynamoGraphDeployment created successfully")
 
 	// Update provider status
-	md.Status.Provider.ResourceName = md.Name
+	md.Status.Provider.ResourceName = dynamoGraphDeploymentName(md.Namespace, md.Name)
 	md.Status.Provider.ResourceKind = DynamoGraphDeploymentKind
 
 	// Sync status from upstream resource
@@ -209,8 +215,34 @@ func (r *DynamoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha
 	return nil
 }
 
+// resourceConflictError is returned when a resource exists but is not managed by this ModelDeployment
+type resourceConflictError struct {
+	namespace string
+	name      string
+}
+
+func (e *resourceConflictError) Error() string {
+	return fmt.Sprintf("resource %s/%s exists but is not managed by this ModelDeployment", e.namespace, e.name)
+}
+
+// isResourceConflict checks whether the error is a resource ownership conflict
+func isResourceConflict(err error) bool {
+	var conflict *resourceConflictError
+	return stderrors.As(err, &conflict)
+}
+
+// verifyDynamoOwnership checks that the existing resource is managed by kubeairunway and
+// belongs to the expected deployment namespace.
+func verifyDynamoOwnership(existing *unstructured.Unstructured, expectedNamespace string) error {
+	labels := existing.GetLabels()
+	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" || labels["kubeairunway.ai/deployment-namespace"] != expectedNamespace {
+		return &resourceConflictError{namespace: existing.GetNamespace(), name: existing.GetName()}
+	}
+	return nil
+}
+
 // createOrUpdateResource creates or updates an unstructured resource
-func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured) error {
+func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Check if resource exists
@@ -229,6 +261,11 @@ func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, r
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get existing resource: %w", err)
+	}
+
+	// Verify ownership before updating
+	if err := verifyDynamoOwnership(existing, md.Namespace); err != nil {
+		return err
 	}
 
 	// Update existing resource if spec has changed
@@ -312,14 +349,22 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubea
 		Kind:    DynamoGraphDeploymentKind,
 	})
 
+	dgdName := dynamoGraphDeploymentName(md.Namespace, md.Name)
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      md.Name,
+		Name:      dgdName,
 		Namespace: DynamoNamespace,
 	}, dgd)
 
 	if err == nil {
-		// Resource exists, delete it
-		logger.Info("Deleting DynamoGraphDeployment", "name", md.Name)
+		// Verify ownership before deleting
+		if err := verifyDynamoOwnership(dgd, md.Namespace); err != nil {
+			logger.Info("Resource exists but is not managed by this ModelDeployment, skipping deletion", "name", dgdName)
+			controllerutil.RemoveFinalizer(md, FinalizerName)
+			return ctrl.Result{}, r.Update(ctx, md)
+		}
+
+		// Resource exists and is owned by us, delete it
+		logger.Info("Deleting DynamoGraphDeployment", "name", dgdName)
 		if err := r.Delete(ctx, dgd); err != nil && !errors.IsNotFound(err) {
 			logger.Error(err, "Failed to delete DynamoGraphDeployment")
 

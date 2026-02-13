@@ -353,6 +353,7 @@ func TestReconcileHandleDeletion(t *testing.T) {
 func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
+	md.UID = "test-uid"
 	controllerutil.AddFinalizer(md, FinalizerName)
 	now := metav1.Now()
 	md.DeletionTimestamp = &now
@@ -361,6 +362,9 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 	setRayServiceGVK(rs)
 	rs.SetName("test")
 	rs.SetNamespace("default")
+	rs.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, rs).WithStatusSubresource(md).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
@@ -402,13 +406,18 @@ func TestCreateOrUpdateResourceNew(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
 
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
+
 	rs := &unstructured.Unstructured{}
 	setRayServiceGVK(rs)
 	rs.SetName("test")
 	rs.SetNamespace("default")
 	rs.Object["spec"] = map[string]interface{}{"serveConfigV2": "test"}
 
-	err := r.createOrUpdateResource(context.Background(), rs)
+	err := r.createOrUpdateResource(context.Background(), rs, md)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -421,10 +430,18 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	setRayServiceGVK(existing)
 	existing.SetName("test")
 	existing.SetNamespace("default")
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
 	existing.Object["spec"] = map[string]interface{}{"serveConfigV2": "old"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
 
 	updated := &unstructured.Unstructured{}
 	setRayServiceGVK(updated)
@@ -432,7 +449,7 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	updated.SetNamespace("default")
 	updated.Object["spec"] = map[string]interface{}{"serveConfigV2": "new"}
 
-	err := r.createOrUpdateResource(context.Background(), updated)
+	err := r.createOrUpdateResource(context.Background(), updated, md)
 	if err != nil {
 		t.Fatalf("unexpected error updating resource: %v", err)
 	}
@@ -445,10 +462,18 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	setRayServiceGVK(existing)
 	existing.SetName("test")
 	existing.SetNamespace("default")
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
 	existing.Object["spec"] = map[string]interface{}{"serveConfigV2": "same"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewKubeRayProviderReconciler(c, scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
 
 	same := &unstructured.Unstructured{}
 	setRayServiceGVK(same)
@@ -456,7 +481,7 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	same.SetNamespace("default")
 	same.Object["spec"] = map[string]interface{}{"serveConfigV2": "same"}
 
-	err := r.createOrUpdateResource(context.Background(), same)
+	err := r.createOrUpdateResource(context.Background(), same, md)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

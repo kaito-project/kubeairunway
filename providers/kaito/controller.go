@@ -18,6 +18,7 @@ package kaito
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"time"
 
@@ -139,9 +140,14 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Create or update the Workspace
 	for _, resource := range resources {
-		if err := r.createOrUpdateResource(ctx, resource); err != nil {
+		if err := r.createOrUpdateResource(ctx, resource, &md); err != nil {
 			logger.Error(err, "Failed to create/update resource", "name", resource.GetName(), "kind", resource.GetKind())
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "CreateFailed", err.Error())
+			reason := "CreateFailed"
+			if isResourceConflict(err) {
+				reason = "ResourceConflict"
+				r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
+			}
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
 			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Failed to create Workspace: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
@@ -203,8 +209,34 @@ func (r *KaitoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1
 	return nil
 }
 
+// resourceConflictError is returned when a resource exists but is not managed by this ModelDeployment
+type resourceConflictError struct {
+	namespace string
+	name      string
+}
+
+func (e *resourceConflictError) Error() string {
+	return fmt.Sprintf("resource %s/%s exists but is not managed by this ModelDeployment", e.namespace, e.name)
+}
+
+// isResourceConflict checks whether the error is a resource ownership conflict
+func isResourceConflict(err error) bool {
+	var conflict *resourceConflictError
+	return stderrors.As(err, &conflict)
+}
+
+// verifyOwnerReference checks that the existing resource has an OwnerReference pointing to the given ModelDeployment UID.
+func verifyOwnerReference(existing *unstructured.Unstructured, mdUID types.UID) error {
+	for _, ref := range existing.GetOwnerReferences() {
+		if ref.UID == mdUID {
+			return nil
+		}
+	}
+	return &resourceConflictError{namespace: existing.GetNamespace(), name: existing.GetName()}
+}
+
 // createOrUpdateResource creates or updates an unstructured resource
-func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured) error {
+func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Check if resource exists
@@ -223,6 +255,11 @@ func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, re
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get existing resource: %w", err)
+	}
+
+	// Verify ownership before updating
+	if err := verifyOwnerReference(existing, md.UID); err != nil {
+		return err
 	}
 
 	// Update existing resource if resource or inference has changed
@@ -314,7 +351,14 @@ func (r *KaitoProviderReconciler) handleDeletion(ctx context.Context, md *kubeai
 	}, ws)
 
 	if err == nil {
-		// Resource exists, delete it
+		// Verify ownership before deleting
+		if err := verifyOwnerReference(ws, md.UID); err != nil {
+			logger.Info("Resource exists but is not managed by this ModelDeployment, skipping deletion", "name", md.Name)
+			controllerutil.RemoveFinalizer(md, FinalizerName)
+			return ctrl.Result{}, r.Update(ctx, md)
+		}
+
+		// Resource exists and is owned by us, delete it
 		logger.Info("Deleting Workspace", "name", md.Name)
 		if err := r.Delete(ctx, ws); err != nil && !errors.IsNotFound(err) {
 			logger.Error(err, "Failed to delete Workspace")
