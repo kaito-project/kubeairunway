@@ -1,5 +1,5 @@
 import * as k8s from '@kubernetes/client-node';
-import type { AutoscalerDetectionResult, AutoscalerStatusInfo } from '@kubefoundry/shared';
+import type { AutoscalerDetectionResult, AutoscalerStatusInfo } from '@kubeairunway/shared';
 import { withRetry } from '../lib/retry';
 import logger from '../lib/logger';
 import * as yaml from 'js-yaml';

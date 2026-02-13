@@ -4,8 +4,8 @@ import { BUILDKIT_CONFIG, buildKitService } from './buildkit';
 describe('BuildKitService', () => {
   describe('BUILDKIT_CONFIG', () => {
     it('has correct default values', () => {
-      expect(BUILDKIT_CONFIG.builderName).toBe('kubefoundry-builder');
-      expect(BUILDKIT_CONFIG.namespace).toBe('kubefoundry-system');
+      expect(BUILDKIT_CONFIG.builderName).toBe('kubeairunway-builder');
+      expect(BUILDKIT_CONFIG.namespace).toBe('kubeairunway-system');
       expect(BUILDKIT_CONFIG.resources.cpu).toBe('2');
       expect(BUILDKIT_CONFIG.resources.memory).toBe('4Gi');
     });
@@ -14,7 +14,7 @@ describe('BuildKitService', () => {
   describe('getBuilderName', () => {
     it('returns the configured builder name', () => {
       const name = buildKitService.getBuilderName();
-      expect(name).toBe('kubefoundry-builder');
+      expect(name).toBe('kubeairunway-builder');
     });
   });
 
@@ -62,7 +62,7 @@ describe('BuildKitService', () => {
 
       expect(typeof status.exists).toBe('boolean');
       expect(typeof status.ready).toBe('boolean');
-      expect(status.name).toBe('kubefoundry-builder');
+      expect(status.name).toBe('kubeairunway-builder');
       expect(status.driver).toBe('kubernetes');
       expect(typeof status.message).toBe('string');
     });
@@ -91,7 +91,7 @@ describe('BuildKit Configuration', () => {
   it('builder should use kubernetes driver', () => {
     // The driver type is hardcoded in the create command
     // This test documents the expected behavior
-    expect(BUILDKIT_CONFIG.namespace).toBe('kubefoundry-system');
+    expect(BUILDKIT_CONFIG.namespace).toBe('kubeairunway-system');
   });
 
   it('builder should have sensible resource defaults', () => {

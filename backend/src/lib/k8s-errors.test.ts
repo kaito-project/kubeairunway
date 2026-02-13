@@ -20,7 +20,7 @@ describe('extractK8sErrorMessage', () => {
           kind: 'Status',
           apiVersion: 'v1',
           status: 'Failure',
-          message: 'workspaces.kaito.sh is forbidden: User "system:serviceaccount:default:kubefoundry" cannot create resource "workspaces" in API group "kaito.sh"',
+          message: 'workspaces.kaito.sh is forbidden: User "system:serviceaccount:default:kubeairunway" cannot create resource "workspaces" in API group "kaito.sh"',
           reason: 'Forbidden',
           code: 403,
         },

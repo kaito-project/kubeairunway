@@ -26,8 +26,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       {/* Header with logo */}
       <div className="flex h-16 items-center justify-between border-b px-4 md:px-6">
         <Link to="/" className="flex items-center gap-2" onClick={handleNavClick}>
-          <img src="/logo.png" alt="KubeFoundry" className="h-8 w-8" />
-          <span className="text-xl font-bold text-foreground">KubeFoundry</span>
+          <img src="/logo.png" alt="KubeAIRunway" className="h-8 w-8" />
+          <span className="text-xl font-bold text-foreground">KubeAIRunway</span>
         </Link>
         
         {/* Close button - mobile only */}

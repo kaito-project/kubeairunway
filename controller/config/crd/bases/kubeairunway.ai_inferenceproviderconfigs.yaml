@@ -1,0 +1,289 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: inferenceproviderconfigs.kubeairunway.ai
+spec:
+  group: kubeairunway.ai
+  names:
+    kind: InferenceProviderConfig
+    listKind: InferenceProviderConfigList
+    plural: inferenceproviderconfigs
+    singular: inferenceproviderconfig
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - description: Provider ready
+      jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - description: Provider version
+      jsonPath: .status.version
+      name: Version
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          InferenceProviderConfig is the Schema for the inferenceproviderconfigs API
+          InferenceProviderConfig is a cluster-scoped resource that providers use to register themselves
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the provider capabilities and selection rules
+            properties:
+              capabilities:
+                description: capabilities defines what this provider supports
+                properties:
+                  cpuSupport:
+                    description: cpuSupport indicates if the provider supports CPU-only
+                      inference
+                    type: boolean
+                  engines:
+                    description: engines is the list of supported inference engines
+                    items:
+                      description: EngineType defines the inference engine type
+                      enum:
+                      - vllm
+                      - sglang
+                      - trtllm
+                      - llamacpp
+                      type: string
+                    type: array
+                  gpuSupport:
+                    description: gpuSupport indicates if the provider supports GPU
+                      inference
+                    type: boolean
+                  servingModes:
+                    description: servingModes is the list of supported serving modes
+                    items:
+                      description: ServingMode defines the serving mode
+                      enum:
+                      - aggregated
+                      - disaggregated
+                      type: string
+                    type: array
+                type: object
+              documentation:
+                description: documentation is a URL to the provider documentation
+                type: string
+              installation:
+                description: installation defines how to install the provider's upstream
+                  components
+                properties:
+                  defaultNamespace:
+                    description: defaultNamespace is the default namespace for the
+                      provider's workloads
+                    type: string
+                  description:
+                    description: description is a human-readable description of the
+                      provider
+                    type: string
+                  helmCharts:
+                    description: helmCharts are the Helm charts to install
+                    items:
+                      description: HelmChart defines a Helm chart to install
+                      properties:
+                        chart:
+                          description: chart is the chart reference (e.g. "repo/chart"
+                            or a URL)
+                          type: string
+                        createNamespace:
+                          description: createNamespace indicates whether to create
+                            the namespace if it doesn't exist
+                          type: boolean
+                        name:
+                          description: name is the release name for the Helm chart
+                          type: string
+                        namespace:
+                          description: namespace is the Kubernetes namespace to install
+                            into
+                          type: string
+                        version:
+                          description: version is the chart version to install
+                          type: string
+                      required:
+                      - chart
+                      - name
+                      - namespace
+                      type: object
+                    type: array
+                  helmRepos:
+                    description: helmRepos are the Helm repositories needed for installation
+                    items:
+                      description: HelmRepo defines a Helm repository needed for installation
+                      properties:
+                        name:
+                          description: name is the local name for the Helm repository
+                          type: string
+                        url:
+                          description: url is the Helm repository URL
+                          type: string
+                      required:
+                      - name
+                      - url
+                      type: object
+                    type: array
+                  steps:
+                    description: steps are the ordered installation steps with commands
+                    items:
+                      description: InstallationStep defines a step in the provider
+                        installation process
+                      properties:
+                        command:
+                          description: command is the shell command to run for this
+                            step
+                          type: string
+                        description:
+                          description: description is a detailed explanation of what
+                            this step does
+                          type: string
+                        title:
+                          description: title is a short description of this step
+                          type: string
+                      required:
+                      - description
+                      - title
+                      type: object
+                    type: array
+                type: object
+              selectionRules:
+                description: |-
+                  selectionRules defines rules for auto-selecting this provider
+                  Conditions use CEL (Common Expression Language)
+                items:
+                  description: SelectionRule defines a rule for auto-selecting this
+                    provider
+                  properties:
+                    condition:
+                      description: |-
+                        condition is a CEL expression that evaluates to true when this rule matches
+                        The expression has access to the full ModelDeployment spec via `spec.*`
+                        Examples:
+                          - "!has(spec.resources.gpu) || spec.resources.gpu.count == 0"
+                          - "spec.engine.type == 'llamacpp'"
+                          - "has(spec.resources.gpu) && spec.resources.gpu.count > 0"
+                      type: string
+                    priority:
+                      default: 0
+                      description: |-
+                        priority is the priority of this rule (higher values = higher priority)
+                        When multiple providers match, the one with the highest priority wins
+                      format: int32
+                      minimum: 0
+                      type: integer
+                  required:
+                  - condition
+                  type: object
+                type: array
+            type: object
+          status:
+            description: status is written by the provider controller
+            properties:
+              conditions:
+                description: conditions represent the current state of the InferenceProviderConfig
+                  resource
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastHeartbeat:
+                description: lastHeartbeat is the last time the provider controller
+                  updated this status
+                format: date-time
+                type: string
+              ready:
+                description: ready indicates if the provider is ready to accept workloads
+                type: boolean
+              upstreamCRDVersion:
+                description: upstreamCRDVersion is the API version of the upstream
+                  CRD this provider creates
+                type: string
+              upstreamSchemaHash:
+                description: upstreamSchemaHash is a hash of the upstream CRD schema
+                  for version detection
+                type: string
+              version:
+                description: version is the version of the provider controller
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

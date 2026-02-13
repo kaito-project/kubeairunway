@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { kubernetesService } from '../services/kubernetes';
-import { configService } from '../services/config';
 import { BUILD_INFO } from '../build-info';
 import logger from '../lib/logger';
 
@@ -18,12 +17,10 @@ const health = new Hono()
     const clusterStatus = await kubernetesService.checkClusterConnection();
 
     let providerInstallation = null;
-    let activeProvider = null;
 
     if (clusterStatus.connected) {
       try {
-        providerInstallation = await kubernetesService.checkProviderInstallation();
-        activeProvider = await configService.getActiveProvider();
+        providerInstallation = await kubernetesService.checkCRDInstallation();
       } catch (error) {
         logger.error({ error }, 'Error checking provider installation');
       }
@@ -31,12 +28,6 @@ const health = new Hono()
 
     return c.json({
       ...clusterStatus,
-      provider: activeProvider
-        ? {
-            id: activeProvider.id,
-            name: activeProvider.name,
-          }
-        : null,
       providerInstallation,
     });
   })

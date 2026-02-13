@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { costEstimationService } from '../services/costEstimation';
 import { cloudPricingService } from '../services/cloudPricing';
 import { kubernetesService } from '../services/kubernetes';
-import type { CostEstimateResponse, NodePoolCostEstimate } from '@kubefoundry/shared';
+import type { CostEstimateResponse, NodePoolCostEstimate } from '@kubeairunway/shared';
 
 const costEstimateRequestSchema = z.object({
   gpuType: z.string().min(1, 'GPU type is required'),

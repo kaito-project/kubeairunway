@@ -14,7 +14,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { GPUOperatorStatus, HfSecretStatus } from '@kubefoundry/shared';
+import type { GPUOperatorStatus, HfSecretStatus } from '@kubeairunway/shared';
 import { ConnectionError } from '../components/ConnectionBanner';
 
 /**

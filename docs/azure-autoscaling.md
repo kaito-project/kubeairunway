@@ -1,10 +1,10 @@
-# Azure Cluster Autoscaling for KubeFoundry
+# Azure Cluster Autoscaling for KubeAIRunway
 
-This guide explains how to enable cluster autoscaling for GPU workloads in Azure Kubernetes Service (AKS), allowing your cluster to automatically provision GPU nodes when KubeFoundry deployments require more resources than currently available.
+This guide explains how to enable cluster autoscaling for GPU workloads in Azure Kubernetes Service (AKS), allowing your cluster to automatically provision GPU nodes when KubeAIRunway deployments require more resources than currently available.
 
 ## Overview
 
-KubeFoundry integrates with Kubernetes cluster autoscaling to provide visibility and guidance when deploying models that exceed available GPU capacity.
+KubeAIRunway integrates with Kubernetes cluster autoscaling to provide visibility and guidance when deploying models that exceed available GPU capacity.
 
 ## Prerequisites
 
@@ -56,12 +56,15 @@ az aks nodepool add \
 **Common GPU VM Sizes:**
 | VM Size                    | GPUs    | GPU Type | vCPUs | RAM    |
 | -------------------------- | ------- | -------- | ----- | ------ |
-| `Standard_NC6s_v3`         | 1x V100 | 16GB     | 6     | 112 GB |
-| `Standard_NC12s_v3`        | 2x V100 | 32GB     | 12    | 224 GB |
-| `Standard_NC24s_v3`        | 4x V100 | 64GB     | 24    | 448 GB |
-| `Standard_NC24ads_A100_v4` | 1x A100 | 80GB     | 24    | 220 GB |
-| `Standard_NC48ads_A100_v4` | 2x A100 | 160GB    | 48    | 440 GB |
-| `Standard_NC96ads_A100_v4` | 4x A100 | 320GB    | 96    | 880 GB |
+| `Standard_NC6s_v3`          | 1x V100 | 16GB     | 6     | 112 GB  |
+| `Standard_NC12s_v3`         | 2x V100 | 32GB     | 12    | 224 GB  |
+| `Standard_NC24s_v3`         | 4x V100 | 64GB     | 24    | 448 GB  |
+| `Standard_NC24ads_A100_v4`  | 1x A100 | 80GB     | 24    | 220 GB  |
+| `Standard_NC48ads_A100_v4`  | 2x A100 | 160GB    | 48    | 440 GB  |
+| `Standard_NC96ads_A100_v4`  | 4x A100 | 320GB    | 96    | 880 GB  |
+| `Standard_NC40ads_H100_v5`  | 1x H100 | 80GB     | 40    | 320 GB  |
+| `Standard_NC80adis_H100_v5` | 2x H100 | 160GB    | 80    | 640 GB  |
+| `Standard_ND96isr_H100_v5`  | 8x H100 | 640GB    | 96    | 1900 GB |
 
 ### Update Autoscaler Settings
 
@@ -95,9 +98,9 @@ az aks nodepool update \
 
 ## Verification
 
-### Check Autoscaler Detection in KubeFoundry
+### Check Autoscaler Detection in KubeAIRunway
 
-1. Navigate to **Installation** page in KubeFoundry
+1. Navigate to **Settings** page in KubeAIRunway
 2. Look for **Cluster Autoscaling** section
 3. Expected status: **Cluster Autoscaler running on X node group(s)**
 
@@ -114,7 +117,7 @@ az aks nodepool show \
 
 ### Check Autoscaler Status ConfigMap
 
-KubeFoundry detects autoscaler by checking for the `cluster-autoscaler-status` ConfigMap:
+KubeAIRunway detects the autoscaler using AKS-specific node labels (`cluster-autoscaler.kubernetes.io/enabled`) first, then falls back to checking the `cluster-autoscaler-status` ConfigMap:
 
 ```bash
 kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
@@ -124,7 +127,7 @@ kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
 
 ## Troubleshooting
 
-### Issue: KubeFoundry Shows "Not Detected"
+### Issue: KubeAIRunway Shows "Not Detected"
 
 **Check if autoscaling is enabled:**
 ```bash

@@ -1,7 +1,7 @@
 {
-  "name": "@kubefoundry/frontend",
+  "name": "@kubeairunway/frontend",
   "version": "1.0.0",
-  "description": "KubeFoundry Frontend Application",
+  "description": "KubeAIRunway Frontend Application",
   "type": "module",
   "scripts": {
     "dev": "bunx --bun vite",
@@ -14,7 +14,7 @@
     "test:e2e": "bunx playwright test"
   },
   "dependencies": {
-    "@kubefoundry/shared": "workspace:*",
+    "@kubeairunway/shared": "workspace:*",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-label": "^2.0.2",
     "@radix-ui/react-radio-group": "^1.1.3",

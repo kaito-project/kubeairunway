@@ -5,12 +5,12 @@
  * including authentication token injection from Headlamp's context.
  */
 
-import { createApiClient, type ApiClient } from '@kubefoundry/shared/api';
+import { createApiClient, type ApiClient } from '@kubeairunway/shared/api';
 import { getBackendUrlSync, clearBackendCache } from './backend-discovery';
 
 // Re-export types for convenience
-export type { ApiClient } from '@kubefoundry/shared/api';
-export * from '@kubefoundry/shared/api';
+export type { ApiClient } from '@kubeairunway/shared/api';
+export * from '@kubeairunway/shared/api';
 
 // Singleton API client instance
 let apiClientInstance: ApiClient | null = null;

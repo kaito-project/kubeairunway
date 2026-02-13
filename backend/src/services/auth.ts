@@ -31,7 +31,7 @@ export interface StoredCredentials {
   expiresAt?: string;
 }
 
-const CREDENTIALS_DIR = path.join(os.homedir(), '.kubefoundry');
+const CREDENTIALS_DIR = path.join(os.homedir(), '.kubeairunway');
 const CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, 'credentials.json');
 
 /**

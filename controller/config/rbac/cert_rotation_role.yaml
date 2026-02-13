@@ -1,0 +1,30 @@
+# RBAC for cert-controller to manage webhook certificates.
+# cert-controller needs to read/write Secrets (for cert storage) and
+# read/update webhook configurations (for CA bundle injection).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cert-rotation-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  - mutatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - update
+  - patch
+  - watch

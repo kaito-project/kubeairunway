@@ -22,7 +22,7 @@ async function handleLogin(args: string[]): Promise<void> {
     }
   }
 
-  console.log('🔐 KubeFoundry Login\n');
+  console.log('🔐 KubeAIRunway Login\n');
   console.log('Extracting credentials from kubeconfig...');
 
   const credentials = await authService.extractTokenFromKubeconfig(contextName);
@@ -70,17 +70,17 @@ function handleLogout(): void {
 }
 
 function handleVersion(): void {
-  console.log('KubeFoundry v1.0.0');
+  console.log('KubeAIRunway v1.0.0');
 }
 
 function printUsage(): void {
   console.log(`
-KubeFoundry - ML Model Deployment Platform
+KubeAIRunway - ML Model Deployment Platform
 
-Usage: kubefoundry <command> [options]
+Usage: kubeairunway <command> [options]
 
 Commands:
-  serve              Start the KubeFoundry server (default)
+  serve              Start the KubeAIRunway server (default)
   login              Authenticate using kubeconfig credentials
   logout             Clear stored credentials
   version            Show version information
@@ -90,10 +90,10 @@ Login Options:
   --context, -c      Kubeconfig context to use (default: current context)
 
 Examples:
-  kubefoundry                         # Start server
-  kubefoundry serve                   # Start server
-  kubefoundry login                   # Login with current context
-  kubefoundry login --context myaks   # Login with specific context
+  kubeairunway                         # Start server
+  kubeairunway serve                   # Start server
+  kubeairunway login                   # Login with current context
+  kubeairunway login --context myaks   # Login with specific context
 `);
 }
 
@@ -108,11 +108,11 @@ async function startServer(): Promise<void> {
 
   const authEnabled = authService.isAuthEnabled();
   
-  logger.info({ port: server.port, authEnabled }, `🚀 KubeFoundry backend running on http://localhost:${server.port}`);
+  logger.info({ port: server.port, authEnabled }, `🚀 KubeAIRunway backend running on http://localhost:${server.port}`);
   
   if (authEnabled) {
     console.log('\n🔐 Authentication is ENABLED');
-    console.log(`   Run: kubefoundry login --server http://localhost:${server.port}\n`);
+    console.log(`   Run: kubeairunway login --server http://localhost:${server.port}\n`);
   }
 }
 

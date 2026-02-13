@@ -1,4 +1,4 @@
-# Bun configuration for KubeFoundry monorepo
+# Bun configuration for KubeAIRunway monorepo
 # https://bun.com/docs/pm/cli/install#configuration
 
 [install]
@@ -12,4 +12,4 @@ frozenLockfile = false
 minimumReleaseAge = 259200
 
 # Exclude critical packages from age gate to allow urgent security patches
-minimumReleaseAgeExcludes = ["@types/bun", "@types/node", "typescript"]
+minimumReleaseAgeExcludes = ["@types/bun", "@types/node", "typescript", "bun-types"]

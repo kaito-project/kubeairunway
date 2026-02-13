@@ -1,18 +1,18 @@
 import * as k8s from '@kubernetes/client-node';
-import { providerRegistry } from '../providers';
 import logger from '../lib/logger';
+
+// Default namespace for KubeAIRunway deployments
+const DEFAULT_KUBEAIRUNWAY_NAMESPACE = 'kubeairunway-system';
 
 /**
  * Application configuration stored in Kubernetes ConfigMap
  */
 export interface AppConfig {
-  /** @deprecated No longer used - each deployment specifies its own provider */
-  activeProviderId?: string;
   defaultNamespace?: string;
 }
 
-const CONFIG_NAMESPACE = 'kubefoundry-system';
-const CONFIG_NAME = 'kubefoundry-config';
+const CONFIG_NAMESPACE = 'kubeairunway-system';
+const CONFIG_NAME = 'kubeairunway-config';
 const CONFIG_KEY = 'config.json';
 
 /**
@@ -42,12 +42,12 @@ class ConfigService {
    */
   private getDefaultConfig(): AppConfig {
     return {
-      defaultNamespace: process.env.DEFAULT_NAMESPACE,
+      defaultNamespace: process.env.DEFAULT_NAMESPACE || DEFAULT_KUBEAIRUNWAY_NAMESPACE,
     };
   }
 
   /**
-   * Ensure the kubefoundry namespace exists
+   * Ensure the kubeairunway namespace exists
    */
   private async ensureNamespace(): Promise<void> {
     try {
@@ -60,8 +60,8 @@ class ConfigService {
           metadata: {
             name: CONFIG_NAMESPACE,
             labels: {
-              'app.kubernetes.io/name': 'kubefoundry',
-              'app.kubernetes.io/managed-by': 'kubefoundry',
+              'app.kubernetes.io/name': 'kubeairunway',
+              'app.kubernetes.io/managed-by': 'kubeairunway',
             },
           },
         });
@@ -130,8 +130,8 @@ class ConfigService {
           name: CONFIG_NAME,
           namespace: CONFIG_NAMESPACE,
           labels: {
-            'app.kubernetes.io/name': 'kubefoundry',
-            'app.kubernetes.io/managed-by': 'kubefoundry',
+            'app.kubernetes.io/name': 'kubeairunway',
+            'app.kubernetes.io/managed-by': 'kubeairunway',
           },
         },
         data: {
@@ -169,52 +169,11 @@ class ConfigService {
   }
 
   /**
-   * @deprecated Use provider from deployment config instead.
-   * Get the active provider ID - falls back to default if not set.
-   */
-  async getActiveProviderId(): Promise<string> {
-    const config = await this.getConfig();
-    return config.activeProviderId || providerRegistry.getDefaultProviderId();
-  }
-
-  /**
-   * @deprecated No longer used - each deployment specifies its own provider.
-   */
-  async setActiveProvider(providerId: string): Promise<void> {
-    logger.warn('setActiveProvider is deprecated - each deployment now specifies its own provider');
-    await this.setConfig({ activeProviderId: providerId });
-  }
-
-  /**
-   * @deprecated Use provider from deployment config instead.
-   * Get the active provider instance.
-   */
-  async getActiveProvider() {
-    const providerId = await this.getActiveProviderId();
-    return providerRegistry.getProvider(providerId);
-  }
-
-  /**
    * Get the default namespace for deployments.
-   * Returns configured namespace, or falls back to first available provider's namespace.
    */
   async getDefaultNamespace(): Promise<string> {
     const config = await this.getConfig();
-    if (config.defaultNamespace) {
-      return config.defaultNamespace;
-    }
-    
-    // Try to use activeProviderId if set (backward compatibility)
-    if (config.activeProviderId) {
-      const provider = providerRegistry.getProviderOrNull(config.activeProviderId);
-      if (provider) {
-        return provider.defaultNamespace;
-      }
-    }
-    
-    // Fall back to dynamo's default namespace
-    const provider = providerRegistry.getProvider('dynamo');
-    return provider.defaultNamespace;
+    return config.defaultNamespace || DEFAULT_KUBEAIRUNWAY_NAMESPACE;
   }
 
   /**

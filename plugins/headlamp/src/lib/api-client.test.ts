@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock shared API
-vi.mock('@kubefoundry/shared/api', () => ({
+vi.mock('@kubeairunway/shared/api', () => ({
   createApiClient: vi.fn(() => ({
     health: { ping: vi.fn() },
     deployments: { list: vi.fn(), get: vi.fn(), create: vi.fn(), delete: vi.fn() },

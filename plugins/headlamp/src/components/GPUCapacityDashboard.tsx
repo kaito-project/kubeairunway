@@ -4,7 +4,7 @@
  * Displays GPU availability and capacity across the cluster.
  */
 
-import type { ClusterGpuCapacity } from '@kubefoundry/shared';
+import type { ClusterGpuCapacity } from '@kubeairunway/shared';
 
 interface GPUCapacityDashboardProps {
   gpuData: ClusterGpuCapacity | null;

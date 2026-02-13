@@ -1,5 +1,238 @@
 # API Reference
 
+KubeAIRunway provides two APIs for managing deployments:
+
+1. **CRD API** (Recommended) - Create `ModelDeployment` custom resources directly via kubectl
+2. **REST API** - Web UI backend API for browser-based management
+
+## CRD API (Kubernetes Native)
+
+The preferred way to deploy models is via the `ModelDeployment` CRD:
+
+```bash
+# Create a deployment
+kubectl apply -f - <<EOF
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen-demo
+  namespace: default
+spec:
+  model:
+    id: "Qwen/Qwen3-0.6B"
+    source: huggingface
+  engine:
+    type: vllm
+  resources:
+    gpu:
+      count: 1
+  scaling:
+    replicas: 1
+EOF
+
+# List deployments
+kubectl get modeldeployments
+
+# Check status
+kubectl describe modeldeployment qwen-demo
+
+# Delete deployment
+kubectl delete modeldeployment qwen-demo
+```
+
+See [controller-architecture.md](controller-architecture.md) for controller internals and [providers.md](providers.md) for provider selection.
+
+### ModelDeployment Spec Reference
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `model.id` | string | Yes (when source=huggingface) | — | HuggingFace model ID |
+| `model.source` | string | No | `huggingface` | `huggingface` or `custom` |
+| `model.servedName` | string | No | Model ID basename | API-facing model name |
+| `engine.type` | string | No | Auto-selected | `vllm`, `sglang`, `trtllm`, or `llamacpp`. If omitted, auto-selected from provider capabilities |
+| `engine.contextLength` | int | No | Model default | Max context length |
+| `engine.trustRemoteCode` | bool | No | `false` | Allow remote code (vLLM/SGLang only) |
+| `engine.args` | map[string]string | No | `{}` | Engine-specific CLI flags |
+| `provider.name` | string | No | Auto-selected | `dynamo`, `kaito`, or `kuberay` |
+| `provider.overrides` | object | No | `{}` | Provider-specific escape hatch |
+| `serving.mode` | string | No | `aggregated` | `aggregated` or `disaggregated` |
+| `scaling.replicas` | int | No | `1` | Replicas (aggregated mode) |
+| `scaling.prefill` | object | No | — | Prefill scaling (disaggregated mode) |
+| `scaling.decode` | object | No | — | Decode scaling (disaggregated mode) |
+| `resources.gpu.count` | int | No | `0` | GPU count |
+| `resources.gpu.type` | string | No | `nvidia.com/gpu` | GPU resource name |
+| `resources.memory` | string | No | — | Memory request |
+| `resources.cpu` | string | No | — | CPU request |
+| `image` | string | No | Provider default | Custom container image |
+| `env` | []EnvVar | No | `[]` | Environment variables |
+| `podTemplate.metadata.labels` | map | No | `{}` | Labels for pods |
+| `podTemplate.metadata.annotations` | map | No | `{}` | Annotations for pods |
+| `secrets.huggingFaceToken` | string | No | — | K8s secret name for HF token |
+| `nodeSelector` | map | No | `{}` | Node selector |
+| `tolerations` | []Toleration | No | `[]` | Tolerations |
+
+### Update Semantics
+
+When updating a `ModelDeployment`, changes are handled based on field type:
+
+**Identity fields** — changing these triggers delete + recreate (brief downtime):
+- `model.id`, `model.source`, `engine.type` (once set), `provider.name`, `serving.mode`
+
+**Config fields** — changed in-place without recreation:
+- `model.servedName`, `scaling.*`, `env`, `resources`, `engine.args`, `engine.contextLength`, `image`, `secrets.*`, `podTemplate.metadata`, `nodeSelector`, `tolerations`, `provider.overrides`
+
+### API Versioning
+
+| Version | Status | Stability |
+|---------|--------|-----------|
+| `v1alpha1` | Current | Experimental — breaking changes allowed |
+| `v1beta1` | Planned | Feature complete — breaking changes with deprecation warnings |
+| `v1` | Future | Stable — no breaking changes, long-term support |
+
+### Engine-Specific Parameters
+
+Common concepts are abstracted via `engine.contextLength` and `engine.trustRemoteCode`. For engine-specific flags, use `engine.args`:
+
+**Context length mapping:**
+
+| Engine | CLI flag | Default |
+|--------|----------|---------|
+| vLLM | `--max-model-len` | Model default |
+| SGLang | `--context-length` | Model default |
+| TensorRT-LLM | Build-time config | — |
+| llama.cpp | `--ctx-size` | Model max |
+
+**Quantization** (via `engine.args`):
+```yaml
+engine:
+  type: vllm
+  args:
+    quantization: "awq"    # awq, gptq, squeezellm, fp8
+```
+
+**GPU memory utilization** (via `engine.args`):
+
+| Engine | Arg key | Default |
+|--------|---------|---------|
+| vLLM | `gpu-memory-utilization` | `0.9` |
+| SGLang | `mem-fraction-static` | `0.88` |
+
+### Example Transformations
+
+#### GPU Deployment → Dynamo (auto-selected)
+
+```yaml
+# User creates:
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-8b
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-8B-Instruct"
+    source: huggingface
+  engine:
+    type: vllm
+    contextLength: 8192
+  scaling:
+    replicas: 1
+  resources:
+    gpu:
+      count: 1
+    memory: "32Gi"
+  secrets:
+    huggingFaceToken: "hf-token"
+
+# Controller creates DynamoGraphDeployment with:
+#   - Frontend service (router)
+#   - VllmWorker with 1 GPU, 32Gi memory
+#   - vLLM runtime image
+# Status:
+#   provider.name: dynamo
+#   provider.selectedReason: "default → dynamo (GPU inference default)"
+#   endpoint.service: llama-8b-frontend, port: 8000
+```
+
+#### CPU Deployment → KAITO (auto-selected)
+
+```yaml
+# User creates:
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: gemma-cpu
+spec:
+  model:
+    id: "google/gemma-3-1b-it-qat-q8_0-gguf"
+    source: huggingface
+  engine:
+    type: llamacpp
+  scaling:
+    replicas: 1
+  resources:
+    gpu:
+      count: 0
+    memory: "16Gi"
+    cpu: "8"
+  image: "ghcr.io/sozercan/llama-cpp-runner:latest"
+
+# Controller creates KAITO Workspace with:
+#   - llama.cpp container, CPU-only
+# Status:
+#   provider.name: kaito
+#   provider.selectedReason: "no GPU requested → kaito (only CPU provider)"
+#   endpoint.service: gemma-cpu, port: 80
+```
+
+#### Disaggregated P/D → Dynamo (explicit)
+
+```yaml
+# User creates:
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-70b-pd
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-70B-Instruct"
+  provider:
+    name: dynamo
+    overrides:
+      routerMode: "kv"
+      frontend:
+        replicas: 2
+  engine:
+    type: vllm
+  serving:
+    mode: disaggregated
+  scaling:
+    prefill:
+      replicas: 2
+      gpu:
+        count: 4
+      memory: "128Gi"
+    decode:
+      replicas: 4
+      gpu:
+        count: 2
+      memory: "64Gi"
+  secrets:
+    huggingFaceToken: "hf-token"
+
+# Controller creates DynamoGraphDeployment with:
+#   - Frontend (2 replicas, KV routing)
+#   - VllmPrefillWorker (2 replicas, 4 GPUs each)
+#   - VllmDecodeWorker (4 replicas, 2 GPUs each)
+# Status:
+#   provider.name: dynamo
+#   replicas.desired: 6 (2 prefill + 4 decode)
+#   endpoint.service: llama-70b-pd-frontend, port: 8000
+```
+
+---
+
+## REST API (Web UI)
+
 Base URL: `http://localhost:3001/api`
 
 ## Health & Status
@@ -34,7 +267,7 @@ Get Kubernetes cluster connection status.
 ```json
 {
   "connected": true,
-  "namespace": "kubefoundry-system",
+  "namespace": "kubeairunway-system",
   "providerId": "dynamo",
   "providerInstalled": true
 }
@@ -70,25 +303,8 @@ Get current settings and available providers.
 ```json
 {
   "config": {
-    "defaultNamespace": "kubefoundry-system"
+    "defaultNamespace": "kubeairunway-system"
   },
-  "providers": [
-    {
-      "id": "dynamo",
-      "name": "NVIDIA Dynamo",
-      "description": "GPU-accelerated inference with disaggregated serving"
-    },
-    {
-      "id": "kuberay",
-      "name": "KubeRay",
-      "description": "Ray-based distributed inference"
-    },
-    {
-      "id": "kaito",
-      "name": "KAITO",
-      "description": "CPU/GPU inference with pre-built GGUF models via llama.cpp"
-    }
-  ],
   "auth": {
     "enabled": false
   }
@@ -154,9 +370,6 @@ Install a provider via Helm.
   "message": "Provider installed successfully"
 }
 ```
-
-### POST /installation/providers/:id/upgrade
-Upgrade an installed provider.
 
 ### POST /installation/providers/:id/uninstall
 Uninstall a provider (preserves CRDs by default).
@@ -262,7 +475,6 @@ Get detailed GPU capacity information for the cluster.
 - `totalMemoryGb` is detected from `nvidia.com/gpu.memory` node label (MiB converted to GB)
 - Falls back to detecting memory from `nvidia.com/gpu.product` label if not available
 - Used by frontend to show GPU fit indicators for HuggingFace search results
-```
 
 ### POST /installation/gpu-operator/install
 Install the NVIDIA GPU Operator via Helm.
@@ -365,10 +577,6 @@ Get detailed autoscaler status from ConfigMap.
 ### GET /models
 Get the curated model catalog.
 
-**Query Parameters:**
-- `search` (optional) - Filter by name
-- `engine` (optional) - Filter by supported engine
-
 **Response:**
 ```json
 {
@@ -415,12 +623,30 @@ Get the curated model catalog.
 - `parameterCount` - Parameter count from safetensors metadata
 - `fromHfSearch` - True if model came from HuggingFace search
 
+### GET /models/:modelId/gguf-files
+Get available GGUF files for a HuggingFace model.
+
+**Headers:**
+- `X-HF-Token` (optional) - HuggingFace token for gated models
+
+**Response:**
+```json
+{
+  "files": [
+    {
+      "filename": "model-Q8_0.gguf",
+      "size": 1340000000
+    }
+  ]
+}
+```
+
 ### GET /models/search
 Search HuggingFace Hub for compatible models.
 
 **Query Parameters:**
 - `q` (required) - Search query
-- `limit` (optional) - Number of results (default: 20, max: 100)
+- `limit` (optional) - Number of results (default: 20, max: 50)
 - `offset` (optional) - Pagination offset
 
 **Headers:**
@@ -470,7 +696,7 @@ List all deployments for the active provider.
   "deployments": [
     {
       "name": "qwen-deployment",
-      "namespace": "kubefoundry-system",
+      "namespace": "kubeairunway-system",
       "modelId": "Qwen/Qwen3-0.6B",
       "engine": "vllm",
       "phase": "Running",
@@ -488,7 +714,7 @@ Create a new deployment.
 ```json
 {
   "name": "qwen-deployment",
-  "namespace": "kubefoundry-system",
+  "namespace": "kubeairunway-system",
   "provider": "dynamo",
   "modelId": "Qwen/Qwen3-0.6B",
   "engine": "vllm",
@@ -514,7 +740,7 @@ Create a new deployment.
 {
   "message": "Deployment created successfully",
   "name": "qwen-deployment",
-  "namespace": "kubefoundry-system",
+  "namespace": "kubeairunway-system",
   "provider": "dynamo"
 }
 ```
@@ -529,7 +755,7 @@ Get deployment details including pod status.
 ```json
 {
   "name": "qwen-deployment",
-  "namespace": "kubefoundry-system",
+  "namespace": "kubeairunway-system",
   "modelId": "Qwen/Qwen3-0.6B",
   "engine": "vllm",
   "provider": "dynamo",
@@ -544,6 +770,30 @@ Get deployment details including pod status.
     }
   ],
   "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+### GET /deployments/:name/manifest
+Get the Kubernetes manifest resources for a deployment.
+
+**Query Parameters:**
+- `namespace` (optional)
+
+**Response:**
+```json
+{
+  "resources": [
+    {
+      "kind": "ModelDeployment",
+      "apiVersion": "kubeairunway.ai/v1alpha1",
+      "name": "qwen-deployment",
+      "manifest": { }
+    }
+  ],
+  "primaryResource": {
+    "kind": "ModelDeployment",
+    "apiVersion": "kubeairunway.ai/v1alpha1"
+  }
 }
 ```
 
@@ -683,7 +933,7 @@ Get Prometheus metrics from a deployment's inference service.
 ```json
 {
   "available": false,
-  "error": "Metrics are only available when KubeFoundry is deployed inside the Kubernetes cluster.",
+  "error": "Metrics are only available when KubeAIRunway is deployed inside the Kubernetes cluster.",
   "timestamp": "2025-01-15T10:30:00.000Z",
   "metrics": [],
   "runningOffCluster": true
@@ -691,7 +941,7 @@ Get Prometheus metrics from a deployment's inference service.
 ```
 
 **Notes:**
-- Metrics require KubeFoundry to be running inside the cluster
+- Metrics require KubeAIRunway to be running inside the cluster
 - Supports both vLLM and llama.cpp metric formats
 - Returns `runningOffCluster: true` when running locally
 
@@ -728,7 +978,7 @@ Get reasons why deployment pods are pending (unschedulable).
 
 ## HuggingFace OAuth
 
-KubeFoundry supports HuggingFace OAuth with PKCE for secure token acquisition. This enables access to gated models (e.g., Llama, Mistral) without manually managing tokens.
+KubeAIRunway supports HuggingFace OAuth with PKCE for secure token acquisition. This enables access to gated models (e.g., Llama, Mistral) without manually managing tokens.
 
 ### GET /oauth/huggingface/config
 Get OAuth configuration for initiating HuggingFace sign-in.
@@ -739,6 +989,35 @@ Get OAuth configuration for initiating HuggingFace sign-in.
   "clientId": "e05817a1-7053-4b9e-b292-29cd219fccf8",
   "authorizeUrl": "https://huggingface.co/oauth/authorize",
   "scopes": ["openid", "profile", "read-repos"]
+}
+```
+
+### POST /oauth/huggingface/start
+Start an OAuth flow with PKCE. Generates a code verifier and state parameter.
+
+**Request Body:**
+```json
+{
+  "redirectUri": "http://localhost:3000/oauth/callback/huggingface"
+}
+```
+
+**Response:**
+```json
+{
+  "authorizationUrl": "https://huggingface.co/oauth/authorize?client_id=...&state=...",
+  "state": "random-state-string"
+}
+```
+
+### GET /oauth/huggingface/verifier/:state
+Retrieve the PKCE code verifier for a given OAuth state. One-time use — the verifier is deleted after retrieval.
+
+**Response:**
+```json
+{
+  "codeVerifier": "pkce_code_verifier_string",
+  "redirectUri": "http://localhost:3000/oauth/callback/huggingface"
 }
 ```
 
@@ -906,7 +1185,7 @@ Build an AIKit image from a HuggingFace GGUF model or get pre-made image referen
 ```json
 {
   "success": true,
-  "imageRef": "registry.kubefoundry-system.svc.cluster.local:5000/my-model:v1",
+  "imageRef": "registry.kubeairunway-system.svc.cluster.local:5000/my-model:v1",
   "buildTime": 120,
   "wasPremade": false,
   "message": "AIKit image built successfully"
@@ -919,10 +1198,10 @@ Preview what image would be built (dry-run, no actual build).
 **Response:**
 ```json
 {
-  "imageRef": "registry.kubefoundry-system.svc.cluster.local:5000/my-model:v1",
+  "imageRef": "registry.kubeairunway-system.svc.cluster.local:5000/my-model:v1",
   "wasPremade": false,
   "requiresBuild": true,
-  "registryUrl": "registry.kubefoundry-system.svc.cluster.local:5000"
+  "registryUrl": "registry.kubeairunway-system.svc.cluster.local:5000"
 }
 ```
 
@@ -935,7 +1214,7 @@ Check build infrastructure (registry and BuildKit) status.
   "ready": true,
   "registry": {
     "ready": true,
-    "url": "registry.kubefoundry-system.svc.cluster.local:5000",
+    "url": "registry.kubeairunway-system.svc.cluster.local:5000",
     "message": "Registry is running"
   },
   "builder": {
@@ -956,11 +1235,11 @@ Set up build infrastructure (deploy registry and BuildKit if needed).
   "success": true,
   "message": "Build infrastructure is ready",
   "registry": {
-    "url": "registry.kubefoundry-system.svc.cluster.local:5000",
+    "url": "registry.kubeairunway-system.svc.cluster.local:5000",
     "ready": true
   },
   "builder": {
-    "name": "buildkit-kubefoundry",
+    "name": "buildkit-kubeairunway",
     "ready": true
   }
 }
@@ -994,7 +1273,7 @@ Check if AI Configurator CLI is available on the system.
 {
   "available": false,
   "runningInCluster": true,
-  "error": "AI Configurator is only available when running KubeFoundry locally"
+  "error": "AI Configurator is only available when running KubeAIRunway locally"
 }
 ```
 
@@ -1316,7 +1595,6 @@ Get list of supported GPU models with specifications.
 - Returns GPU specifications only (memory, generation)
 - For real-time pricing, use `/costs/node-pools` or `/costs/instance-price` endpoints
 - GPU models are used for normalization and capacity planning
-```
 
 ### GET /costs/normalize-gpu
 Normalize a GPU label to a standard GPU model name.

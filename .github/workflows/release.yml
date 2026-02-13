@@ -56,17 +56,17 @@ jobs:
           VERSION=${{ steps.version.outputs.VERSION }}
           
           # Rename binaries with version
-          mv dist/kubefoundry-linux-x64 release/kubefoundry-${VERSION}-linux-amd64
-          mv dist/kubefoundry-linux-arm64 release/kubefoundry-${VERSION}-linux-arm64
-          mv dist/kubefoundry-darwin-x64 release/kubefoundry-${VERSION}-darwin-amd64
-          mv dist/kubefoundry-darwin-arm64 release/kubefoundry-${VERSION}-darwin-arm64
-          mv dist/kubefoundry-windows-x64.exe release/kubefoundry-${VERSION}-windows-amd64.exe
+          mv dist/kubeairunway-linux-x64 release/kubeairunway-${VERSION}-linux-amd64
+          mv dist/kubeairunway-linux-arm64 release/kubeairunway-${VERSION}-linux-arm64
+          mv dist/kubeairunway-darwin-x64 release/kubeairunway-${VERSION}-darwin-amd64
+          mv dist/kubeairunway-darwin-arm64 release/kubeairunway-${VERSION}-darwin-arm64
+          mv dist/kubeairunway-windows-x64.exe release/kubeairunway-${VERSION}-windows-amd64.exe
           
           # Make binaries executable (except Windows)
-          chmod +x release/kubefoundry-${VERSION}-linux-amd64
-          chmod +x release/kubefoundry-${VERSION}-linux-arm64
-          chmod +x release/kubefoundry-${VERSION}-darwin-amd64
-          chmod +x release/kubefoundry-${VERSION}-darwin-arm64
+          chmod +x release/kubeairunway-${VERSION}-linux-amd64
+          chmod +x release/kubeairunway-${VERSION}-linux-arm64
+          chmod +x release/kubeairunway-${VERSION}-darwin-amd64
+          chmod +x release/kubeairunway-${VERSION}-darwin-arm64
           
           # Generate checksums
           cd release

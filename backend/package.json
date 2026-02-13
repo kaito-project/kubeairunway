@@ -1,7 +1,7 @@
 {
-  "name": "@kubefoundry/backend",
+  "name": "@kubeairunway/backend",
   "version": "1.0.0",
-  "description": "KubeFoundry Backend API",
+  "description": "KubeAIRunway Backend API",
   "main": "dist/index.js",
   "scripts": {
     "dev": "bun --watch src/index.ts",
@@ -10,11 +10,11 @@
     "embed": "bun scripts/embed-assets.ts",
     "precompile": "bun run embed",
     "compile": "bun run scripts/compile.ts",
-    "compile:linux-x64": "bun run scripts/compile.ts --target=bun-linux-x64 --outfile=kubefoundry-linux-x64",
-    "compile:linux-arm64": "bun run scripts/compile.ts --target=bun-linux-arm64 --outfile=kubefoundry-linux-arm64",
-    "compile:darwin-x64": "bun run scripts/compile.ts --target=bun-darwin-x64 --outfile=kubefoundry-darwin-x64",
-    "compile:darwin-arm64": "bun run scripts/compile.ts --target=bun-darwin-arm64 --outfile=kubefoundry-darwin-arm64",
-    "compile:windows-x64": "bun run scripts/compile.ts --target=bun-windows-x64 --outfile=kubefoundry-windows-x64.exe",
+    "compile:linux-x64": "bun run scripts/compile.ts --target=bun-linux-x64 --outfile=kubeairunway-linux-x64",
+    "compile:linux-arm64": "bun run scripts/compile.ts --target=bun-linux-arm64 --outfile=kubeairunway-linux-arm64",
+    "compile:darwin-x64": "bun run scripts/compile.ts --target=bun-darwin-x64 --outfile=kubeairunway-darwin-x64",
+    "compile:darwin-arm64": "bun run scripts/compile.ts --target=bun-darwin-arm64 --outfile=kubeairunway-darwin-arm64",
+    "compile:windows-x64": "bun run scripts/compile.ts --target=bun-windows-x64 --outfile=kubeairunway-windows-x64.exe",
     "lint": "eslint src --ext .ts",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -27,7 +27,8 @@
     "hono": "^4.10.7",
     "js-yaml": "^4.1.1",
     "pino": "^10.1.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@kubeairunway/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

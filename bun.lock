@@ -6,10 +6,11 @@
       "name": "kubefoundry",
     },
     "backend": {
-      "name": "@kubefoundry/backend",
+      "name": "@kubeairunway/backend",
       "version": "1.0.0",
       "dependencies": {
         "@hono/zod-validator": "^0.7.5",
+        "@kubeairunway/shared": "workspace:*",
         "@kubernetes/client-node": "^0.21.0",
         "cors": "^2.8.5",
         "hono": "^4.10.7",
@@ -28,10 +29,10 @@
       },
     },
     "frontend": {
-      "name": "@kubefoundry/frontend",
+      "name": "@kubeairunway/frontend",
       "version": "1.0.0",
       "dependencies": {
-        "@kubefoundry/shared": "workspace:*",
+        "@kubeairunway/shared": "workspace:*",
         "@radix-ui/react-dialog": "^1.0.5",
         "@radix-ui/react-label": "^2.0.2",
         "@radix-ui/react-radio-group": "^1.1.3",
@@ -81,7 +82,7 @@
       "name": "kubefoundry-headlamp-plugin",
       "version": "0.1.0",
       "dependencies": {
-        "@kubefoundry/shared": "workspace:*",
+        "@kubeairunway/shared": "workspace:*",
       },
       "devDependencies": {
         "@kinvolk/headlamp-plugin": "^0.9.0",
@@ -103,7 +104,7 @@
       },
     },
     "shared": {
-      "name": "@kubefoundry/shared",
+      "name": "@kubeairunway/shared",
       "version": "1.0.0",
       "devDependencies": {
         "typescript": "^5.3.3",
@@ -623,11 +624,11 @@
 
     "@kinvolk/headlamp-plugin": ["@kinvolk/headlamp-plugin@0.9.2", "", { "dependencies": { "@apidevtools/json-schema-ref-parser": "^9.0.9", "@apidevtools/swagger-parser": "^10.0.3", "@axe-core/react": "^4.3.2", "@babel/cli": "^7.17.10", "@babel/core": "^7.11.1", "@babel/plugin-proposal-class-properties": "^7.10.4", "@babel/plugin-proposal-private-property-in-object": "^7.21.11", "@babel/plugin-transform-react-jsx": "^7.10.4", "@babel/preset-env": "^7.11.0", "@babel/preset-react": "^7.10.4", "@babel/preset-typescript": "^7.10.4", "@emotion/react": "^11.11.1", "@emotion/styled": "^11.11.0", "@iconify/icons-mdi": "^1.2.9", "@iconify/react": "^3.2.1", "@kinvolk/eslint-config": "^0.5.0", "@monaco-editor/react": "^4.3.1", "@mui/lab": "^5.0.0-alpha.152", "@mui/material": "^5.14.17", "@mui/styles": "^5.14.17", "@mui/system": "^5.14.17", "@mui/x-tree-view": "^6.17.0", "@octokit/core": "^3.5.1", "@reduxjs/toolkit": "^1.9.3", "@remix-run/router": "1.0.1", "@storybook/addon-actions": "7.6.7", "@storybook/addon-essentials": "7.6.7", "@storybook/addon-links": "7.6.7", "@storybook/addon-storyshots": "7.6.7", "@storybook/node-logger": "7.6.7", "@storybook/preset-create-react-app": "^7.6.7", "@storybook/react": "7.6.7", "@storybook/react-webpack5": "^7.6.7", "@svgr/webpack": "^6.2.1", "@testing-library/jest-dom": "^5.16.1", "@testing-library/react": "^12.1.2", "@testing-library/user-event": "^14.5.1", "@types/glob": "^8.1.0", "@types/humanize-duration": "^3.27.1", "@types/js-yaml": "^4.0.3", "@types/json-patch": "0.0.30", "@types/lodash": "^4.14.175", "@types/node": "^14.17.21", "@types/react": "^17.0.27", "@types/react-dom": "^17.0.9", "@types/react-redux": "^7.1.19", "@types/react-router-dom": "^5.3.1", "@types/react-window": "^1.8.5", "@types/redux-mock-store": "^1.0.4", "@types/semver": "^7.3.8", "@types/webpack-env": "^1.16.2", "@typescript-eslint/eslint-plugin": "^4.33.0", "@typescript-eslint/parser": "^4.33.0", "babel-loader": "^8.2.5", "base64-arraybuffer": "^1.0.2", "buffer": "^6.0.3", "console-browserify": "^1.2.0", "cronstrue": "^1.123.0", "cross-env": "^7.0.3", "crypto-browserify": "^3.12.0", "css-loader": "^6.7.1", "env-paths": "^2.2.1", "eslint": "^7.32.0", "eslint-config-prettier": "^8.3.0", "eslint-plugin-import": "^2.24.2", "eslint-plugin-jsx-a11y": "^6.4.1", "eslint-plugin-react": "7.28.0", "eslint-plugin-react-hooks": "^4.2.0", "eslint-plugin-simple-import-sort": "^7.0.0", "eslint-plugin-unused-imports": "^1.1.5", "fake-indexeddb": "^5.0.1", "fetch-mock": "^9.11.0", "file-loader": "^6.2.0", "filemanager-webpack-plugin": "^7.0.0", "fs-extra": "^9.1.0", "github-markdown-css": "^5.1.0", "http-proxy-middleware": "^2.0.1", "https-browserify": "^1.0.0", "humanize-duration": "^3.27.2", "i18next": "^20.6.1", "i18next-browser-languagedetector": "^6.1.1", "i18next-parser": "^4.7.0", "if-env": "^1.0.4", "imports-loader": "^1.1.0", "is-plain-object": "^5.0.0", "jest-canvas-mock": "^2.4.0", "js-base64": "^3.7.2", "js-yaml": "^4.1.0", "jsonpath-plus": "^6.0.1", "lint-staged": "^10.5.4", "lodash": "^4.17.21", "monaco-editor": "^0.25.2", "monaco-editor-webpack-plugin": "^4.2.0", "msw": "^0.47.4", "msw-storybook-addon": "^1.10.0", "notistack": "^2.0.8", "openapi-types": "^9.3.0", "patch-package": "^6.4.7", "postcss": "^8.4.5", "postcss-flexbugs-fixes": "^5.0.2", "prettier": "^2.7.1", "process": "^0.11.10", "react": "^17.0.1", "react-dom": "^17.0.1", "react-dropzone": "^14.2.3", "react-hotkeys-hook": "^4.4.1", "react-i18next": "^11.12.0", "react-jwt": "^1.1.6", "react-markdown": "^8.0.0", "react-redux": "^7.2.5", "react-router": "^5.3.0", "react-router-dom": "^5.3.0", "react-scripts": "5.0.0", "react-window": "^1.8.7", "recharts": "^2.1.4", "redux-mock-store": "^1.5.4", "resize-observer-polyfill": "^1.5.1", "semver": "^7.3.5", "shx": "^0.3.4", "spacetime": "^7.4.0", "storybook": "^7.6.7", "stream-browserify": "^3.0.0", "stream-http": "^3.2.0", "style-loader": "^3.3.1", "tsconfig-paths-webpack-plugin": "^4.0.0", "typescript": "4.4.3", "url": "^0.11.0", "url-loader": "^4.1.1", "util": "^0.12.4", "validate-npm-package-name": "^3.0.0", "vfile": "^5.3.0", "vm-browserify": "^1.1.2", "webpack": "^5.66.0", "webpack-cli": "^4.9.0", "xterm": "^4.19.0", "xterm-addon-fit": "^0.5.0", "xterm-addon-search": "^0.9.0", "yargs": "^16.2.0" }, "bin": { "headlamp-plugin": "bin/headlamp-plugin.js" } }, "sha512-UosQU1u4QgajK1K3bHTxxOBS/pcmk8P50TrES5kseI3sYFojI6ox2Kr9tejgXcWT7C6iZVxZq9AIHbpa290hXA=="],
 
-    "@kubefoundry/backend": ["@kubefoundry/backend@workspace:backend"],
+    "@kubeairunway/backend": ["@kubeairunway/backend@workspace:backend"],
 
-    "@kubefoundry/frontend": ["@kubefoundry/frontend@workspace:frontend"],
+    "@kubeairunway/frontend": ["@kubeairunway/frontend@workspace:frontend"],
 
-    "@kubefoundry/shared": ["@kubefoundry/shared@workspace:shared"],
+    "@kubeairunway/shared": ["@kubeairunway/shared@workspace:shared"],
 
     "@kubernetes/client-node": ["@kubernetes/client-node@0.21.0", "", { "dependencies": { "@types/js-yaml": "^4.0.1", "@types/node": "^20.1.1", "@types/request": "^2.47.1", "@types/ws": "^8.5.3", "byline": "^5.0.0", "isomorphic-ws": "^5.0.0", "js-yaml": "^4.1.0", "jsonpath-plus": "^8.0.0", "request": "^2.88.0", "rfc4648": "^1.3.0", "stream-buffers": "^3.0.2", "tar": "^7.0.0", "tslib": "^2.4.1", "ws": "^8.11.0" }, "optionalDependencies": { "openid-client": "^5.3.0" } }, "sha512-yYRbgMeyQbvZDHt/ZqsW3m4lRefzhbbJEuj8sVXM+bufKrgmzriA2oq7lWPH/k/LQIicAME9ixPUadTrxIF6dQ=="],
 
@@ -1041,7 +1042,7 @@
 
     "@types/bonjour": ["@types/bonjour@3.5.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-z9fJ5Im06zvUL548KvYNecEVlA7cVDkGUi6kZusb04mpyEFKCIZJvloCcmpmLaIahDpOQGHaHmG6imtPMmPXGQ=="],
 
-    "@types/bun": ["@types/bun@1.3.4", "", { "dependencies": { "bun-types": "1.3.4" } }, "sha512-EEPTKXHP+zKGPkhRLv+HI0UEX8/o+65hqARxLy8Ov5rIxMBPNTjeZww00CIihrIQGEQBYg+0roO5qOnS/7boGA=="],
+    "@types/bun": ["@types/bun@1.3.9", "", { "dependencies": { "bun-types": "1.3.9" } }, "sha512-KQ571yULOdWJiMH+RIWIOZ7B2RXQGpL1YQrBtLIV3FqDcCu6FsbFUBwhdKUlCKUpS3PJDsHlJ1QKlpxoVR+xtw=="],
 
     "@types/caseless": ["@types/caseless@0.12.5", "", {}, "sha512-hWtVTC2q7hc7xZ/RLbxapMvDMgUnDvKvMOpKal4DrMyfGBUfB1oKaZlIRr6mJL+If3bAP6sV/QneGzF6tJjZDg=="],
 
@@ -1573,7 +1574,7 @@
 
     "builtins": ["builtins@1.0.3", "", {}, "sha512-uYBjakWipfaO/bXI7E8rq6kpwHRZK5cNYrUv2OzZSI/FvmdMyXJ2tG9dKcjEC5YHmHpUAwsargWIZNWdxb/bnQ=="],
 
-    "bun-types": ["bun-types@1.3.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-5ua817+BZPZOlNaRgGBpZJOSAQ9RQ17pkwPD0yR7CfJg+r8DgIILByFifDTa+IPDDxzf5VNhtNlcKqFzDgJvlQ=="],
+    "bun-types": ["bun-types@1.3.9", "", { "dependencies": { "@types/node": "*" } }, "sha512-+UBWWOakIP4Tswh0Bt0QD0alpTY8cb5hvgiYeWCMet9YukHbzuruIEeXC2D7nMJPB12kbh8C7XJykSexEqGKJg=="],
 
     "byline": ["byline@5.0.0", "", {}, "sha512-s6webAy+R4SR8XVuJWt2V2rGvhnrhxN+9S15GNuTK3wKPOXFF6RNc+8ug2XhH+2s4f+uudG4kUVYmYOQWL2g0Q=="],
 

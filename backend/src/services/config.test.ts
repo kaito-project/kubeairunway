@@ -5,11 +5,11 @@ describe('ConfigService - AppConfig Structure', () => {
   test('creates valid config with all fields', () => {
     const config: AppConfig = {
       activeProviderId: 'dynamo',
-      defaultNamespace: 'kubefoundry-system',
+      defaultNamespace: 'kubeairunway-system',
     };
 
     expect(config.activeProviderId).toBe('dynamo');
-    expect(config.defaultNamespace).toBe('kubefoundry-system');
+    expect(config.defaultNamespace).toBe('kubeairunway-system');
   });
 
   test('all fields are optional', () => {
@@ -118,16 +118,16 @@ describe('ConfigService - Config Merging', () => {
 });
 
 describe('ConfigService - ConfigMap Naming', () => {
-  const CONFIG_NAMESPACE = 'kubefoundry-system';
-  const CONFIG_NAME = 'kubefoundry-config';
+  const CONFIG_NAMESPACE = 'kubeairunway-system';
+  const CONFIG_NAME = 'kubeairunway-config';
   const CONFIG_KEY = 'config.json';
 
   test('uses correct ConfigMap namespace', () => {
-    expect(CONFIG_NAMESPACE).toBe('kubefoundry-system');
+    expect(CONFIG_NAMESPACE).toBe('kubeairunway-system');
   });
 
   test('uses correct ConfigMap name', () => {
-    expect(CONFIG_NAME).toBe('kubefoundry-config');
+    expect(CONFIG_NAME).toBe('kubeairunway-config');
   });
 
   test('uses correct data key', () => {
@@ -248,7 +248,7 @@ describe('ConfigService - Provider Fallback Logic', () => {
     }
 
     // Third: fall back to dynamo's namespace
-    return providerNamespaces['dynamo'] || 'kubefoundry-system';
+    return providerNamespaces['dynamo'] || 'kubeairunway-system';
   }
 
   const providerNamespaces: Record<string, string> = {
@@ -280,10 +280,10 @@ describe('ConfigService - Provider Fallback Logic', () => {
     expect(getDefaultNamespace(config, providerNamespaces)).toBe('dynamo');
   });
 
-  test('falls back to kubefoundry-system if no dynamo', () => {
+  test('falls back to kubeairunway-system if no dynamo', () => {
     const config: AppConfig = {};
     const emptyProviders: Record<string, string> = {};
 
-    expect(getDefaultNamespace(config, emptyProviders)).toBe('kubefoundry-system');
+    expect(getDefaultNamespace(config, emptyProviders)).toBe('kubeairunway-system');
   });
 });

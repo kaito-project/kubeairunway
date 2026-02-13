@@ -3,7 +3,7 @@
  * Parses the Prometheus exposition format into structured metric values
  */
 
-import type { RawMetricValue } from '@kubefoundry/shared';
+import type { RawMetricValue } from '@kubeairunway/shared';
 
 /**
  * Parse Prometheus text exposition format into structured metric values

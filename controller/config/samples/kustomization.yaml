@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- kubeairunway_v1alpha1_modeldeployment.yaml
+- kubeairunway_v1alpha1_inferenceproviderconfig.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

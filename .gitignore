@@ -49,6 +49,10 @@ temp/
 # Generated files
 backend/src/embedded-assets.ts
 
+# Go workspace
+go.work
+go.work.sum
+
 # Playwright
 /test-results/
 /playwright-report/

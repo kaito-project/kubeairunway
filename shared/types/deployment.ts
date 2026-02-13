@@ -1,58 +1,146 @@
 import { Engine } from './model';
 
-export type DeploymentMode = 'aggregated' | 'disaggregated';
-export type GgufRunMode = 'build' | 'direct';
-export type RouterMode = 'none' | 'kv' | 'round-robin';
+// ==================== ModelDeployment CRD Types ====================
+// These types mirror the Go CRD types in controller/api/v1alpha1/
+
+export type ModelSource = 'huggingface' | 'custom';
+export type EngineType = 'vllm' | 'sglang' | 'trtllm' | 'llamacpp';
+export type ServingMode = 'aggregated' | 'disaggregated';
 export type DeploymentPhase = 'Pending' | 'Deploying' | 'Running' | 'Failed' | 'Terminating';
 export type PodPhase = 'Pending' | 'Running' | 'Succeeded' | 'Failed' | 'Unknown';
 
-// KAITO resource type - Workspace (v1beta1, stable) or InferenceSet (v1alpha1, newer)
+// Legacy types for backward compatibility
+export type DeploymentMode = ServingMode;
+export type GgufRunMode = 'build' | 'direct';
+export type RouterMode = 'none' | 'kv' | 'round-robin';
 export type KaitoResourceType = 'workspace' | 'inferenceset';
 
 export interface DeploymentConfig {
-  name: string;                  // Kubernetes resource name
-  namespace: string;             // Target namespace
-  modelId: string;               // HuggingFace model ID
-  engine: Engine;                // Inference engine
+  name: string;
+  namespace: string;
+  modelId: string;
+  engine: Engine;
   mode: DeploymentMode;
-  provider?: 'dynamo' | 'kuberay' | 'kaito';  // Runtime provider (optional during transition)
-  servedModelName?: string;      // Custom model name for API
+  provider?: 'dynamo' | 'kuberay' | 'kaito';
+  servedModelName?: string;
   routerMode: RouterMode;
-  replicas: number;              // Number of worker replicas (aggregated mode)
-  hfTokenSecret?: string;        // K8s secret name for HF_TOKEN (optional for non-gated models)
-  contextLength?: number;        // Optional context length override
-  enforceEager: boolean;         // Enforce eager mode for quick deployment
-  enablePrefixCaching: boolean;  // Enable prefix caching
-  trustRemoteCode: boolean;      // Trust remote code from HuggingFace
+  replicas: number;
+  hfTokenSecret?: string;
+  contextLength?: number;
+  enforceEager: boolean;
+  enablePrefixCaching: boolean;
+  trustRemoteCode: boolean;
   resources?: {
-    gpu: number;                 // Number of GPUs per replica
-    memory?: string;             // Memory limit
+    gpu: number;
+    memory?: string;
   };
-  engineArgs?: Record<string, unknown>;  // Engine-specific arguments
-
-  // Disaggregated mode configuration (P/D separation)
-  prefillReplicas?: number;      // Number of prefill worker replicas
-  decodeReplicas?: number;       // Number of decode worker replicas
-  prefillGpus?: number;          // GPUs per prefill worker
-  decodeGpus?: number;           // GPUs per decode worker
-
-  // KAITO-specific fields
-  modelSource?: 'premade' | 'huggingface' | 'vllm';  // Model source for KAITO
-  premadeModel?: string;         // Premade model ID (e.g., 'llama3.2:1b')
-  ggufFile?: string;             // GGUF filename for build mode
-  ggufRunMode?: GgufRunMode;     // 'direct' uses runner image, 'build' builds custom image
-  imageRef?: string;             // Built/resolved image reference
-  computeType?: 'cpu' | 'gpu';   // Compute type for KAITO
-  maxModelLen?: number;          // Max model length for vLLM mode
-  kaitoResourceType?: KaitoResourceType;  // KAITO resource type: 'workspace' (stable) or 'inferenceset' (newer)
+  engineArgs?: Record<string, unknown>;
+  prefillReplicas?: number;
+  decodeReplicas?: number;
+  prefillGpus?: number;
+  decodeGpus?: number;
+  modelSource?: 'premade' | 'huggingface' | 'vllm';
+  premadeModel?: string;
+  ggufFile?: string;
+  ggufRunMode?: GgufRunMode;
+  imageRef?: string;
+  computeType?: 'cpu' | 'gpu';
+  maxModelLen?: number;
+  kaitoResourceType?: KaitoResourceType;
 }
 
-export interface PodStatus {
-  name: string;
-  phase: PodPhase;
-  ready: boolean;
-  restarts: number;
-  node?: string;
+export interface ModelSpec {
+  id: string;
+  servedName?: string;
+  source?: ModelSource;
+}
+
+export interface ProviderSpec {
+  name?: string;
+  overrides?: Record<string, unknown>;
+}
+
+export interface EngineSpec {
+  type: EngineType;
+  contextLength?: number;
+  trustRemoteCode?: boolean;
+  args?: Record<string, unknown>;
+}
+
+export interface ServingSpec {
+  mode?: ServingMode;
+}
+
+export interface GPUSpec {
+  count: number;
+  type?: string;
+}
+
+export interface ResourceSpec {
+  gpu?: GPUSpec;
+  memory?: string;
+  cpu?: string;
+}
+
+export interface ComponentScalingSpec {
+  replicas: number;
+  gpu?: GPUSpec;
+}
+
+export interface ScalingSpec {
+  replicas?: number;
+  minReplicas?: number;
+  maxReplicas?: number;
+  prefill?: ComponentScalingSpec;
+  decode?: ComponentScalingSpec;
+}
+
+export interface PodTemplateSpec {
+  nodeSelector?: Record<string, string>;
+  tolerations?: Array<{
+    key?: string;
+    operator?: string;
+    value?: string;
+    effect?: string;
+    tolerationSeconds?: number;
+  }>;
+  annotations?: Record<string, string>;
+  labels?: Record<string, string>;
+}
+
+export interface SecretSpec {
+  huggingFaceToken?: string;
+  custom?: string[];
+}
+
+export interface ModelDeploymentSpec {
+  model: ModelSpec;
+  provider?: ProviderSpec;
+  engine: EngineSpec;
+  serving?: ServingSpec;
+  scaling?: ScalingSpec;
+  resources?: ResourceSpec;
+  image?: string;
+  env?: Record<string, string>;
+  podTemplate?: PodTemplateSpec;
+  secrets?: SecretSpec;
+}
+
+export interface ReplicaStatus {
+  desired: number;
+  ready: number;
+  available: number;
+}
+
+export interface ProviderStatus {
+  name?: string;
+  selectedReason?: string;
+  resourceRef?: {
+    apiVersion?: string;
+    kind?: string;
+    name?: string;
+    namespace?: string;
+  };
 }
 
 export interface Condition {
@@ -63,15 +151,57 @@ export interface Condition {
   lastTransitionTime?: string;
 }
 
+export interface ModelDeploymentStatus {
+  phase?: DeploymentPhase;
+  message?: string;
+  provider?: ProviderStatus;
+  replicas?: ReplicaStatus;
+  prefillReplicas?: {
+    desired: number;
+    ready: number;
+  };
+  decodeReplicas?: {
+    desired: number;
+    ready: number;
+  };
+  endpoint?: string;
+  conditions?: Condition[];
+  observedGeneration?: number;
+}
+
+export interface ModelDeployment {
+  apiVersion: string;
+  kind: string;
+  metadata: {
+    name: string;
+    namespace: string;
+    creationTimestamp?: string;
+    labels?: Record<string, string>;
+    annotations?: Record<string, string>;
+  };
+  spec: ModelDeploymentSpec;
+  status?: ModelDeploymentStatus;
+}
+
+// ==================== API Types ====================
+
+export interface PodStatus {
+  name: string;
+  phase: PodPhase;
+  ready: boolean;
+  restarts: number;
+  node?: string;
+}
+
 export interface DeploymentStatus {
   name: string;
   namespace: string;
   modelId: string;
-  servedModelName?: string;      // Model name exposed via API (for clients)
+  servedModelName?: string;
   engine: Engine;
-  mode: DeploymentMode;
+  mode: ServingMode;
   phase: DeploymentPhase;
-  provider: string;              // Provider ID (dynamo, kuberay)
+  provider: string;
   replicas: {
     desired: number;
     ready: number;
@@ -80,9 +210,7 @@ export interface DeploymentStatus {
   conditions?: Condition[];
   pods: PodStatus[];
   createdAt: string;
-  frontendService?: string;      // Service name for port-forwarding
-
-  // Disaggregated mode status (P/D separation)
+  frontendService?: string;
   prefillReplicas?: {
     desired: number;
     ready: number;
@@ -93,6 +221,141 @@ export interface DeploymentStatus {
   };
 }
 
+// Legacy DeploymentConfig for backward compatibility with existing UI
+export interface DeploymentConfig {
+  name: string;
+  namespace: string;
+  modelId: string;
+  engine: Engine;
+  mode: DeploymentMode;
+  provider?: string;
+  servedModelName?: string;
+  routerMode: RouterMode;
+  replicas: number;
+  hfTokenSecret: string;
+  contextLength?: number;
+  enforceEager: boolean;
+  enablePrefixCaching: boolean;
+  trustRemoteCode: boolean;
+  resources?: {
+    gpu: number;
+    memory?: string;
+  };
+  engineArgs?: Record<string, unknown>;
+  prefillReplicas?: number;
+  decodeReplicas?: number;
+  prefillGpus?: number;
+  decodeGpus?: number;
+  modelSource?: 'premade' | 'huggingface' | 'vllm';
+  premadeModel?: string;
+  ggufFile?: string;
+  ggufRunMode?: GgufRunMode;
+  imageRef?: string;
+  computeType?: 'cpu' | 'gpu';
+  maxModelLen?: number;
+}
+
+// ==================== Conversion Functions ====================
+
+export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeploymentSpec {
+  const spec: ModelDeploymentSpec = {
+    model: {
+      id: config.modelId,
+      servedName: config.servedModelName,
+      source: 'huggingface',
+    },
+    engine: {
+      type: config.engine as EngineType,
+      contextLength: config.contextLength || config.maxModelLen,
+      trustRemoteCode: config.trustRemoteCode,
+      args: config.engineArgs,
+    },
+    serving: {
+      mode: config.mode,
+    },
+  };
+
+  if (config.provider) {
+    spec.provider = { name: config.provider };
+  }
+
+  if (config.mode === 'aggregated') {
+    spec.scaling = {
+      replicas: config.replicas,
+    };
+    if (config.resources?.gpu) {
+      spec.resources = {
+        gpu: {
+          count: config.resources.gpu,
+          type: 'nvidia.com/gpu',
+        },
+        memory: config.resources.memory,
+      };
+    }
+  } else if (config.mode === 'disaggregated') {
+    spec.scaling = {
+      prefill: {
+        replicas: config.prefillReplicas || 1,
+        gpu: config.prefillGpus ? { count: config.prefillGpus, type: 'nvidia.com/gpu' } : undefined,
+      },
+      decode: {
+        replicas: config.decodeReplicas || 1,
+        gpu: config.decodeGpus ? { count: config.decodeGpus, type: 'nvidia.com/gpu' } : undefined,
+      },
+    };
+  }
+
+  if (config.hfTokenSecret) {
+    spec.secrets = {
+      huggingFaceToken: config.hfTokenSecret,
+    };
+  }
+
+  return spec;
+}
+
+export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []): DeploymentStatus {
+  const status = md.status || {};
+  const spec = md.spec;
+
+  return {
+    name: md.metadata.name,
+    namespace: md.metadata.namespace,
+    modelId: spec.model.id,
+    servedModelName: spec.model.servedName,
+    engine: spec.engine.type as Engine,
+    mode: spec.serving?.mode || 'aggregated',
+    phase: status.phase || 'Pending',
+    provider: status.provider?.name || spec.provider?.name || 'unknown',
+    replicas: status.replicas || { desired: 0, ready: 0, available: 0 },
+    conditions: status.conditions,
+    pods,
+    createdAt: md.metadata.creationTimestamp || new Date().toISOString(),
+    frontendService: md.metadata.name,
+    prefillReplicas: status.prefillReplicas,
+    decodeReplicas: status.decodeReplicas,
+  };
+}
+
+export function toModelDeploymentManifest(config: DeploymentConfig): ModelDeployment {
+  return {
+    apiVersion: 'kubeairunway.ai/v1alpha1',
+    kind: 'ModelDeployment',
+    metadata: {
+      name: config.name,
+      namespace: config.namespace,
+      labels: {
+        'app.kubernetes.io/name': 'kubeairunway',
+        'app.kubernetes.io/instance': config.name,
+        'app.kubernetes.io/managed-by': 'kubeairunway',
+      },
+    },
+    spec: toModelDeploymentSpec(config),
+  };
+}
+
+// ==================== Request/Response Types ====================
+
 export interface CreateDeploymentRequest {
   config: DeploymentConfig;
 }
@@ -101,9 +364,6 @@ export interface DeploymentListResponse {
   deployments: DeploymentStatus[];
 }
 
-/**
- * Basic cluster connectivity status
- */
 export interface ClusterStatus {
   connected: boolean;
   namespace: string;
@@ -111,21 +371,15 @@ export interface ClusterStatus {
   error?: string;
 }
 
-/**
- * Options for fetching pod logs
- */
 export interface PodLogsOptions {
-  podName?: string;        // Specific pod to get logs from (defaults to first pod)
-  container?: string;      // Specific container name
-  tailLines?: number;      // Number of lines to return (default: 100)
-  timestamps?: boolean;    // Include timestamps in log lines
+  podName?: string;
+  container?: string;
+  tailLines?: number;
+  timestamps?: boolean;
 }
 
-/**
- * Response from pod logs endpoint
- */
 export interface PodLogsResponse {
-  logs: string;            // Log content
-  podName: string;         // Pod the logs came from
-  container?: string;      // Container name (if specified)
+  logs: string;
+  podName: string;
+  container?: string;
 }

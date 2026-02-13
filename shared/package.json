@@ -1,7 +1,7 @@
 {
-  "name": "@kubefoundry/shared",
+  "name": "@kubeairunway/shared",
   "version": "1.0.0",
-  "description": "Shared types and API client for KubeFoundry",
+  "description": "Shared types for KubeAIRunway",
   "type": "module",
   "main": "./types/index.ts",
   "types": "./types/index.ts",

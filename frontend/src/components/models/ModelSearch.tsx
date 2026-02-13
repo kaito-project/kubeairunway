@@ -2,7 +2,7 @@ import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { Engine } from '@kubefoundry/shared'
+import type { Engine } from '@kubeairunway/shared'
 
 interface ModelSearchProps {
   search: string

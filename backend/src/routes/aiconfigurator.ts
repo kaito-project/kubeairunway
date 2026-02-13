@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { aiConfiguratorService } from '../services/aiconfigurator';
-import type { AIConfiguratorInput } from '@kubefoundry/shared';
+import type { AIConfiguratorInput } from '@kubeairunway/shared';
 import logger from '../lib/logger';
 
 const aiconfigurator = new Hono();

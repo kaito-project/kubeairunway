@@ -5,8 +5,8 @@ import logger from '../lib/logger';
  * BuildKit builder configuration
  */
 export const BUILDKIT_CONFIG = {
-  builderName: 'kubefoundry-builder',
-  namespace: 'kubefoundry-system',
+  builderName: 'kubeairunway-builder',
+  namespace: 'kubeairunway-system',
   resources: {
     cpu: '2',
     memory: '4Gi',
@@ -167,7 +167,7 @@ class BuildKitService {
   }
 
   /**
-   * Get the status of the KubeFoundry builder
+   * Get the status of the KubeAIRunway builder
    */
   async getBuilderStatus(): Promise<BuilderStatus> {
     // List all builders

@@ -30,7 +30,7 @@ describe('useDeployments', () => {
   })
 
   it('fetches deployments with namespace filter', async () => {
-    const { result } = renderHook(() => useDeployments('kubefoundry-system'), {
+    const { result } = renderHook(() => useDeployments('kubeairunway-system'), {
       wrapper: createWrapper(),
     })
 
@@ -40,7 +40,7 @@ describe('useDeployments', () => {
     // All returned deployments should be in the specified namespace
     if (result.current.data && result.current.data.length > 0) {
       result.current.data.forEach(deployment => {
-        expect(deployment.namespace).toBe('kubefoundry-system')
+        expect(deployment.namespace).toBe('kubeairunway-system')
       })
     }
   })
@@ -83,12 +83,12 @@ describe('useDeployment', () => {
   it('fetches with namespace parameter', async () => {
     const deploymentName = mockDeployments[0].name
 
-    const { result } = renderHook(() => useDeployment(deploymentName, 'kubefoundry-system'), {
+    const { result } = renderHook(() => useDeployment(deploymentName, 'kubeairunway-system'), {
       wrapper: createWrapper(),
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.namespace).toBe('kubefoundry-system')
+    expect(result.current.data?.namespace).toBe('kubeairunway-system')
   })
 })
 
@@ -131,7 +131,7 @@ describe('useCreateDeployment', () => {
 
     const deploymentConfig = {
       name: 'new-deployment',
-      namespace: 'kubefoundry-system',
+      namespace: 'kubeairunway-system',
       modelId: 'Qwen/Qwen3-0.6B',
       engine: 'vllm' as const,
       mode: 'aggregated' as const,
@@ -181,7 +181,7 @@ describe('useDeleteDeployment', () => {
 
     const { result } = renderHook(() => useDeleteDeployment(), { wrapper })
 
-    result.current.mutate({ name: 'test-deployment', namespace: 'kubefoundry-system' })
+    result.current.mutate({ name: 'test-deployment', namespace: 'kubeairunway-system' })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true), { timeout: 3000 })
 

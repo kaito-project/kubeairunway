@@ -1,32 +1,57 @@
-# KubeFoundry - Agent Instructions
+# KubeAIRunway - Agent Instructions
 
 ## WHY: Project Purpose
 
-**KubeFoundry** is a web-based platform for deploying and managing machine learning models on Kubernetes. It simplifies ML operations by providing a unified interface for multiple inference runtimes.
+**KubeAIRunway** is a platform for deploying and managing machine learning models on Kubernetes. It provides a unified CRD abstraction (`ModelDeployment`) that works across multiple inference providers (KAITO, Dynamo, KubeRay, etc.).
 
 ## WHAT: Tech Stack & Structure
 
-**Stack**: React 18 + TypeScript + Vite (frontend) | Bun + Hono + Zod (backend) | Headlamp Plugin SDK (plugin) | Monorepo with shared types
+**Stack**:
+- **Controller**: Go + Kubebuilder (Kubernetes operator)
+- **Web UI**: React 18 + TypeScript + Vite (frontend) | Bun + Hono + Zod (backend)
 
 **Key directories**:
+- `controller/` - Go-based Kubernetes controller (kubebuilder project)
+  - `controller/api/v1alpha1/` - CRD type definitions
+  - `controller/internal/controller/` - Reconciliation logic
+  - `controller/internal/webhook/` - Validation webhooks
+  - `controller/config/` - Kustomize manifests for CRDs/RBAC
 - `frontend/src/` - React components, hooks, pages
 - `backend/src/` - Hono app, providers, services
 - `shared/types/` - Shared TypeScript definitions
 - `plugins/headlamp/` - Headlamp dashboard plugin
 - `docs/` - Detailed documentation (read as needed)
 
-**Core pattern**: Provider abstraction - all inference runtime logic lives in `backend/src/providers/`. Each provider implements the `Provider` interface in `backend/src/providers/types.ts`.
+**Core pattern**: Provider abstraction via CRDs:
+- `ModelDeployment` - Unified API for deploying ML models
+- `InferenceProviderConfig` - Provider registration with capabilities and selection rules
 
 **Headlamp plugin**: When working on `plugins/headlamp/`, read [plugins/headlamp/README.md](plugins/headlamp/README.md) for patterns and best practices. Key rules: use Headlamp's built-in components (`SectionBox`, `SimpleTable`, etc.), never bundle React, use `@kubefoundry/shared` for types/API.
 
 ## HOW: Development Commands
 
+### Controller (Go)
+```bash
+make controller-build       # Build Go controller binary
+make controller-test        # Run controller tests
+make controller-run         # Run controller locally
+make controller-generate    # Regenerate CRDs and deepcopy code
+make controller-install     # Install CRDs into cluster
+make controller-deploy      # Deploy controller to cluster
+```
+
+### Web UI (TypeScript)
 ```bash
 bun install              # Install dependencies
 bun run dev              # Start dev servers (frontend + backend)
 bun run test             # Run all tests (frontend + backend)
 make compile             # Build single binary to dist/
 make compile-all         # Cross-compile for all platforms
+```
+
+**After editing controller `*_types.go` files:**
+```bash
+cd controller && make manifests generate
 ```
 
 ### Headlamp Plugin Commands
@@ -44,14 +69,46 @@ make dev                 # Build and deploy for development
 **Always run `bun run test` after implementing functionality to verify both frontend and backend changes.**
 
 **Always validate changes immediately after editing files:**
-- After editing frontend files: Check for TypeScript/syntax errors using `get_errors` tool
-- After editing backend files: Check for TypeScript/syntax errors using `get_errors` tool
-- If errors are found: Fix them before proceeding or informing the user
+- After editing Go files: Run `go build ./...` and `go test ./...`
+- After editing frontend/backend files: Check for TypeScript/syntax errors
+- If errors are found: Fix them before proceeding
 - Never hand back to the user with syntax or compile errors
 
-**Document your prompts:** When completing a task, summarize the key prompt(s) used so the human can include them in the PR. This supports the project's "prompt request" workflow where prompts are reviewed alongside (or instead of) code. See [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-contributions--prompt-requests).
+## CRD Reference
 
-**Always update relevant documentation** (this file, `docs/`, `README.md`, `CONTRIBUTING.md`) after making architectural or stack changes.
+### ModelDeployment
+Unified API for deploying ML models. Key fields:
+- `spec.model.id` - HuggingFace model ID or custom identifier
+- `spec.model.source` - `huggingface` or `custom`
+- `spec.engine.type` - `vllm`, `sglang`, `trtllm`, or `llamacpp` (optional, auto-selected from provider capabilities)
+- `spec.provider.name` - Optional explicit provider selection
+- `spec.serving.mode` - `aggregated` (default) or `disaggregated`
+- `spec.resources.gpu.count` - GPU count for aggregated mode
+- `spec.scaling.prefill/decode` - Component scaling for disaggregated mode
+
+### InferenceProviderConfig
+Cluster-scoped resource for provider registration:
+- `spec.capabilities.engines` - Supported inference engines
+- `spec.capabilities.servingModes` - Supported serving modes
+- `spec.capabilities.gpuSupport/cpuSupport` - Hardware support
+- `spec.selectionRules` - CEL expressions for auto-selection
+- `status.ready` - Provider health status
+
+## Key Files Reference
+
+### Controller
+- CRD types: `controller/api/v1alpha1/modeldeployment_types.go`
+- Provider config types: `controller/api/v1alpha1/inferenceproviderconfig_types.go`
+- Reconciler: `controller/internal/controller/modeldeployment_controller.go`
+- Webhook: `controller/internal/webhook/v1alpha1/modeldeployment_webhook.go`
+- Main: `controller/cmd/main.go`
+
+### Web UI
+- Hono app (all routes): `backend/src/hono-app.ts`
+- Provider interface: `backend/src/providers/types.ts`
+- Provider registry: `backend/src/providers/index.ts`
+- Kubernetes client: `backend/src/services/kubernetes.ts`
+- Frontend API client: `frontend/src/lib/api.ts`
 
 ## Documentation (Progressive Disclosure)
 
@@ -59,46 +116,13 @@ Read these files **only when relevant** to your task:
 
 | File | When to read |
 |------|--------------|
-| [docs/architecture.md](docs/architecture.md) | Understanding system design, provider pattern, data flow |
+| [controller/AGENTS.md](controller/AGENTS.md) | Kubebuilder conventions, scaffolding rules |
+| [docs/architecture.md](docs/architecture.md) | System overview and component diagram |
+| [docs/controller-architecture.md](docs/controller-architecture.md) | Controller internals, reconciliation, webhooks, RBAC |
+| [docs/providers.md](docs/providers.md) | Provider selection and capabilities |
+| [docs/crd-reference.md](docs/crd-reference.md) | CRD specifications (ModelDeployment, InferenceProviderConfig) |
+| [docs/web-ui-architecture.md](docs/web-ui-architecture.md) | Web UI, auth flow, backend services |
 | [docs/api.md](docs/api.md) | Working on REST endpoints or API client |
 | [docs/development.md](docs/development.md) | Setup issues, build process, testing |
 | [docs/standards.md](docs/standards.md) | Code style questions (prefer running linters instead) |
 | [plugins/headlamp/README.md](plugins/headlamp/README.md) | Headlamp plugin development, patterns, components |
-
-## Key Files Reference
-
-### Backend
-- Hono app (all routes): `backend/src/hono-app.ts`
-- Provider interface: `backend/src/providers/types.ts`
-- Provider registry: `backend/src/providers/index.ts`
-- Kubernetes client: `backend/src/services/kubernetes.ts`
-- Build-time constants: `backend/src/build-info.ts`
-- Compile script: `backend/scripts/compile.ts`
-- Asset embedding: `backend/scripts/embed-assets.ts`
-- AIKit service (KAITO): `backend/src/services/aikit.ts`
-- BuildKit service: `backend/src/services/buildkit.ts`
-- Registry service: `backend/src/services/registry.ts`
-- Metrics service: `backend/src/services/metrics.ts`
-- Autoscaler service: `backend/src/services/autoscaler.ts`
-- GPU validation: `backend/src/services/gpuValidation.ts`
-- AI Configurator service: `backend/src/services/aiconfigurator.ts`
-- AI Configurator routes: `backend/src/routes/aiconfigurator.ts`
-- Cloud pricing service: `backend/src/services/cloudPricing.ts`
-- Cost estimation service: `backend/src/services/costEstimation.ts`
-- Cost routes: `backend/src/routes/costs.ts`
-- Prometheus parser: `backend/src/lib/prometheus-parser.ts`
-- K8s error handling: `backend/src/lib/k8s-errors.ts`
-
-### Frontend
-- Frontend API client: `frontend/src/lib/api.ts`
-
-### Headlamp Plugin
-- Plugin entry point: `plugins/headlamp/src/index.tsx`
-- Route definitions: `plugins/headlamp/src/routes.ts`
-- API client wrapper: `plugins/headlamp/src/lib/api-client.ts`
-- Backend discovery: `plugins/headlamp/src/lib/backend-discovery.ts`
-- Plugin storage: `plugins/headlamp/src/lib/plugin-storage.ts`
-- Theme utilities: `plugins/headlamp/src/lib/theme.ts`
-- Settings page: `plugins/headlamp/src/settings.tsx`
-- Pages: `plugins/headlamp/src/pages/*.tsx`
-- Components: `plugins/headlamp/src/components/*.tsx`

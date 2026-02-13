@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import type { HelmResult, HelmRelease, HelmRepo, HelmChart } from '../providers/types';
+import type { HelmResult, HelmRelease, HelmRepo, HelmChart } from './helm';
 import { GPU_OPERATOR_REPO, GPU_OPERATOR_CHART } from './helm';
 
 describe('HelmService - GPU Operator Constants', () => {
@@ -217,7 +217,7 @@ describe('HelmService - Command Building Logic', () => {
     // New format: --set-json 'key={"nested":"value"}'
     const setJsonIndex = args.indexOf('--set-json');
     const valuesArg = args[setJsonIndex + 1];
-    expect(valuesArg).toBe('featureGates={"disableNodeAutoProvisioning":true}');
+    expect(valuesArg).toBe('featureGates={"enableInferenceSetController":true,"disableNodeAutoProvisioning":true}');
   });
 
   test('handles nested values object correctly', () => {

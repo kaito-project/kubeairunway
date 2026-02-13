@@ -1,12 +1,12 @@
 name: Feature Request
-description: Suggest a new feature or enhancement for KubeFoundry
+description: Suggest a new feature or enhancement for KubeAIRunway
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting a feature! Please describe what you'd like to see in KubeFoundry.
+        Thanks for suggesting a feature! Please describe what you'd like to see in KubeAIRunway.
 
   - type: checkboxes
     id: existing-issue

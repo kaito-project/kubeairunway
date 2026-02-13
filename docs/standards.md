@@ -11,7 +11,7 @@
 ### TypeScript
 - No `any` types - use proper typing
 - Use Zod for runtime validation (integrated with Hono via `@hono/zod-validator`)
-- Import shared types from `@kubefoundry/shared` (do not duplicate type definitions)
+- Import shared types from `@kubeairunway/shared` (do not duplicate type definitions)
 - Use path aliases (`@/`) for imports in frontend
 
 ### React
@@ -38,11 +38,28 @@ lib/
 **Backend:**
 ```
 src/
-  hono-app.ts   # All routes consolidated
+  hono-app.ts   # Hono app setup, mounts route modules
   index.ts      # Bun.serve() entry point
-  providers/    # Inference runtime providers
+  routes/       # Route handlers (deployments, models, health, etc.)
   services/     # Business logic (Kubernetes, Helm, etc.)
   lib/          # Shared utilities
+```
+
+**Shared (`shared/`):**
+```
+types/          # TypeScript type definitions
+api/            # Shared API client (used by frontend and Headlamp plugin)
+```
+
+**Headlamp Plugin (`plugins/headlamp/`):**
+```
+src/
+  index.tsx       # Entry point, route and sidebar registrations
+  routes.ts       # Route path constants
+  settings.tsx    # Plugin settings component
+  pages/          # Page components
+  components/     # Reusable Headlamp-compatible components
+  lib/            # API client wrapper, backend discovery, utilities
 ```
 
 ## Testing
@@ -86,7 +103,7 @@ describe('ComponentName', () => {
 
 ### Best Practices
 - Code-split appropriately
-- Implement caching (React Query)
+- Implement caching (TanStack Query)
 - Paginate large data sets
 - Lazy load non-critical resources
 

@@ -1,6 +1,6 @@
-# Contributing to KubeFoundry
+# Contributing to KubeAIRunway
 
-Thank you for your interest in contributing to KubeFoundry! This guide covers development setup, project structure, and contribution guidelines.
+Thank you for your interest in contributing to KubeAIRunway! This guide covers development setup, project structure, and contribution guidelines.
 
 ## Development Setup
 
@@ -57,7 +57,7 @@ bun run dev:backend     # Start with watch mode
 ## Project Structure
 
 ```
-kubefoundry/
+kubeairunway/
 ├── frontend/          # React frontend application
 │   ├── src/
 │   │   ├── components/  # UI components
@@ -69,19 +69,16 @@ kubefoundry/
 │   ├── src/
 │   │   ├── hono-app.ts  # All API routes consolidated
 │   │   ├── index.ts     # Bun.serve() entry point
-│   │   ├── providers/   # Provider implementations
-│   │   │   ├── types.ts      # Provider interface
-│   │   │   ├── index.ts      # Provider registry
-│   │   │   ├── dynamo/       # NVIDIA Dynamo provider
-│   │   │   ├── kuberay/      # KubeRay provider
-│   │   │   └── kaito/        # KAITO provider (CPU/GPU via llama.cpp or vLLM)
+│   │   ├── routes/      # API route handlers
+│   │   │   ├── installation.ts # Provider installation (reads from CRDs)
+│   │   │   ├── deployments.ts  # Deployment management
+│   │   │   └── ...
 │   │   ├── services/    # Core services
 │   │   │   ├── kubernetes.ts # K8s client
 │   │   │   ├── config.ts     # ConfigMap persistence
 │   │   │   ├── helm.ts       # Helm CLI integration
 │   │   │   ├── metrics.ts    # Prometheus metrics fetching
 │   │   │   ├── autoscaler.ts # Cluster autoscaler detection
-│   │   │   ├── aikit.ts      # AIKit image building
 │   │   │   ├── buildkit.ts   # BuildKit builder management
 │   │   │   └── registry.ts   # In-cluster registry management
 │   │   ├── lib/         # Utility libraries
@@ -91,6 +88,15 @@ kubefoundry/
 │   │   └── data/        # Static model catalog
 │   └── ...
 ├── shared/            # Shared TypeScript types
+├── controller/        # Go-based Kubernetes controller (kubebuilder)
+│   ├── api/v1alpha1/  # CRD type definitions
+│   ├── internal/      # Reconciliation logic
+│   ├── cmd/main.go    # Controller entrypoint
+│   └── config/        # Kustomize manifests
+├── providers/         # Out-of-tree provider operators (Go)
+│   ├── kaito/         # KAITO provider
+│   ├── dynamo/        # NVIDIA Dynamo provider
+│   └── kuberay/       # KubeRay provider
 └── docs/              # Documentation
 ```
 
@@ -98,36 +104,26 @@ kubefoundry/
 
 ### Provider Pattern
 
-KubeFoundry uses a provider abstraction to support multiple inference runtimes:
+KubeAIRunway uses a two-tier provider architecture. The core controller handles `ModelDeployment` validation and provider selection, while independent out-of-tree provider controllers (in `providers/`) handle provider-specific resource creation:
 
-```typescript
-interface Provider {
-  id: string;
-  name: string;
-  getCRDConfig(): CRDConfig;
-  generateManifest(config: DeploymentConfig): object;
-  parseStatus(resource: object): DeploymentStatus;
-  validateConfig(config: DeploymentConfig): ValidationResult;
-  checkInstallation(k8s: KubernetesService): Promise<InstallationStatus>;
-  getHelmRepos(): HelmRepo[];
-  getHelmCharts(): HelmChart[];
-}
-```
+- **Core controller**: Validates specs, selects providers via `InferenceProviderConfig` CRDs, updates status
+- **Provider controllers**: Watch `ModelDeployment` resources, create provider-specific resources (KAITO Workspace, DynamoGraphDeployment, RayService)
+- **Web UI backend**: Reads provider info (capabilities, installation steps, Helm charts) from `InferenceProviderConfig` CRDs — no hardcoded provider registry
 
 ### Configuration Storage
 
-Settings are stored in a Kubernetes ConfigMap (`kubefoundry-config`) in the `kubefoundry-system` namespace:
+Settings are stored in a Kubernetes ConfigMap (`kubeairunway-config`) in the `kubeairunway-system` namespace:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubefoundry-config
-  namespace: kubefoundry-system
+  name: kubeairunway-config
+  namespace: kubeairunway-system
 data:
   config.json: |
     {
-      "defaultNamespace": "kubefoundry-system"
+      "defaultNamespace": "kubeairunway-system"
     }
 ```
 
@@ -138,49 +134,46 @@ data:
 ### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:3001
-VITE_DEFAULT_NAMESPACE=kubefoundry-system
+VITE_DEFAULT_NAMESPACE=kubeairunway-system
 VITE_DEFAULT_HF_SECRET=hf-token-secret
 ```
 
 ### Backend (.env)
 ```env
 PORT=3001
-DEFAULT_NAMESPACE=kubefoundry-system
+DEFAULT_NAMESPACE=kubeairunway-system
 CORS_ORIGIN=http://localhost:5173
 AUTH_ENABLED=false
 ```
 
 ## Adding a New Provider
 
+Providers are independent Go operators in `providers/<name>/`. See existing providers for reference.
+
 1. **Create provider directory:**
    ```
-   backend/src/providers/<name>/
-   ├── index.ts    # Provider implementation
-   └── schema.ts   # Zod validation schema
+   providers/<name>/
+   ├── cmd/main.go          # Provider entrypoint
+   ├── controller.go        # Reconciliation logic
+   ├── transformer.go       # ModelDeployment → provider resource conversion
+   ├── status.go            # Provider resource → ModelDeployment status mapping
+   ├── config.go            # InferenceProviderConfig self-registration
+   ├── config/              # Kustomize deployment manifests
+   ├── Dockerfile           # Container image
+   └── go.mod               # Independent Go module
    ```
 
-2. **Implement the Provider interface:**
-   ```typescript
-   import { Provider, CRDConfig, ... } from '../types';
+2. **Implement the provider controller:**
+   - Watch `ModelDeployment` resources where `status.provider.name` matches your provider
+   - Transform `ModelDeployment` spec into provider-specific resources
+   - Map provider resource status back to `ModelDeployment` status
+   - Self-register an `InferenceProviderConfig` with capabilities, selection rules, and installation info
 
-   export class MyProvider implements Provider {
-     id = 'my-provider';
-     name = 'My Provider';
-     description = '...';
-
-     getCRDConfig(): CRDConfig { ... }
-     generateManifest(config: DeploymentConfig): object { ... }
-     parseStatus(resource: object): DeploymentStatus { ... }
-     // ... implement all interface methods
-   }
-   ```
-
-3. **Register the provider:**
-   ```typescript
-   // backend/src/providers/index.ts
-   import { MyProvider } from './my-provider';
-
-   providerRegistry.register(new MyProvider());
+3. **Add Makefile targets** in the root `Makefile`:
+   ```bash
+   make <name>-provider-build         # Build provider binary
+   make <name>-provider-docker-build  # Build Docker image
+   make <name>-provider-deploy        # Deploy to cluster
    ```
 
 ## Adding a New Model
@@ -224,7 +217,7 @@ curl -X POST http://localhost:3001/api/deployments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-deployment",
-    "namespace": "kubefoundry-system",
+    "namespace": "kubeairunway-system",
     "modelId": "Qwen/Qwen3-0.6B",
     "engine": "vllm",
     "mode": "aggregated",
@@ -304,7 +297,7 @@ curl -X POST http://localhost:3001/api/deployments \
 
 ### Provider not detected as installed
 - Check CRD exists: `kubectl get crd dynamographdeployments.nvidia.com`
-- Check operator deployment: `kubectl get deployments -n kubefoundry`
+- Check operator deployment: `kubectl get deployments -n kubeairunway`
 
 ### Frontend can't reach backend
 - Check CORS_ORIGIN matches frontend URL

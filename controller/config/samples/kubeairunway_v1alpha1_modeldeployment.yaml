@@ -1,0 +1,81 @@
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  labels:
+    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/managed-by: kustomize
+  name: llama-8b-example
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-8B-Instruct"
+    source: huggingface
+  engine:
+    type: vllm
+    contextLength: 8192
+  serving:
+    mode: aggregated
+  scaling:
+    replicas: 1
+  resources:
+    gpu:
+      count: 1
+    memory: "32Gi"
+  secrets:
+    huggingFaceToken: "hf-token"
+---
+# Example: CPU-only deployment with llama.cpp
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  labels:
+    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/managed-by: kustomize
+  name: gemma-cpu-example
+spec:
+  model:
+    id: "google/gemma-3-1b-it-qat-q8_0-gguf"
+    source: huggingface
+  engine:
+    type: llamacpp
+  serving:
+    mode: aggregated
+  scaling:
+    replicas: 1
+  resources:
+    memory: "16Gi"
+    cpu: "8"
+  image: "ghcr.io/sozercan/llama-cpp-runner:latest"
+---
+# Example: Disaggregated prefill/decode deployment
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  labels:
+    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/managed-by: kustomize
+  name: llama-70b-pd-example
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-70B-Instruct"
+    source: huggingface
+  provider:
+    name: dynamo
+    overrides:
+      routerMode: "kv"
+  engine:
+    type: vllm
+  serving:
+    mode: disaggregated
+  scaling:
+    prefill:
+      replicas: 2
+      gpu:
+        count: 4
+      memory: "128Gi"
+    decode:
+      replicas: 4
+      gpu:
+        count: 2
+      memory: "64Gi"
+  secrets:
+    huggingFaceToken: "hf-token"

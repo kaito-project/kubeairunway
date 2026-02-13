@@ -2,13 +2,15 @@
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) 1.0+
+- [Go](https://go.dev) 1.23+ (for controller development)
+- [Bun](https://bun.sh) 1.0+ (for Web UI development)
 - Access to a Kubernetes cluster
 - Helm CLI (for provider installation)
 - kubectl configured with cluster access
 
 ## Quick Start
 
+### Web UI Development
 ```bash
 # Install dependencies
 bun install
@@ -24,6 +26,32 @@ bun run dev
 #   Single server: http://localhost:3001 (frontend embedded in backend)
 ```
 
+### Controller Development
+```bash
+# Build the controller binary
+make controller-build
+
+# Run controller tests
+make controller-test
+
+# Run controller locally (uses your kubeconfig)
+make controller-run
+
+# Regenerate CRDs and deepcopy code after editing *_types.go files
+make controller-generate
+
+# Install CRDs into the cluster
+make controller-install
+
+# Deploy controller to cluster
+make controller-deploy
+```
+
+**Important**: After editing `controller/api/v1alpha1/*_types.go` files, always run:
+```bash
+cd controller && make manifests generate
+```
+
 ## Building a Single Binary
 
 The project can be compiled to a standalone executable that includes both the backend API and embedded frontend assets:
@@ -33,7 +61,7 @@ The project can be compiled to a standalone executable that includes both the ba
 bun run compile
 
 # Run the binary (serves both API and frontend on port 3001)
-./dist/kubefoundry
+./dist/kubeairunway
 
 # Check version info
 curl http://localhost:3001/api/health/version
@@ -69,51 +97,192 @@ Supported targets:
 - `darwin-x64`, `darwin-arm64`
 - `windows-x64`
 
+## Controller Development
+
+The controller is a Go-based Kubernetes operator built with [Kubebuilder](https://kubebuilder.io/).
+
+### Project Structure
+```
+controller/
+├── api/v1alpha1/           # CRD type definitions
+│   ├── modeldeployment_types.go
+│   └── inferenceproviderconfig_types.go
+├── cmd/                    # Main entrypoint
+├── config/                 # Kustomize manifests
+│   ├── crd/                # Generated CRD YAMLs
+│   ├── rbac/               # RBAC manifests
+│   └── manager/            # Controller deployment
+├── internal/
+│   ├── controller/         # Reconciliation logic
+│   └── webhook/            # Validation webhooks
+└── Makefile                # Build commands
+```
+
+### CRDs
+KubeAIRunway defines two CRDs:
+
+1. **ModelDeployment** (namespaced) - User-facing API for deploying models
+2. **InferenceProviderConfig** (cluster-scoped) - Provider registration
+
+After editing `*_types.go` files, regenerate code:
+```bash
+cd controller && make manifests generate
+```
+
+### Reconciliation Flow
+
+The core controller reconciliation follows these steps:
+
+1. **Receive** ModelDeployment event
+2. **Check** for pause annotation (`kubeairunway.ai/reconcile-paused: "true"`) — skip if paused
+3. **Select engine** — use explicit `spec.engine.type` or auto-select from provider capabilities (filtered by GPU/CPU, serving mode, and engine GPU requirements)
+4. **Validate** spec (engine/resource compatibility, required fields)
+5. **Select provider** — use explicit `spec.provider.name` or run auto-selection algorithm (CEL rules now see the resolved engine)
+6. **Set status** — `status.engine`, `status.provider`, conditions
+
+The core controller stops here. Provider controllers then:
+
+6. **Filter** — only reconcile ModelDeployments where `status.provider.name` matches
+7. **Validate compatibility** — check engine/mode support for this provider
+8. **Transform** — convert ModelDeployment spec to provider-specific resource
+9. **Create/Update** — apply provider resource with owner references
+10. **Sync status** — map provider resource status back to ModelDeployment (phase, replicas, endpoint)
+11. **Handle deletion** — clean up provider resources via finalizers (5-minute timeout)
+
+### Observability
+
+**Controller metrics:**
+```
+kubeairunway_modeldeployment_total{namespace, phase}
+kubeairunway_reconciliation_duration_seconds{provider}
+kubeairunway_reconciliation_errors_total{provider, error_type}
+kubeairunway_provider_selection{provider, reason}
+kubeairunway_deployment_replicas{name, namespace, state}
+kubeairunway_deployment_phase{name, namespace, phase}
+```
+
+**Events emitted:**
+```
+Normal   ProviderSelected    Selected provider 'dynamo': default → dynamo (GPU inference default)
+Normal   ResourceCreated     Created DynamoGraphDeployment 'my-llm'
+Warning  SecretNotFound      Secret 'hf-token-secret' not found in namespace 'default'
+Warning  ProviderError       Provider resource in error state: insufficient GPUs
+Warning  DriftDetected       Provider resource was modified directly, reconciling
+Warning  FinalizerTimeout    Finalizer removed after timeout, provider resource may be orphaned
+```
+
+### Running Locally
+```bash
+# Install CRDs first
+make controller-install
+
+# Run controller (uses your kubeconfig)
+make controller-run
+```
+
+### Testing
+```bash
+# Run unit tests
+make controller-test
+
+# Run with verbose output
+cd controller && go test -v ./...
+```
+
+**Test categories:**
+
+- **Unit tests** — manifest transformation per provider, status mapping, provider selection algorithm, schema validation
+- **Integration tests** — controller reconciliation with mock K8s API, owner references, finalizer behavior, drift detection, webhook validation
+- **E2E tests** — full deployment lifecycle per provider, error recovery, controller restart resilience
+
+### Version Compatibility Matrix
+
+| KubeAIRunway Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
+|------------------------|------------|----------------|-----------------|------------------|
+| v0.1.x                 | 1.26-1.30  | v0.3.x         | v0.1.x          | v1.1.x           |
+
+| Provider | Minimum Version | CRD API Version | Notes |
+|----------|-----------------|-----------------|-------|
+| KAITO    | v0.3.0          | kaito.sh/v1beta1 | Requires GPU operator for GPU workloads |
+| Dynamo   | v0.1.0          | nvidia.com/v1alpha1 | Requires NVIDIA GPU operator |
+| KubeRay  | v1.1.0          | ray.io/v1       | Optional: KubeRay autoscaler for scaling |
+
+### Finalizer Handling
+
+The controller uses finalizers to ensure provider resource cleanup on deletion:
+
+1. Controller attempts cleanup for **5 minutes**
+2. After timeout, removes finalizer with warning event
+3. Orphaned provider resources may remain (logged for manual cleanup)
+
+**Manual escape (immediate — use when deletion is stuck):**
+```bash
+kubectl patch modeldeployment my-llm --type=merge \
+  -p '{"metadata":{"finalizers":[]}}'
+```
+
+### Provider Development
+
+Provider controllers are independent operators in `providers/<name>/`:
+
+```bash
+# Build a provider binary
+make kaito-provider-build
+make dynamo-provider-build
+make kuberay-provider-build
+
+# Build provider Docker image
+make kaito-provider-docker-build
+
+# Deploy provider to cluster
+make kaito-provider-deploy
+```
+
 ## Environment Variables
 
 ### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:3001
-VITE_DEFAULT_NAMESPACE=kubefoundry-system
+VITE_DEFAULT_NAMESPACE=kubeairunway-system
 VITE_DEFAULT_HF_SECRET=hf-token-secret
 ```
 
 ### Backend (.env)
 ```env
 PORT=3001
-DEFAULT_NAMESPACE=kubefoundry-system
+DEFAULT_NAMESPACE=kubeairunway-system
 CORS_ORIGIN=http://localhost:5173
 AUTH_ENABLED=false
 ```
 
 ## Authentication
 
-KubeFoundry supports optional authentication using Kubernetes OIDC tokens from your kubeconfig.
+KubeAIRunway supports optional authentication using Kubernetes OIDC tokens from your kubeconfig.
 
 ### Enabling Authentication
 
 Set the `AUTH_ENABLED` environment variable:
 
 ```bash
-AUTH_ENABLED=true ./dist/kubefoundry
+AUTH_ENABLED=true ./dist/kubeairunway
 ```
 
 ### Login Flow
 
 1. **Run the login command:**
    ```bash
-   kubefoundry login
+   kubeairunway login
    ```
    This extracts your OIDC token from kubeconfig and opens the browser with a magic link.
 
 2. **Alternative: Specify server URL:**
    ```bash
-   kubefoundry login --server https://kubefoundry.example.com
+   kubeairunway login --server https://kubeairunway.example.com
    ```
 
 3. **Use a specific kubeconfig context:**
    ```bash
-   kubefoundry login --context my-cluster
+   kubeairunway login --context my-cluster
    ```
 
 ### How It Works
@@ -134,14 +303,14 @@ These routes are accessible without authentication:
 ### CLI Commands
 
 ```bash
-kubefoundry                    # Start server (default)
-kubefoundry serve              # Start server
-kubefoundry login              # Login with kubeconfig credentials
-kubefoundry login --server URL # Login to specific server
-kubefoundry login --context X  # Use specific kubeconfig context
-kubefoundry logout             # Clear stored credentials
-kubefoundry version            # Show version
-kubefoundry help               # Show help
+kubeairunway                    # Start server (default)
+kubeairunway serve              # Start server
+kubeairunway login              # Login with kubeconfig credentials
+kubeairunway login --server URL # Login to specific server
+kubeairunway login --context X  # Use specific kubeconfig context
+kubeairunway logout             # Clear stored credentials
+kubeairunway version            # Show version
+kubeairunway help               # Show help
 ```
 
 ## Project Commands
@@ -150,8 +319,18 @@ kubefoundry help               # Show help
 ```bash
 bun run dev           # Start both frontend and backend
 bun run build         # Build all packages
-bun run compile       # Build single binary (frontend + backend) to dist/kubefoundry
+bun run compile       # Build single binary (frontend + backend) to dist/kubeairunway
 bun run lint          # Lint all packages
+```
+
+### Controller (Go)
+```bash
+make controller-build       # Build Go controller binary
+make controller-test        # Run controller tests
+make controller-run         # Run controller locally
+make controller-generate    # Regenerate CRDs and deepcopy code
+make controller-install     # Install CRDs into cluster
+make controller-deploy      # Deploy controller to cluster
 ```
 
 ### Frontend
@@ -224,7 +403,7 @@ The plugin discovers the backend in this order:
 ```bash
 kubectl create secret generic hf-token-secret \
   --from-literal=HF_TOKEN="your-token" \
-  -n kubefoundry
+  -n kubeairunway
 ```
 
 ### Install NVIDIA Dynamo (via Helm)
@@ -243,35 +422,102 @@ helm install dynamo-platform dynamo-platform-${RELEASE_VERSION}.tgz --namespace 
 
 ## Adding a New Provider
 
+Providers are independent out-of-tree Go operators in `providers/<name>/`. Each provider watches `ModelDeployment` resources and creates provider-specific resources.
+
+There are two provider patterns:
+
+### Shim Providers (Adapter Pattern)
+
+Use this when wrapping an existing inference operator that has its own CRD (e.g., KAITO Workspace, DynamoGraphDeployment, RayService). The provider translates `ModelDeployment` → upstream CRD and syncs status back.
+
+```
+ModelDeployment → Provider Controller → Upstream CRD → Upstream Operator → Pods/Services
+                                             ↑ status sync
+```
+
 1. **Create provider directory:**
    ```
-   backend/src/providers/<name>/
-   ├── index.ts    # Provider implementation
-   └── schema.ts   # Zod validation schema
+   providers/<name>/
+   ├── cmd/main.go          # Provider entrypoint
+   ├── controller.go        # Reconciliation logic
+   ├── transformer.go       # ModelDeployment → upstream CRD conversion
+   ├── status.go            # Upstream CRD → ModelDeployment status mapping
+   ├── config.go            # InferenceProviderConfig self-registration
+   ├── config/              # Kustomize deployment manifests
+   ├── Dockerfile           # Container image
+   ├── go.mod               # Independent Go module
+   └── go.sum
    ```
 
-2. **Implement the Provider interface:**
-   ```typescript
-   import { Provider, CRDConfig, ... } from '../types';
+2. **Implement the provider controller** (see existing providers for examples):
+   - `controller.go`: Reconcile `ModelDeployment` resources where `status.provider.name` matches
+   - `transformer.go`: Convert `ModelDeployment` spec to upstream CRD resources
+   - `status.go`: Map upstream CRD status back to `ModelDeployment` status
+   - `config.go`: Define `InferenceProviderConfigSpec` with capabilities, selection rules, and installation info
 
-   export class MyProvider implements Provider {
-     id = 'my-provider';
-     name = 'My Provider';
-     description = '...';
+### Native Providers (No Upstream CRD)
 
-     getCRDConfig(): CRDConfig { ... }
-     generateManifest(config: DeploymentConfig): object { ... }
-     parseStatus(resource: object): DeploymentStatus { ... }
-     // ... implement all interface methods
-   }
-   ```
+Use this when there is no upstream operator — the provider directly manages Kubernetes resources (Deployments, Services) from the `ModelDeployment` spec. No transformer or intermediate CRD is needed.
 
-3. **Register the provider:**
-   ```typescript
-   // backend/src/providers/index.ts
-   import { MyProvider } from './my-provider';
+```
+ModelDeployment → Provider Controller → Deployments/Services → Pods
+                                             ↑ status sync
+```
 
-   providerRegistry.register(new MyProvider());
+This works because the `status.provider.resourceKind` and `resourceName` fields are free-form strings — they can point at a `Deployment` just as easily as a `Workspace`. The core controller never inspects what the provider creates.
+
+**When to use this pattern:**
+- Building a new inference runtime with no pre-existing CRD
+- A lightweight provider that runs vLLM/SGLang containers directly via Deployments
+- A "generic" provider where an upstream CRD adds no value
+
+**Directory structure** (no `transformer.go` needed):
+```
+providers/<name>/
+├── cmd/main.go          # Provider entrypoint
+├── controller.go        # Reconciliation logic (creates Deployments/Services directly)
+├── status.go            # Deployment/Pod → ModelDeployment status mapping
+├── config.go            # InferenceProviderConfig self-registration
+├── config/              # Kustomize deployment manifests
+├── Dockerfile
+├── go.mod
+└── go.sum
+```
+
+**Example reconciliation** (simplified):
+```go
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    md := &v1alpha1.ModelDeployment{}
+    r.Get(ctx, req.NamespacedName, md)
+
+    // Build Deployment directly from ModelDeployment spec — no intermediate CRD
+    deploy := r.buildDeployment(md)  // vllm container with model args
+    svc := r.buildService(md)
+
+    controllerutil.CreateOrUpdate(ctx, r.Client, deploy, func() error { return nil })
+    controllerutil.CreateOrUpdate(ctx, r.Client, svc, func() error { return nil })
+
+    // Sync status from Deployment
+    md.Status.Phase = phaseFromDeployment(deploy)
+    md.Status.Provider.ResourceName = deploy.Name
+    md.Status.Provider.ResourceKind = "Deployment"
+    md.Status.Replicas = replicasFromDeployment(deploy)
+    md.Status.Endpoint = endpointFromService(svc)
+    r.Status().Update(ctx, md)
+
+    return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+}
+```
+
+The `config.go` for a native provider can omit the `installation` section (no upstream operator to install), or include it if the provider itself is installed via Helm.
+
+### Common Steps (Both Patterns)
+
+3. **Add Makefile targets** in the root `Makefile`:
+   ```bash
+   make <name>-provider-build         # Build provider binary
+   make <name>-provider-docker-build  # Build Docker image
+   make <name>-provider-deploy        # Deploy to cluster
    ```
 
 ## Adding a New Model
@@ -315,7 +561,7 @@ curl -X POST http://localhost:3001/api/deployments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-deployment",
-    "namespace": "kubefoundry-system",
+    "namespace": "kubeairunway-system",
     "provider": "dynamo",
     "modelId": "Qwen/Qwen3-0.6B",
     "engine": "vllm",
@@ -372,7 +618,7 @@ After deployment is running:
 ```bash
 # Port-forward to the service (check deployment details for exact service name)
 # Dynamo/KubeRay deployments expose port 8000
-kubectl port-forward svc/<deployment>-frontend 8000:8000 -n kubefoundry-system
+kubectl port-forward svc/<deployment>-frontend 8000:8000 -n kubeairunway-system
 
 # KAITO deployments with vLLM expose port 8000
 kubectl port-forward svc/<deployment-name> 8000:8000 -n kaito-workspace
@@ -400,6 +646,16 @@ curl http://localhost:5000/v1/chat/completions \
 
 ## Troubleshooting
 
+### Controller not reconciling
+- Check controller logs: `kubectl logs -n kubeairunway-system deploy/kubeairunway-controller-manager`
+- Verify CRDs are installed: `kubectl get crd modeldeployments.kubeairunway.ai`
+- Check RBAC permissions for the controller service account
+
+### ModelDeployment stuck in Pending
+- Check if any `InferenceProviderConfig` resources exist: `kubectl get inferenceproviderconfigs`
+- Verify at least one provider has `status.ready: true`
+- Check controller logs for provider selection errors
+
 ### Backend can't connect to cluster
 - Verify kubectl is configured: `kubectl cluster-info`
 - Check KUBECONFIG environment variable
@@ -422,7 +678,7 @@ curl http://localhost:5000/v1/chat/completions \
 - Check events: `kubectl get events -n kaito-workspace --sort-by=.lastTimestamp`
 
 ### Metrics not available
-- Metrics require KubeFoundry to run in-cluster
+- Metrics require KubeAIRunway to run in-cluster
 - Check deployment pods are running: `kubectl get pods -n <namespace>`
 - Verify metrics endpoint is exposed (port 8000 for vLLM, port 5000 for llama.cpp)
 

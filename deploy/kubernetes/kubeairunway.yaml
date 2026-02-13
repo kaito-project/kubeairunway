@@ -1,0 +1,206 @@
+# KubeAIRunway Kubernetes Deployment
+# Deploy with: kubectl apply -f kubeairunway.yaml
+#
+# This manifest creates:
+# - Namespace: kubeairunway-system
+# - ServiceAccount with RBAC permissions
+# - Deployment running the KubeAIRunway server
+# - Service for internal cluster access
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeairunway-system
+  labels:
+    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/part-of: kubeairunway
+
+---
+# ServiceAccount for KubeAIRunway
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubeairunway
+  namespace: kubeairunway-system
+  labels:
+    app.kubernetes.io/name: kubeairunway
+
+---
+# ClusterRole with permissions needed by KubeAIRunway
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeairunway
+  labels:
+    app.kubernetes.io/name: kubeairunway
+rules:
+  # Core API - Pods, Services (full CRUD for deployment management)
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Secrets and ConfigMaps (needed for HF tokens, config storage)
+  - apiGroups: [""]
+    resources:
+      - secrets
+      - configmaps
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # Namespaces (read + create only, no delete)
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs: ["get", "list", "watch", "create"]
+
+  # Apps API - Deployments, ReplicaSets
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # NVIDIA Dynamo CRDs
+  - apiGroups: ["nvidia.com"]
+    resources:
+      - dynamographdeployments
+      - dynamographdeployments/status
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # KubeRay CRDs
+  - apiGroups: ["ray.io"]
+    resources:
+      - rayservices
+      - rayservices/status
+      - rayclusters
+      - rayclusters/status
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Storage - for PVCs if needed
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch"]
+
+  # Node info for GPU detection
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeairunway
+  labels:
+    app.kubernetes.io/name: kubeairunway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeairunway
+subjects:
+  - kind: ServiceAccount
+    name: kubeairunway
+    namespace: kubeairunway-system
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeairunway
+  namespace: kubeairunway-system
+  labels:
+    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/instance: kubeairunway
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubeairunway
+      app.kubernetes.io/instance: kubeairunway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubeairunway
+        app.kubernetes.io/instance: kubeairunway
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: kubeairunway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: kubeairunway
+          image: ghcr.io/kaito-project/kubeairunway:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          env:
+            # Server configuration
+            - name: PORT
+              value: "3001"
+            - name: LOG_LEVEL
+              value: "info"
+            # Optional: Enable authentication
+            # - name: AUTH_ENABLED
+            #   value: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+---
+# Service - ClusterIP for internal access
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeairunway
+  namespace: kubeairunway-system
+  labels:
+    app.kubernetes.io/name: kubeairunway
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/instance: kubeairunway

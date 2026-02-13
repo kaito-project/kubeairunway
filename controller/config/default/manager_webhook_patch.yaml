@@ -1,0 +1,33 @@
+# This patch ensures the webhook certificates are properly mounted in the manager container.
+# cert-controller generates and rotates certs, writing them to the CertDir.
+
+# Add the port configuration for the webhook server
+- op: add
+  path: /spec/template/spec/containers/0/ports/-
+  value:
+    containerPort: 9443
+    name: webhook-server
+    protocol: TCP
+
+# Add POD_NAMESPACE env var for cert-controller to discover its namespace
+- op: add
+  path: /spec/template/spec/containers/0/env
+  value:
+    - name: POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+
+# Add the volumeMount for cert-controller to write webhook certificates
+- op: add
+  path: /spec/template/spec/containers/0/volumeMounts/-
+  value:
+    mountPath: /tmp/k8s-webhook-server/serving-certs
+    name: cert-dir
+
+# Add an emptyDir volume for cert-controller to write certificates
+- op: add
+  path: /spec/template/spec/volumes/-
+  value:
+    name: cert-dir
+    emptyDir: {}

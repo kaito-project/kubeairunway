@@ -3,10 +3,8 @@
  * Fetches and processes Prometheus metrics from inference deployments
  */
 
-import type { MetricsResponse, RawMetricValue } from '@kubefoundry/shared';
+import type { MetricsResponse, RawMetricValue } from '@kubeairunway/shared';
 import { parsePrometheusText } from '../lib/prometheus-parser';
-import { configService } from './config';
-import { providerRegistry } from '../providers';
 import logger from '../lib/logger';
 import * as fs from 'fs';
 
@@ -16,8 +14,15 @@ const METRICS_FETCH_TIMEOUT = 5000;
 // Kubernetes service account token path (exists only when running in-cluster)
 const K8S_SERVICE_ACCOUNT_TOKEN_PATH = '/var/run/secrets/kubernetes.io/serviceaccount/token';
 
+// Default metrics configuration for inference deployments
+const DEFAULT_METRICS_CONFIG = {
+  serviceNamePattern: '{name}',
+  port: 8000,
+  endpointPath: '/metrics',
+};
+
 /**
- * Check if KubeFoundry is running inside a Kubernetes cluster
+ * Check if KubeAIRunway is running inside a Kubernetes cluster
  * This is determined by the presence of the service account token
  */
 function isRunningInCluster(): boolean {
@@ -50,7 +55,7 @@ function buildMetricsUrl(
 ): string {
   // Replace {name} placeholder with actual deployment name
   const serviceName = servicePattern.replace('{name}', deploymentName);
-  
+
   // Build the in-cluster service URL
   // Format: http://<service>.<namespace>.svc.cluster.local:<port><path>
   return `http://${serviceName}.${namespace}.svc.cluster.local:${port}${endpointPath}`;
@@ -95,20 +100,20 @@ class MetricsService {
 
   /**
    * Get metrics for a deployment
-   * 
+   *
    * @param deploymentName - Name of the deployment
    * @param namespace - Kubernetes namespace
-   * @param providerId - Provider ID (dynamo or kuberay) - if not provided, uses active provider
+   * @param providerId - Optional provider ID (for future use)
    * @returns MetricsResponse with available metrics or error
    */
-  async getDeploymentMetrics(deploymentName: string, namespace: string, providerId?: string): Promise<MetricsResponse> {
+  async getDeploymentMetrics(deploymentName: string, namespace: string, _providerId?: string): Promise<MetricsResponse> {
     const timestamp = new Date().toISOString();
 
     // Check if running in-cluster first
     if (!checkInCluster()) {
       return {
         available: false,
-        error: 'Metrics are only available when KubeFoundry is deployed inside the Kubernetes cluster. Run KubeFoundry in-cluster to access deployment metrics.',
+        error: 'Metrics are only available when KubeAIRunway is deployed inside the Kubernetes cluster. Run KubeAIRunway in-cluster to access deployment metrics.',
         timestamp,
         metrics: [],
         runningOffCluster: true,
@@ -116,33 +121,8 @@ class MetricsService {
     }
 
     try {
-      // Get provider - use specified provider or fall back to active provider
-      let provider;
-      if (providerId) {
-        provider = providerRegistry.getProvider(providerId);
-        if (!provider) {
-          return {
-            available: false,
-            error: `Provider ${providerId} not found`,
-            timestamp,
-            metrics: [],
-          };
-        }
-      } else {
-        // Fall back to active provider for backward compatibility
-        provider = await configService.getActiveProvider();
-      }
-      
-      // Check if provider supports metrics
-      const metricsConfig = provider.getMetricsConfig();
-      if (!metricsConfig) {
-        return {
-          available: false,
-          error: `Provider ${provider.name} does not support metrics`,
-          timestamp,
-          metrics: [],
-        };
-      }
+      // Use default metrics configuration
+      const metricsConfig = DEFAULT_METRICS_CONFIG;
 
       // Build the metrics URL
       const url = buildMetricsUrl(
@@ -174,12 +154,12 @@ class MetricsService {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       // Provide helpful error messages based on error type
       let userMessage = errorMessage;
-      
+
       if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-        userMessage = 'Cannot resolve service DNS. KubeFoundry must be running in-cluster to fetch metrics.';
+        userMessage = 'Cannot resolve service DNS. KubeAIRunway must be running in-cluster to fetch metrics.';
       } else if (errorMessage.includes('ECONNREFUSED')) {
         userMessage = 'Connection refused. The deployment may not be ready yet.';
       } else if (errorMessage.includes('abort')) {
@@ -189,7 +169,7 @@ class MetricsService {
       } else if (errorMessage.includes('HTTP 503')) {
         userMessage = 'Service unavailable. The deployment is starting up.';
       } else if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
-        userMessage = 'Cannot connect to metrics endpoint. KubeFoundry must be running in-cluster.';
+        userMessage = 'Cannot connect to metrics endpoint. KubeAIRunway must be running in-cluster.';
       }
 
       logger.warn(
@@ -207,19 +187,26 @@ class MetricsService {
   }
 
   /**
-   * Get the key metrics definitions for the active provider
+   * Get the key metrics definitions (common vLLM/inference metrics)
    */
-  async getKeyMetricsDefinitions() {
-    const provider = await configService.getActiveProvider();
-    return provider.getKeyMetrics();
+  getKeyMetricsDefinitions() {
+    return [
+      { name: 'vllm:num_requests_running', type: 'gauge', description: 'Number of requests currently running' },
+      { name: 'vllm:num_requests_waiting', type: 'gauge', description: 'Number of requests waiting in queue' },
+      { name: 'vllm:gpu_cache_usage_perc', type: 'gauge', description: 'GPU KV cache usage percentage' },
+      { name: 'vllm:cpu_cache_usage_perc', type: 'gauge', description: 'CPU KV cache usage percentage' },
+      { name: 'vllm:e2e_request_latency_seconds', type: 'histogram', description: 'End-to-end request latency' },
+      { name: 'vllm:time_to_first_token_seconds', type: 'histogram', description: 'Time to first token' },
+      { name: 'vllm:time_per_output_token_seconds', type: 'histogram', description: 'Time per output token' },
+    ];
   }
 
   /**
-   * Extract key metrics from raw metrics based on provider definitions
+   * Extract key metrics from raw metrics based on definitions
    * This filters raw metrics to only include the ones defined as "key metrics"
    */
-  async extractKeyMetrics(rawMetrics: RawMetricValue[]): Promise<RawMetricValue[]> {
-    const definitions = await this.getKeyMetricsDefinitions();
+  extractKeyMetrics(rawMetrics: RawMetricValue[]): RawMetricValue[] {
+    const definitions = this.getKeyMetricsDefinitions();
     const keyMetricNames = new Set(definitions.map(d => d.name));
 
     // For histograms, also include _sum and _count variants
