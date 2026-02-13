@@ -80,7 +80,7 @@ The plugin locates the KubeAIRunway backend in priority order:
 ## Directory Layout
 
 ```
-kube-foundry/
+kubeairunway/
 ├── frontend/                          # Main KubeAIRunway UI (unchanged)
 │
 ├── backend/                           # KubeAIRunway Backend (unchanged)
