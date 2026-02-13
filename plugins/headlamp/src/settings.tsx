@@ -1,7 +1,7 @@
 /**
  * Plugin Settings Component
  *
- * Allows users to configure the KubeFoundry backend URL and other settings.
+ * Allows users to configure the KubeAIRunway backend URL and other settings.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -59,7 +59,7 @@ export function PluginSettings() {
     if (backendUrl.trim()) {
       setBackendUrl(backendUrl.trim());
     }
-    setBackendNamespace(namespace || 'kubefoundry-system');
+    setBackendNamespace(namespace || 'kubeairunway-system');
 
     // Reset cached values
     clearBackendCache();
@@ -86,7 +86,7 @@ export function PluginSettings() {
 
   return (
     <div style={{ padding: '24px', maxWidth: '600px' }}>
-      <h1 style={{ marginBottom: '24px' }}>KubeFoundry Settings</h1>
+      <h1 style={{ marginBottom: '24px' }}>KubeAIRunway Settings</h1>
 
       {/* Backend URL Section */}
       <section style={{ marginBottom: '32px' }}>
@@ -124,7 +124,7 @@ export function PluginSettings() {
             type="text"
             value={namespace}
             onChange={(e) => setNamespaceState(e.target.value)}
-            placeholder="kubefoundry-system"
+            placeholder="kubeairunway-system"
             style={{
               width: '100%',
               padding: '8px 12px',
@@ -136,7 +136,7 @@ export function PluginSettings() {
             }}
           />
           <p style={{ fontSize: '12px', opacity: 0.6, marginTop: '4px' }}>
-            Namespace where KubeFoundry backend is deployed (for service discovery).
+            Namespace where KubeAIRunway backend is deployed (for service discovery).
           </p>
         </div>
 
@@ -237,13 +237,13 @@ export function PluginSettings() {
       <section>
         <h2 style={{ fontSize: '18px', marginBottom: '16px' }}>Help</h2>
         <div style={{ fontSize: '14px', opacity: 0.7, lineHeight: '1.6' }}>
-          <p>The KubeFoundry plugin connects to the KubeFoundry backend to manage deployments.</p>
+          <p>The KubeAIRunway plugin connects to the KubeAIRunway backend to manage deployments.</p>
           <p style={{ marginTop: '8px' }}>
             <strong>Discovery order:</strong>
           </p>
           <ol style={{ margin: '8px 0', paddingLeft: '20px' }}>
             <li>Custom URL from settings (if configured)</li>
-            <li>In-cluster service: <code style={{ backgroundColor: 'rgba(128, 128, 128, 0.2)', padding: '2px 6px', borderRadius: '4px' }}>kubefoundry.{'{namespace}'}.svc:3001</code></li>
+            <li>In-cluster service: <code style={{ backgroundColor: 'rgba(128, 128, 128, 0.2)', padding: '2px 6px', borderRadius: '4px' }}>kubeairunway.{'{namespace}'}.svc:3001</code></li>
             <li>Default: <code style={{ backgroundColor: 'rgba(128, 128, 128, 0.2)', padding: '2px 6px', borderRadius: '4px' }}>http://localhost:3001</code></li>
           </ol>
         </div>

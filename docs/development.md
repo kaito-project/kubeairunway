@@ -372,13 +372,13 @@ make clean              # Remove build artifacts
 #### Prerequisites for Headlamp Plugin
 
 - Headlamp Desktop (v0.20+) or Headlamp running in-cluster
-- KubeFoundry backend deployed or running locally
+- KubeAIRunway backend deployed or running locally
 
 #### Configuring Backend URL
 
 The plugin discovers the backend in this order:
-1. **Plugin Settings**: Configure in Headlamp → Settings → Plugins → KubeFoundry
-2. **In-Cluster**: Auto-discovers `kubefoundry.<namespace>.svc`
+1. **Plugin Settings**: Configure in Headlamp → Settings → Plugins → KubeAIRunway
+2. **In-Cluster**: Auto-discovers `kubeairunway.<namespace>.svc`
 3. **Default**: Falls back to `http://localhost:3001`
 
 #### Testing with Headlamp Desktop
@@ -389,7 +389,7 @@ The plugin discovers the backend in this order:
    make setup
    ```
 
-2. Start KubeFoundry backend:
+2. Start KubeAIRunway backend:
    ```bash
    cd ../..
    bun run dev:backend
@@ -692,20 +692,20 @@ curl http://localhost:5000/v1/chat/completions \
 #### Plugin not appearing in Headlamp
 - Verify plugin was built: `cd plugins/headlamp && bun run build`
 - Check plugin deployment location:
-  - macOS: `~/.config/Headlamp/plugins/kubefoundry-headlamp-plugin`
-  - Linux: `~/.config/Headlamp/plugins/kubefoundry-headlamp-plugin`
-  - Windows: `%APPDATA%/Headlamp/plugins/kubefoundry-headlamp-plugin`
+  - macOS: `~/.config/Headlamp/plugins/kubeairunway-headlamp-plugin`
+  - Linux: `~/.config/Headlamp/plugins/kubeairunway-headlamp-plugin`
+  - Windows: `%APPDATA%/Headlamp/plugins/kubeairunway-headlamp-plugin`
 - Restart Headlamp after deploying the plugin
 
 #### Plugin can't connect to backend
-- Check backend URL in Headlamp → Settings → Plugins → KubeFoundry
+- Check backend URL in Headlamp → Settings → Plugins → KubeAIRunway
 - Verify backend is running: `curl http://localhost:3001/api/health`
 - For in-cluster deployments, ensure the service is accessible
 - Check browser dev tools (Network tab) for connection errors
 
 #### Plugin shows "Connection Failed" banner
 - The plugin auto-discovers the backend; ensure it's running
-- In-cluster: Deploy KubeFoundry backend to `kubefoundry-system` namespace
+- In-cluster: Deploy KubeAIRunway backend to `kubeairunway-system` namespace
 - Local development: Start backend with `bun run dev:backend`
 
 #### Type errors after shared package changes

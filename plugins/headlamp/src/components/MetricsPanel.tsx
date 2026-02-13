@@ -55,7 +55,7 @@ export function MetricsPanel({ metrics, onRefresh }: MetricsPanelProps) {
         <p>{metrics?.error || 'No metrics available yet.'}</p>
         <p style={{ fontSize: '14px', marginTop: '8px' }}>
           {metrics?.runningOffCluster 
-            ? 'Metrics require KubeFoundry to be running in-cluster.'
+            ? 'Metrics require KubeAIRunway to be running in-cluster.'
             : 'Metrics will appear once the deployment is running and receiving traffic.'}
         </p>
         {onRefresh && (

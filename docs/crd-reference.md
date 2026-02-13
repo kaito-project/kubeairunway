@@ -1,7 +1,7 @@
 # CRD Reference
 
 ## ModelDeployment
-Unified API for deploying ML models. See [unified-crd-abstraction.md](design/unified-crd-abstraction.md) for full specification.
+Unified API for deploying ML models.
 
 ```yaml
 apiVersion: kubeairunway.ai/v1alpha1

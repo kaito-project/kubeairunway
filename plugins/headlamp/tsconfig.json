@@ -23,8 +23,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@kubefoundry/shared": ["../../shared/types/index.ts"],
-      "@kubefoundry/shared/api": ["../../shared/api/index.ts"]
+      "@kubeairunway/shared": ["../../shared/types/index.ts"],
+      "@kubeairunway/shared/api": ["../../shared/api/index.ts"]
     }
   },
   "include": ["src/**/*"],

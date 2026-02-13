@@ -1,7 +1,7 @@
 {
-  "name": "kubefoundry-headlamp-plugin",
+  "name": "kubeairunway-headlamp-plugin",
   "version": "0.1.0",
-  "description": "KubeFoundry ML deployment management plugin for Headlamp",
+  "description": "KubeAIRunway ML deployment management plugin for Headlamp",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -38,7 +38,7 @@
   "keywords": [
     "headlamp",
     "headlamp-plugin",
-    "kubefoundry",
+    "kubeairunway",
     "kubernetes",
     "ml",
     "machine-learning",
@@ -50,6 +50,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sozercan/kube-foundry.git"
+    "url": "https://github.com/kaito-project/kubeairunway.git"
   }
 }

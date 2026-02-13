@@ -1,7 +1,7 @@
 /**
  * Connection Banner Component
  *
- * Shows a banner when the KubeFoundry backend is not reachable.
+ * Shows a banner when the KubeAIRunway backend is not reachable.
  * Provides helpful information about how to fix the connection issue.
  */
 
@@ -72,8 +72,8 @@ export function ConnectionBanner({ showOnError = true }: ConnectionBannerProps) 
             marginBottom: '4px',
           }}
         >
-          {status === 'checking' && '⏳ Connecting to KubeFoundry backend...'}
-          {status === 'error' && '⚠️ Cannot connect to KubeFoundry backend'}
+          {status === 'checking' && '⏳ Connecting to KubeAIRunway backend...'}
+          {status === 'error' && '⚠️ Cannot connect to KubeAIRunway backend'}
         </div>
         {status === 'error' && (
           <div style={{ fontSize: '13px', opacity: 0.8 }}>
@@ -99,7 +99,7 @@ export function ConnectionBanner({ showOnError = true }: ConnectionBannerProps) 
           Retry
         </button>
         <button
-          onClick={() => history.push('/c/kubefoundry/settings')}
+          onClick={() => history.push('/c/kubeairunway/settings')}
           style={{
             padding: '6px 12px',
             backgroundColor: '#1976d2',
@@ -187,7 +187,7 @@ export function ConnectionError({ error, onRetry }: ConnectionErrorProps) {
           </div>
           <ol style={{ margin: 0, paddingLeft: '20px', lineHeight: 1.8, opacity: 0.8 }}>
             <li>
-              Ensure the KubeFoundry backend is running:
+              Ensure the KubeAIRunway backend is running:
               <code
                 style={{
                   display: 'block',
@@ -198,7 +198,7 @@ export function ConnectionError({ error, onRetry }: ConnectionErrorProps) {
                   fontSize: '13px',
                 }}
               >
-                cd kube-foundry && bun run dev
+                cd kubeairunway && bun run dev
               </code>
             </li>
             <li>
@@ -208,7 +208,7 @@ export function ConnectionError({ error, onRetry }: ConnectionErrorProps) {
               </div>
             </li>
             <li>
-              For in-cluster deployments, ensure KubeFoundry is deployed to your cluster
+              For in-cluster deployments, ensure KubeAIRunway is deployed to your cluster
             </li>
           </ol>
         </div>
@@ -231,7 +231,7 @@ export function ConnectionError({ error, onRetry }: ConnectionErrorProps) {
           </button>
         )}
         <button
-          onClick={() => history.push('/c/kubefoundry/settings')}
+          onClick={() => history.push('/c/kubeairunway/settings')}
           style={{
             padding: '10px 20px',
             backgroundColor: 'transparent',

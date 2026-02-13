@@ -13,7 +13,7 @@ KubeAIRunway is a **fully decoupled** platform. The core value lives in the Kube
 | **Backend API**          | TypeScript (Hono/Bun) | REST API — proxies K8s operations, auth, model catalog      | Optional         |
 | **React Frontend**       | React/TypeScript      | Bundled Web UI                                              | ❌ Swappable      |
 | **Headlamp Plugin**      | React/TypeScript      | Alternative UI inside Headlamp dashboard                    | ❌ Swappable      |
-| **Shared Types**         | TypeScript            | Shared API client & type contracts (`@kubefoundry/shared`)  | Library          |
+| **Shared Types**         | TypeScript            | Shared API client & type contracts (`@kubeairunway/shared`)  | Library          |
 | **kubectl / API**        | —                     | Direct CRD access via Kubernetes API                        | Always available |
 
 ### Component Architecture Diagram
@@ -89,7 +89,7 @@ KubeAIRunway is a **fully decoupled** platform. The core value lives in the Kube
 ### Why the Frontend Is Fully Decoupled
 
 1. **REST-only contract** — The frontend communicates with the backend exclusively via `HTTP/JSON`. There is no shared state, no server-side rendering, and no session affinity.
-2. **Shared type library** — `@kubefoundry/shared` provides a typed API client and TypeScript types that any frontend can import. The Headlamp plugin already does this.
+2. **Shared type library** — `@kubeairunway/shared` provides a typed API client and TypeScript types that any frontend can import. The Headlamp plugin already does this.
 3. **Backend is optional** — The core platform (controller + CRDs) works without the backend/frontend. Users can manage `ModelDeployment` resources directly via `kubectl`, Terraform, GitOps, or any Kubernetes API client.
 4. **Swappable frontends** — The bundled React UI, the Headlamp plugin, or any custom UI can all drive the same backend API simultaneously. No code changes needed.
 5. **Auth is delegated** — Authentication uses Kubernetes `TokenReview`; the frontend simply passes a bearer token. Any UI that can obtain a K8s token works.

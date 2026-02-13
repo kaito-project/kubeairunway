@@ -140,7 +140,7 @@ export function DeploymentDetails() {
     setDeleting(true);
     try {
       await api.deployments.delete(deployment.name, deployment.namespace);
-      history.push(Router.createRouteURL('KubeFoundry Deployments'));
+      history.push(Router.createRouteURL('KubeAIRunway Deployments'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete deployment');
     } finally {
@@ -284,7 +284,7 @@ export function DeploymentDetails() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Tooltip title="Back to Deployments">
             <IconButton
-              onClick={() => history.push(Router.createRouteURL('KubeFoundry Deployments'))}
+              onClick={() => history.push(Router.createRouteURL('KubeAIRunway Deployments'))}
               size="small"
               sx={{
                 border: '1px solid rgba(128, 128, 128, 0.3)',

@@ -252,7 +252,7 @@ export function CreateDeployment() {
       }
 
       await api.deployments.create(config);
-      history.push(Router.createRouteURL('KubeFoundry Deployments'));
+      history.push(Router.createRouteURL('KubeAIRunway Deployments'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create deployment');
     } finally {
@@ -281,7 +281,7 @@ export function CreateDeployment() {
             Please select a model from the catalog to deploy.
           </p>
           <button
-            onClick={() => history.push(Router.createRouteURL('KubeFoundry Models'))}
+            onClick={() => history.push(Router.createRouteURL('KubeAIRunway Models'))}
             style={{
               padding: '12px 24px',
               backgroundColor: '#1976d2',
@@ -308,7 +308,7 @@ export function CreateDeployment() {
       {/* Back button */}
       <div style={{ marginBottom: '24px' }}>
         <button
-          onClick={() => history.push(Router.createRouteURL('KubeFoundry Models'))}
+          onClick={() => history.push(Router.createRouteURL('KubeAIRunway Models'))}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -470,11 +470,11 @@ export function CreateDeployment() {
                     color: '#f57c00',
                   }}>
                     <a
-                      href={Router.createRouteURL('KubeFoundry Runtimes')}
+                      href={Router.createRouteURL('KubeAIRunway Runtimes')}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        history.push(Router.createRouteURL('KubeFoundry Runtimes'));
+                        history.push(Router.createRouteURL('KubeAIRunway Runtimes'));
                       }}
                       style={{
                         color: '#f57c00',
@@ -716,7 +716,7 @@ export function CreateDeployment() {
         <Button
           variant="contained"
           color="error"
-          onClick={() => history.push(Router.createRouteURL('KubeFoundry Models'))}
+          onClick={() => history.push(Router.createRouteURL('KubeAIRunway Models'))}
           sx={{ fontWeight: 600, px: 3, py: 1.5 }}
         >
           Cancel

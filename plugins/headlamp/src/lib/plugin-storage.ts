@@ -5,7 +5,7 @@
  * Falls back to localStorage if Headlamp storage is not available.
  */
 
-const PLUGIN_ID = 'kubefoundry-headlamp-plugin';
+const PLUGIN_ID = 'kubeairunway-headlamp-plugin';
 const STORAGE_PREFIX = `headlamp_plugin_${PLUGIN_ID}_`;
 
 // Helper to access Headlamp's pluginLib with proper typing
@@ -49,7 +49,7 @@ export function setPluginSettingsValue(key: string, value: string): void {
     // Fall back to localStorage
     localStorage.setItem(`${STORAGE_PREFIX}${key}`, value);
   } catch {
-    console.warn('[KubeFoundry] Failed to save setting:', key);
+    console.warn('[KubeAIRunway] Failed to save setting:', key);
   }
 }
 
@@ -68,7 +68,7 @@ export function removePluginSettingsValue(key: string): void {
     // Fall back to localStorage
     localStorage.removeItem(`${STORAGE_PREFIX}${key}`);
   } catch {
-    console.warn('[KubeFoundry] Failed to remove setting:', key);
+    console.warn('[KubeAIRunway] Failed to remove setting:', key);
   }
 }
 
@@ -91,7 +91,7 @@ export function getAllPluginSettings(): Record<string, string> {
       }
     }
   } catch {
-    console.warn('[KubeFoundry] Failed to read settings');
+    console.warn('[KubeAIRunway] Failed to read settings');
   }
 
   return settings;

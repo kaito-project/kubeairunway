@@ -1,5 +1,5 @@
 /**
- * Shared API Client for KubeFoundry
+ * Shared API Client for KubeAIRunway
  *
  * This module provides a configurable API client that works in both
  * the main frontend (browser) and the Headlamp plugin environments.
@@ -100,7 +100,7 @@ export interface ApiClient {
  *
  * // Headlamp plugin environment
  * const client = createApiClient({
- *   baseUrl: 'http://kubefoundry.kubefoundry-system.svc:3001',
+ *   baseUrl: 'http://kubeairunway.kubeairunway-system.svc:3001',
  *   getToken: () => getHeadlampToken(),
  * });
  *

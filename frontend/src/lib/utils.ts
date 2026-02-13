@@ -5,60 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-/**
- * Focus the first invalid/error element in a form
- * Useful for form validation UX - auto-scrolls and focuses the first error
- */
-export function focusFirstError(containerRef?: React.RefObject<HTMLElement | null>): boolean {
-  const container = containerRef?.current || document
-  
-  // Look for elements with aria-invalid or data-error attribute
-  const errorElement = container.querySelector<HTMLElement>(
-    '[aria-invalid="true"], [data-error="true"], .error, input:invalid, select:invalid, textarea:invalid'
-  )
-  
-  if (errorElement) {
-    // Scroll into view with smooth behavior
-    errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    
-    // Focus after scroll animation
-    setTimeout(() => {
-      errorElement.focus({ preventScroll: true })
-    }, 100)
-    
-    return true
-  }
-  
-  return false
-}
-
-/**
- * Animation class presets for consistent motion design
- */
-export const animations = {
-  fadeIn: 'animate-fade-in',
-  fadeOut: 'animate-fade-out',
-  slideUp: 'animate-slide-up',
-  slideDown: 'animate-slide-down',
-  scaleIn: 'animate-scale-in',
-  scaleOut: 'animate-scale-out',
-  shake: 'animate-shake',
-  shimmer: 'animate-shimmer',
-  pulseSoft: 'animate-pulse-soft',
-} as const
-
-/**
- * Timing presets for transitions (use with Tailwind classes)
- */
-export const timings = {
-  fast: 'duration-fast',
-  normal: 'duration-normal', 
-  slow: 'duration-slow',
-  easeOutExpo: 'ease-out-expo',
-  easeOutQuart: 'ease-out-quart',
-  spring: 'ease-spring',
-} as const
-
 export function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString)
   const now = new Date()

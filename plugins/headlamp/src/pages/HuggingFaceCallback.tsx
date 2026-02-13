@@ -36,7 +36,7 @@ function Spinner() {
 }
 
 // Inject keyframes for spinner animation
-const styleId = 'kubefoundry-spinner-keyframes';
+const styleId = 'kubeairunway-spinner-keyframes';
 if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
   const style = document.createElement('style');
   style.id = styleId;

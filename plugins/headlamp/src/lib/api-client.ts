@@ -62,7 +62,7 @@ function getHeadlampToken(): string | null {
 
     return null;
   } catch {
-    console.warn('[KubeFoundry] Failed to get Headlamp token');
+    console.warn('[KubeAIRunway] Failed to get Headlamp token');
     return null;
   }
 }
@@ -80,7 +80,7 @@ export function getApiClient(): ApiClient {
       baseUrl,
       getToken: getHeadlampToken,
       onUnauthorized: () => {
-        console.warn('[KubeFoundry] Unauthorized - token may be invalid');
+        console.warn('[KubeAIRunway] Unauthorized - token may be invalid');
         // Could dispatch an event here to show a notification
       },
     });

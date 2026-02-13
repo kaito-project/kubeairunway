@@ -1,12 +1,12 @@
-# KubeFoundry Headlamp Plugin
+# KubeAIRunway Headlamp Plugin
 
-[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/kubefoundry)](https://artifacthub.io/packages/headlamp/kubefoundry/kubefoundry-headlamp-plugin)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/kubeairunway)](https://artifacthub.io/packages/headlamp/kubeairunway/kubeairunway-headlamp-plugin)
 
-A [Headlamp](https://headlamp.dev/) plugin that integrates KubeFoundry's ML deployment management capabilities directly into the Headlamp Kubernetes dashboard.
+A [Headlamp](https://headlamp.dev/) plugin that integrates KubeAIRunway's ML deployment management capabilities directly into the Headlamp Kubernetes dashboard.
 
 ## Features
 
-- **Full Feature Parity**: Complete KubeFoundry functionality within Headlamp
+- **Full Feature Parity**: Complete KubeAIRunway functionality within Headlamp
 - **Multi-Runtime Support**: KAITO, KubeRay, and Dynamo runtimes
 - **Model Catalog**: Browse curated models and search HuggingFace
 - **Deployment Management**: Create, view, and delete deployments
@@ -19,15 +19,15 @@ A [Headlamp](https://headlamp.dev/) plugin that integrates KubeFoundry's ML depl
 
 1. Open Headlamp settings
 2. Navigate to Plugins
-3. Search for "kubefoundry"
+3. Search for "kubeairunway"
 4. Install the plugin
 
 ### Manual Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/sozercan/kube-foundry.git
-cd kube-foundry/plugins/headlamp
+git clone https://github.com/kaito-project/kubeairunway.git
+cd kubeairunway/plugins/headlamp
 
 # Build and deploy
 make setup
@@ -36,21 +36,21 @@ make setup
 ## Prerequisites
 
 - Headlamp v0.20+ installed
-- KubeFoundry backend deployed in your cluster (or running locally)
+- KubeAIRunway backend deployed in your cluster (or running locally)
 - Kubernetes cluster with kubectl access
 
 ## Configuration
 
 ### Backend URL
 
-The plugin attempts to discover the KubeFoundry backend in this order:
+The plugin attempts to discover the KubeAIRunway backend in this order:
 
 1. **Plugin Settings**: Configure URL in Headlamp Plugin Settings
-2. **In-Cluster Discovery**: Automatically discovers `kubefoundry.<namespace>.svc`
+2. **In-Cluster Discovery**: Automatically discovers `kubeairunway.<namespace>.svc`
 3. **Default**: Falls back to `http://localhost:3001` (development)
 
 To configure:
-1. Open Headlamp → Settings → Plugins → KubeFoundry
+1. Open Headlamp → Settings → Plugins → KubeAIRunway
 2. Set the "Backend URL" field
 3. Optionally set the "Backend Namespace" for service discovery
 
@@ -143,9 +143,9 @@ function MyComponent() {
 import { registerRoute, registerSidebarEntry } from '@kinvolk/headlamp-plugin/lib';
 
 registerRoute({
-  path: '/kubefoundry/deployments',
+  path: '/kubeairunway/deployments',
   sidebar: 'kf-deployments',
-  name: 'KubeFoundry Deployments',
+  name: 'KubeAIRunway Deployments',
   exact: true,
   component: () => <DeploymentsList />,
 });
@@ -155,7 +155,7 @@ registerRoute({
 
 **DO:**
 - Use Headlamp's `SectionBox`, `SimpleTable`, `StatusLabel`, `Loader`, `Link` components
-- Use the shared `@kubefoundry/shared` package for types and API client
+- Use the shared `@kubeairunway/shared` package for types and API client
 - Test components with mocked Headlamp dependencies
 - Use `src/lib/plugin-storage.ts` for plugin configuration
 
@@ -176,7 +176,7 @@ registerRoute({
 
 **Backend connection issues:**
 - Check backend is running: `curl http://localhost:3001/api/health`
-- Verify plugin settings in Headlamp → Settings → Plugins → KubeFoundry
+- Verify plugin settings in Headlamp → Settings → Plugins → KubeAIRunway
 
 **Type errors after shared package changes:**
 ```bash
@@ -188,11 +188,11 @@ cd ../plugins/headlamp && bun run build
 
 ```
 ┌──────────────────┐     ┌─────────────────────┐
-│    Headlamp      │     │  KubeFoundry        │
+│    Headlamp      │     │  KubeAIRunway       │
 │   (Browser)      │────▶│    Backend          │
 │                  │     │                     │
 │  ┌────────────┐  │     │  ┌───────────────┐  │
-│  │ KubeFoundry│  │     │  │ REST API      │  │
+│  │KubeAIRunway│  │     │  │ REST API      │  │
 │  │  Plugin    │──┼────▶│  │ /api/*        │  │
 │  └────────────┘  │     │  └───────────────┘  │
 └──────────────────┘     └─────────────────────┘
@@ -210,7 +210,7 @@ cd ../plugins/headlamp && bun run build
 ## Sidebar Structure
 
 ```
-KubeFoundry
+KubeAIRunway
 ├── Deployments      - List and manage deployments
 ├── Models           - Browse model catalog
 ├── Runtimes         - View runtime installation status

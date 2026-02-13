@@ -1,10 +1,10 @@
-# KubeFoundry Headlamp Plugin - ArtifactHub Package Metadata
+# KubeAIRunway Headlamp Plugin - ArtifactHub Package Metadata
 version: "0.1.0"
-name: kubefoundry-headlamp-plugin
-displayName: KubeFoundry
+name: kubeairunway-headlamp-plugin
+displayName: KubeAIRunway
 createdAt: "2024-01-01T00:00:00Z"
 description: |
-  KubeFoundry Headlamp Plugin provides ML model deployment management within the
+  KubeAIRunway Headlamp Plugin provides ML model deployment management within the
   Headlamp Kubernetes dashboard. It supports KAITO, KubeRay, and Dynamo runtimes
   for deploying and managing machine learning inference workloads.
 
@@ -20,11 +20,11 @@ description: |
   ## Requirements
 
   - Headlamp 0.25.0 or later
-  - KubeFoundry backend service running in the cluster
+  - KubeAIRunway backend service running in the cluster
   - At least one supported ML runtime (KAITO, KubeRay, or Dynamo) installed
 
 logoPath: logo.png
-homeURL: https://github.com/sozercan/kube-foundry
+homeURL: https://github.com/kaito-project/kubeairunway
 appVersion: "0.1.0"
 containsSecurityUpdates: false
 prerelease: false
@@ -40,18 +40,18 @@ keywords:
   - plugin
 links:
   - name: Source
-    url: https://github.com/sozercan/kube-foundry
+    url: https://github.com/kaito-project/kubeairunway
   - name: Documentation
-    url: https://github.com/sozercan/kube-foundry/tree/main/docs
+    url: https://github.com/kaito-project/kubeairunway/tree/main/docs
   - name: Issues
-    url: https://github.com/sozercan/kube-foundry/issues
+    url: https://github.com/kaito-project/kubeairunway/issues
 maintainers:
   - name: Sertac Ozercan
     email: sozercan@gmail.com
 annotations:
-  headlamp/plugin/archive-url: https://github.com/sozercan/kube-foundry/releases/download/v0.1.0/kubefoundry-headlamp-plugin-0.1.0.tar.gz
+  headlamp/plugin/archive-url: https://github.com/kaito-project/kubeairunway/releases/download/v0.1.0/kubeairunway-headlamp-plugin-0.1.0.tar.gz
   headlamp/plugin/archive-checksum: ""
   headlamp/plugin/distro-compat: linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64
 license: Apache-2.0
 provider:
-  name: KubeFoundry
+  name: KubeAIRunway

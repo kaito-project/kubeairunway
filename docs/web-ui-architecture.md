@@ -38,7 +38,7 @@ The same backend API supports multiple frontends simultaneously:
 | Frontend                   | How it connects                 | Notes                                 |
 | -------------------------- | ------------------------------- | ------------------------------------- |
 | **Bundled React UI**       | Same-origin (served by backend) | Default, ships in container           |
-| **Headlamp Plugin**        | In-cluster service URL          | Uses `@kubefoundry/shared` API client |
+| **Headlamp Plugin**        | In-cluster service URL          | Uses `@kubeairunway/shared` API client |
 | **Custom UI / CLI**        | Any HTTP client                 | Backend is a standard REST API        |
 | **kubectl**                | Bypasses backend entirely       | Works directly with CRDs on K8s API   |
 

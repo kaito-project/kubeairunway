@@ -1,6 +1,6 @@
-# KubeFoundry Headlamp Plugin - Architecture & Design
+# KubeAIRunway Headlamp Plugin - Architecture & Design
 
-This document describes the architecture, design decisions, and technical details of the KubeFoundry Headlamp plugin.
+This document describes the architecture, design decisions, and technical details of the KubeAIRunway Headlamp plugin.
 
 For installation and development instructions, see the [plugin README](../plugins/headlamp/README.md).
 
@@ -8,7 +8,7 @@ For installation and development instructions, see the [plugin README](../plugin
 
 ## Overview
 
-The KubeFoundry Headlamp plugin integrates ML deployment management capabilities directly into the [Headlamp](https://headlamp.dev/) Kubernetes dashboard. It provides full feature parity with the main KubeFoundry UI, supporting all runtimes (KAITO, KubeRay, Dynamo) through a full backend proxy architecture.
+The KubeAIRunway Headlamp plugin integrates ML deployment management capabilities directly into the [Headlamp](https://headlamp.dev/) Kubernetes dashboard. It provides full feature parity with the main KubeAIRunway UI, supporting all runtimes (KAITO, KubeRay, Dynamo) through a full backend proxy architecture.
 
 ---
 
@@ -18,8 +18,8 @@ The KubeFoundry Headlamp plugin integrates ML deployment management capabilities
 |---|--------------|--------|-----------|
 | 1 | Repository Structure | **Monorepo** (`plugins/headlamp/`) | Easier type sharing, coordinated changes, single CI |
 | 2 | Data Access Strategy | **Full Backend Proxy** | Maximum feature parity, reuse existing business logic |
-| 3 | Shared Types | **Reuse via workspace dependency** | Direct imports from `@kubefoundry/shared` |
-| 4 | Plugin Name | **kubefoundry-headlamp-plugin** | Consistent with gatekeeper-headlamp-plugin naming |
+| 3 | Shared Types | **Reuse via workspace dependency** | Direct imports from `@kubeairunway/shared` |
+| 4 | Plugin Name | **kubeairunway-headlamp-plugin** | Consistent with gatekeeper-headlamp-plugin naming |
 | 5 | API Client Strategy | **Shared API Client Package** | Single source of truth, both UIs use same client |
 | 6 | Backend Discovery | **Flexible** (In-Cluster + External) | Service discovery with manual override fallback |
 | 7 | Authentication | **Pass-through Kubernetes Token** | Seamless auth, same RBAC as Headlamp |
@@ -43,7 +43,7 @@ The monorepo + full backend proxy approach enables significant code reuse:
 - Styling/CSS — Headlamp uses its own theming
 - UI-specific hooks
 
-UI components are written using Headlamp's `CommonComponents` (`SectionBox`, `SimpleTable`, `Link`, `Loader`, etc.). The main KubeFoundry frontend is completely unaffected by the plugin.
+UI components are written using Headlamp's `CommonComponents` (`SectionBox`, `SimpleTable`, `Link`, `Loader`, etc.). The main KubeAIRunway frontend is completely unaffected by the plugin.
 
 ---
 
@@ -51,7 +51,7 @@ UI components are written using Headlamp's `CommonComponents` (`SectionBox`, `Si
 
 ```
 ┌─────────────┐    K8s Token     ┌─────────────────────┐
-│  Headlamp   │ ───────────────► │ KubeFoundry Backend │
+│  Headlamp   │ ───────────────► │ KubeAIRunway Backend │
 │  (Browser)  │                  │                     │
 └─────────────┘                  └─────────────────────┘
        │                                   │
@@ -63,16 +63,16 @@ UI components are written using Headlamp's `CommonComponents` (`SectionBox`, `Si
 └─────────────┘                  └─────────────────────┘
 ```
 
-The plugin reuses the same Kubernetes token that Headlamp already holds. The KubeFoundry backend validates it via TokenReview, so no additional authentication is needed.
+The plugin reuses the same Kubernetes token that Headlamp already holds. The KubeAIRunway backend validates it via TokenReview, so no additional authentication is needed.
 
 ---
 
 ## Backend Discovery
 
-The plugin locates the KubeFoundry backend in priority order:
+The plugin locates the KubeAIRunway backend in priority order:
 
 1. **Plugin Settings** — User-configured URL in Headlamp Plugin Settings
-2. **In-Cluster Service Discovery** — `kubefoundry.<namespace>.svc:3001`
+2. **In-Cluster Service Discovery** — `kubeairunway.<namespace>.svc:3001`
 3. **Default** — `http://localhost:3001` (development fallback)
 
 ---
@@ -81,9 +81,9 @@ The plugin locates the KubeFoundry backend in priority order:
 
 ```
 kube-foundry/
-├── frontend/                          # Main KubeFoundry UI (unchanged)
+├── frontend/                          # Main KubeAIRunway UI (unchanged)
 │
-├── backend/                           # KubeFoundry Backend (unchanged)
+├── backend/                           # KubeAIRunway Backend (unchanged)
 │
 ├── shared/                            # Shared code
 │   ├── types/                         # TypeScript type definitions
@@ -145,13 +145,13 @@ kube-foundry/
 
 | Route | Page | Description |
 |-------|------|-------------|
-| `/kubefoundry/deployments` | DeploymentsList | List and filter all deployments |
-| `/kubefoundry/deployments/:namespace/:name` | DeploymentDetails | Deployment info, pods, metrics, logs |
-| `/kubefoundry/deployments/create` | CreateDeployment | Multi-step deployment wizard |
-| `/kubefoundry/models` | ModelsCatalog | Browse curated models and HuggingFace |
-| `/kubefoundry/runtimes` | RuntimesStatus | Runtime installation and health |
-| `/kubefoundry/integrations` | Integrations | External integrations (e.g., HuggingFace OAuth) |
-| `/kubefoundry/settings` | Settings | Plugin configuration |
+| `/kubeairunway/deployments` | DeploymentsList | List and filter all deployments |
+| `/kubeairunway/deployments/:namespace/:name` | DeploymentDetails | Deployment info, pods, metrics, logs |
+| `/kubeairunway/deployments/create` | CreateDeployment | Multi-step deployment wizard |
+| `/kubeairunway/models` | ModelsCatalog | Browse curated models and HuggingFace |
+| `/kubeairunway/runtimes` | RuntimesStatus | Runtime installation and health |
+| `/kubeairunway/integrations` | Integrations | External integrations (e.g., HuggingFace OAuth) |
+| `/kubeairunway/settings` | Settings | Plugin configuration |
 
 ---
 

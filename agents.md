@@ -26,7 +26,7 @@
 - `ModelDeployment` - Unified API for deploying ML models
 - `InferenceProviderConfig` - Provider registration with capabilities and selection rules
 
-**Headlamp plugin**: When working on `plugins/headlamp/`, read [plugins/headlamp/README.md](plugins/headlamp/README.md) for patterns and best practices. Key rules: use Headlamp's built-in components (`SectionBox`, `SimpleTable`, etc.), never bundle React, use `@kubefoundry/shared` for types/API.
+**Headlamp plugin**: When working on `plugins/headlamp/`, read [plugins/headlamp/README.md](plugins/headlamp/README.md) for patterns and best practices. Key rules: use Headlamp's built-in components (`SectionBox`, `SimpleTable`, etc.), never bundle React, use `@kubeairunway/shared` for types/API.
 
 ## HOW: Development Commands
 

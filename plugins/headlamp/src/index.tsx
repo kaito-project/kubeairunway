@@ -1,5 +1,5 @@
 /**
- * KubeFoundry Headlamp Plugin
+ * KubeAIRunway Headlamp Plugin
  *
  * This plugin provides ML deployment management capabilities within Headlamp,
  * supporting KAITO, KubeRay, and Dynamo runtimes.
@@ -28,15 +28,15 @@ import { HuggingFaceCallback } from './pages/HuggingFaceCallback';
 // Parent sidebar entry
 registerSidebarEntry({
   parent: null,
-  name: 'kubefoundry',
-  label: 'KubeFoundry',
+  name: 'kubeairunway',
+  label: 'KubeAIRunway',
   icon: 'mdi:anvil',
   url: ROUTES.DEPLOYMENTS,
 });
 
 // Deployments
 registerSidebarEntry({
-  parent: 'kubefoundry',
+  parent: 'kubeairunway',
   name: 'kf-deployments',
   label: 'Deployments',
   url: ROUTES.DEPLOYMENTS,
@@ -44,7 +44,7 @@ registerSidebarEntry({
 
 // Models
 registerSidebarEntry({
-  parent: 'kubefoundry',
+  parent: 'kubeairunway',
   name: 'kf-models',
   label: 'Models',
   url: ROUTES.MODELS,
@@ -52,7 +52,7 @@ registerSidebarEntry({
 
 // Runtimes
 registerSidebarEntry({
-  parent: 'kubefoundry',
+  parent: 'kubeairunway',
   name: 'kf-runtimes',
   label: 'Runtimes',
   url: ROUTES.RUNTIMES,
@@ -60,7 +60,7 @@ registerSidebarEntry({
 
 // Integrations
 registerSidebarEntry({
-  parent: 'kubefoundry',
+  parent: 'kubeairunway',
   name: 'kf-integrations',
   label: 'Integrations',
   url: ROUTES.INTEGRATIONS,
@@ -68,7 +68,7 @@ registerSidebarEntry({
 
 // Settings (visible from sidebar)
 registerSidebarEntry({
-  parent: 'kubefoundry',
+  parent: 'kubeairunway',
   name: 'kf-settings',
   label: 'Settings',
   url: ROUTES.SETTINGS,
@@ -79,7 +79,7 @@ registerSidebarEntry({
 // ============================================================================
 
 // Create deployment - MUST be registered before DEPLOYMENT_DETAILS to avoid
-// /kubefoundry/deployments/create being matched as /:namespace/:name
+// /kubeairunway/deployments/create being matched as /:namespace/:name
 registerRoute({
   path: ROUTES.CREATE_DEPLOYMENT,
   sidebar: 'kf-deployments',
@@ -92,7 +92,7 @@ registerRoute({
 registerRoute({
   path: ROUTES.DEPLOYMENTS,
   sidebar: 'kf-deployments',
-  name: 'KubeFoundry Deployments',
+  name: 'KubeAIRunway Deployments',
   exact: true,
   component: () => <DeploymentsList />,
 });
@@ -110,7 +110,7 @@ registerRoute({
 registerRoute({
   path: ROUTES.MODELS,
   sidebar: 'kf-models',
-  name: 'KubeFoundry Models',
+  name: 'KubeAIRunway Models',
   exact: true,
   component: () => <ModelsCatalog />,
 });
@@ -119,7 +119,7 @@ registerRoute({
 registerRoute({
   path: ROUTES.RUNTIMES,
   sidebar: 'kf-runtimes',
-  name: 'KubeFoundry Runtimes',
+  name: 'KubeAIRunway Runtimes',
   exact: true,
   component: () => <RuntimesStatus />,
 });
@@ -128,7 +128,7 @@ registerRoute({
 registerRoute({
   path: ROUTES.INTEGRATIONS,
   sidebar: 'kf-integrations',
-  name: 'KubeFoundry Integrations',
+  name: 'KubeAIRunway Integrations',
   exact: true,
   component: () => <Integrations />,
 });
@@ -146,7 +146,7 @@ registerRoute({
 registerRoute({
   path: ROUTES.SETTINGS,
   sidebar: 'kf-settings',
-  name: 'KubeFoundry Settings',
+  name: 'KubeAIRunway Settings',
   exact: true,
   component: () => <PluginSettings />,
 });
@@ -156,7 +156,7 @@ registerRoute({
 // ============================================================================
 
 registerPluginSettings(
-  'kubefoundry-headlamp-plugin',
+  'kubeairunway-headlamp-plugin',
   PluginSettings,
   true // showInMenu
 );

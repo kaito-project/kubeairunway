@@ -57,3 +57,5 @@ go.work.sum
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+docs/ignore

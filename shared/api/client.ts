@@ -1,5 +1,5 @@
 /**
- * Shared API Client for KubeFoundry
+ * Shared API Client for KubeAIRunway
  *
  * This module provides a configurable API client that works in both
  * the main frontend (browser) and the Headlamp plugin environments.

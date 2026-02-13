@@ -1,9 +1,9 @@
 # ============================================================================
-#                    Makefile for KubeFoundry Headlamp Plugin
+#                    Makefile for KubeAIRunway Headlamp Plugin
 # ============================================================================
 #
 # This Makefile automates the entire build and deployment process for the
-# KubeFoundry Headlamp Plugin. It provides a streamlined development workflow
+# KubeAIRunway Headlamp Plugin. It provides a streamlined development workflow
 # with commands for building, testing, deploying, and maintaining the plugin.
 #
 # OVERVIEW:
@@ -19,13 +19,13 @@
 #
 # DIRECTORY STRUCTURE:
 # -------------------
-# kubefoundry-headlamp-plugin/
+# kubeairunway-headlamp-plugin/
 # ├── src/                          # Source code
 # ├── dist/                         # Build output (temporary, auto-cleaned)
 # ├── .plugins/                     # Extracted plugin (deployment ready)
 # │   ├── main.js                   # Plugin bundle
 # │   └── package.json              # Plugin metadata
-# └── ~/Library/Application Support/Headlamp/plugins/kubefoundry-headlamp-plugin/
+# └── ~/Library/Application Support/Headlamp/plugins/kubeairunway-headlamp-plugin/
 #                                   # Deployment target (macOS)
 #
 # COMMON WORKFLOWS:
@@ -53,7 +53,7 @@
 # VARIABLES
 # ============================================================================
 
-PLUGIN_NAME := kubefoundry-headlamp-plugin
+PLUGIN_NAME := kubeairunway-headlamp-plugin
 SOURCE_DIR := .plugins
 DIST_DIR := dist
 
@@ -279,7 +279,7 @@ watch:
 .PHONY: help
 help:
 	@echo "============================================================================"
-	@echo "KubeFoundry Headlamp Plugin Makefile"
+	@echo "KubeAIRunway Headlamp Plugin Makefile"
 	@echo "============================================================================"
 	@echo ""
 	@echo "COMMON WORKFLOWS:"

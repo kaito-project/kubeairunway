@@ -1,5 +1,5 @@
-# KubeFoundry Headlamp Plugin - ArtifactHub Repository Metadata
+# KubeAIRunway Headlamp Plugin - ArtifactHub Repository Metadata
 # This file identifies this repository as containing ArtifactHub packages
-repositoryID: kubefoundry-headlamp-plugin
-name: KubeFoundry Headlamp Plugin
+repositoryID: kubeairunway-headlamp-plugin
+name: KubeAIRunway Headlamp Plugin
 kind: headlamp

@@ -1,41 +1,41 @@
 /**
- * Route path constants for the KubeFoundry Headlamp plugin
+ * Route path constants for the KubeAIRunway Headlamp plugin
  */
 
 export const ROUTES = {
-  /** Base path for all KubeFoundry routes */
-  BASE: '/kubefoundry',
+  /** Base path for all KubeAIRunway routes */
+  BASE: '/kubeairunway',
 
   /** Deployments list page */
-  DEPLOYMENTS: '/kubefoundry/deployments',
+  DEPLOYMENTS: '/kubeairunway/deployments',
 
   /** Deployment details page (with name and namespace params) */
-  DEPLOYMENT_DETAILS: '/kubefoundry/deployments/:namespace/:name',
+  DEPLOYMENT_DETAILS: '/kubeairunway/deployments/:namespace/:name',
 
   /** Models catalog page */
-  MODELS: '/kubefoundry/models',
+  MODELS: '/kubeairunway/models',
 
   /** Runtimes status page */
-  RUNTIMES: '/kubefoundry/runtimes',
+  RUNTIMES: '/kubeairunway/runtimes',
 
   /** Settings page */
-  SETTINGS: '/kubefoundry/settings',
+  SETTINGS: '/kubeairunway/settings',
 
   /** Integrations page */
-  INTEGRATIONS: '/kubefoundry/integrations',
+  INTEGRATIONS: '/kubeairunway/integrations',
 
   /** Create deployment wizard */
-  CREATE_DEPLOYMENT: '/kubefoundry/deployments/create',
+  CREATE_DEPLOYMENT: '/kubeairunway/deployments/create',
 
   /** HuggingFace OAuth callback */
-  HUGGINGFACE_CALLBACK: '/kubefoundry/oauth/callback/huggingface',
+  HUGGINGFACE_CALLBACK: '/kubeairunway/oauth/callback/huggingface',
 } as const;
 
 /**
  * Generate a deployment details URL
  */
 export function getDeploymentDetailsUrl(name: string, namespace: string): string {
-  return `/kubefoundry/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
+  return `/kubeairunway/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
 }
 
 /**
