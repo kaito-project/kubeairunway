@@ -162,10 +162,25 @@ kubefoundry login --context my-cluster         # Use specific context
 
 The login command extracts your OIDC token and opens the browser automatically.
 
+## Hub Mode
+
+KubeAIRunway can run in **hub mode** — a multi-instance portal for managing ML deployments across multiple Kubernetes clusters with OAuth authentication and RBAC.
+
+```bash
+export HUB_MODE=true
+export ENABLED_AUTH_PROVIDERS=github
+export GITHUB_CLIENT_ID=your-client-id
+export GITHUB_CLIENT_SECRET=your-client-secret
+bun run dev
+```
+
+See [Hub Mode Documentation](docs/hub.md) for full setup, Azure Entra ID / GitHub OAuth configuration, RBAC, and production deployment.
+
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md)
 - [API Reference](docs/api.md)
+- [Hub Mode](docs/hub.md)
 - [Development Guide](docs/development.md)
 - [Azure Cluster Autoscaling Setup](docs/azure-autoscaling.md)
 - [Kubernetes Deployment](deploy/kubernetes/README.md)

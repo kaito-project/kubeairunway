@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSettings } from './useSettings';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { HubUser, HubUserInstanceRole } from '@kubefoundry/shared';
 
 const AUTH_TOKEN_KEY = 'kubefoundry_auth_token';
 const AUTH_USERNAME_KEY = 'kubefoundry_auth_username';
@@ -9,7 +11,12 @@ export interface AuthState {
   isLoading: boolean;
   username: string | null;
   authEnabled: boolean;
+  hubMode: boolean;
   error: string | null;
+}
+
+export interface HubUserInfo extends HubUser {
+  instances: HubUserInstanceRole[];
 }
 
 export interface UseAuthReturn extends AuthState {
@@ -20,18 +27,56 @@ export interface UseAuthReturn extends AuthState {
 }
 
 /**
+ * React Query hook that fetches /api/auth/me (only enabled in hub mode)
+ */
+export function useAuthMe(hubMode: boolean) {
+  return useQuery<HubUserInfo>({
+    queryKey: ['auth-me'],
+    queryFn: async () => {
+      const response = await fetch('/api/auth/me', { credentials: 'include' });
+      if (response.status === 401) {
+        // Try refresh first
+        const refreshResponse = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (refreshResponse.ok) {
+          // Retry /me after successful refresh
+          const retryResponse = await fetch('/api/auth/me', { credentials: 'include' });
+          if (!retryResponse.ok) throw new Error('Not authenticated');
+          return retryResponse.json();
+        }
+        throw new Error('Not authenticated');
+      }
+      if (!response.ok) throw new Error('Failed to fetch user info');
+      return response.json();
+    },
+    enabled: hubMode,
+    retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+/**
  * Hook for managing authentication state
- * Handles token storage, URL-based login (magic link), and auth status
+ * Handles token storage, URL-based login (magic link), and session-based auth (hub mode)
  */
 export function useAuth(): UseAuthReturn {
   const { data: settings, isLoading: settingsLoading } = useSettings();
+  const queryClient = useQueryClient();
+  const hubMode = settings?.auth?.hubMode ?? false;
+
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
     isLoading: true,
     username: null,
     authEnabled: false,
+    hubMode: false,
     error: null,
   });
+
+  // Hub mode: use /api/auth/me to check session
+  const { data: hubUser, isLoading: hubUserLoading, error: hubUserError } = useAuthMe(hubMode);
 
   /**
    * Get stored token from localStorage
@@ -45,7 +90,7 @@ export function useAuth(): UseAuthReturn {
   }, []);
 
   /**
-   * Login with a token
+   * Login with a token (single-cluster mode only)
    */
   const login = useCallback((token: string, username?: string) => {
     try {
@@ -54,7 +99,6 @@ export function useAuth(): UseAuthReturn {
         localStorage.setItem(AUTH_USERNAME_KEY, username);
       }
       
-      // Extract username from token if not provided
       const extractedUsername = username || extractUsernameFromToken(token);
       
       setState(prev => ({
@@ -63,7 +107,7 @@ export function useAuth(): UseAuthReturn {
         username: extractedUsername,
         error: null,
       }));
-    } catch (error) {
+    } catch {
       setState(prev => ({
         ...prev,
         error: 'Failed to save authentication token',
@@ -72,42 +116,53 @@ export function useAuth(): UseAuthReturn {
   }, []);
 
   /**
-   * Logout - clear stored credentials
+   * Logout - clear stored credentials or session cookie
    */
-  const logout = useCallback(() => {
-    try {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-      localStorage.removeItem(AUTH_USERNAME_KEY);
+  const logout = useCallback(async () => {
+    if (hubMode) {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+      } catch {
+        // Ignore network errors during logout
+      }
+      queryClient.removeQueries({ queryKey: ['auth-me'] });
       setState(prev => ({
         ...prev,
         isAuthenticated: false,
         username: null,
       }));
-    } catch {
-      // Ignore errors when clearing
+    } else {
+      try {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_USERNAME_KEY);
+        setState(prev => ({
+          ...prev,
+          isAuthenticated: false,
+          username: null,
+        }));
+      } catch {
+        // Ignore errors when clearing
+      }
     }
-  }, []);
+  }, [hubMode, queryClient]);
 
   /**
-   * Check URL hash for token (magic link login)
-   * Returns true if token was found and processed
+   * Check URL hash for token (magic link login, single-cluster mode only)
    */
   const checkTokenFromUrl = useCallback((): boolean => {
+    if (hubMode) return false;
+
     try {
       const hash = window.location.hash;
       if (!hash || !hash.includes('token=')) {
         return false;
       }
 
-      // Parse token from URL fragment
-      const params = new URLSearchParams(hash.slice(1)); // Remove leading #
+      const params = new URLSearchParams(hash.slice(1));
       const token = params.get('token');
       
       if (token) {
-        // Clear the URL hash to avoid exposing token
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        
-        // Login with the token
         login(decodeURIComponent(token));
         return true;
       }
@@ -115,10 +170,10 @@ export function useAuth(): UseAuthReturn {
       console.error('Error parsing token from URL:', error);
     }
     return false;
-  }, [login]);
+  }, [login, hubMode]);
 
   /**
-   * Initialize auth state
+   * Initialize auth state — hub mode uses session cookies, single-cluster uses localStorage
    */
   useEffect(() => {
     if (settingsLoading) {
@@ -126,8 +181,37 @@ export function useAuth(): UseAuthReturn {
     }
 
     const authEnabled = settings?.auth?.enabled ?? false;
-    
-    // First check for token in URL (magic link)
+
+    if (hubMode) {
+      // Hub mode: auth state is derived from /api/auth/me query
+      if (hubUserLoading) {
+        setState(prev => ({ ...prev, isLoading: true, authEnabled, hubMode: true }));
+        return;
+      }
+
+      if (hubUser) {
+        setState({
+          isAuthenticated: true,
+          isLoading: false,
+          username: hubUser.displayName || hubUser.email,
+          authEnabled,
+          hubMode: true,
+          error: null,
+        });
+      } else {
+        setState({
+          isAuthenticated: false,
+          isLoading: false,
+          username: null,
+          authEnabled,
+          hubMode: true,
+          error: hubUserError ? 'Not authenticated' : null,
+        });
+      }
+      return;
+    }
+
+    // Single-cluster mode: existing localStorage behavior
     const tokenFromUrl = checkTokenFromUrl();
     
     if (tokenFromUrl) {
@@ -135,22 +219,21 @@ export function useAuth(): UseAuthReturn {
         ...prev,
         isLoading: false,
         authEnabled,
+        hubMode: false,
       }));
       return;
     }
 
-    // Check for existing token in storage
     const storedToken = getToken();
     const storedUsername = localStorage.getItem(AUTH_USERNAME_KEY);
 
     if (storedToken) {
-      // If auth is enabled, we have a token, consider authenticated
-      // Token validation happens on API calls (401 will trigger re-auth)
       setState({
         isAuthenticated: true,
         isLoading: false,
         username: storedUsername || extractUsernameFromToken(storedToken),
         authEnabled,
+        hubMode: false,
         error: null,
       });
     } else {
@@ -159,17 +242,22 @@ export function useAuth(): UseAuthReturn {
         isLoading: false,
         username: null,
         authEnabled,
+        hubMode: false,
         error: null,
       });
     }
-  }, [settings, settingsLoading, checkTokenFromUrl, getToken]);
+  }, [settings, settingsLoading, hubMode, hubUser, hubUserLoading, hubUserError, checkTokenFromUrl, getToken]);
 
   /**
    * Listen for auth:unauthorized events (401 responses)
    */
   useEffect(() => {
     const handleUnauthorized = () => {
-      logout();
+      if (hubMode) {
+        queryClient.invalidateQueries({ queryKey: ['auth-me'] });
+      } else {
+        logout();
+      }
       setState(prev => ({
         ...prev,
         error: 'Session expired. Please login again.',
@@ -180,7 +268,7 @@ export function useAuth(): UseAuthReturn {
     return () => {
       window.removeEventListener('auth:unauthorized', handleUnauthorized);
     };
-  }, [logout]);
+  }, [logout, hubMode, queryClient]);
 
   return {
     ...state,

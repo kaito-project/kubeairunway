@@ -1,17 +1,22 @@
 import { useClusterStatus } from '@/hooks/useClusterStatus'
+import { useAuth } from '@/hooks/useAuth'
+import { useInstanceContext } from '@/hooks/useInstanceContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { InstanceBreadcrumb } from '@/components/instances/InstanceBreadcrumb'
 import { Wifi, WifiOff, Menu } from 'lucide-react'
 import { useSidebar } from './MainLayout'
 
 export function Header() {
   const { data: clusterStatus, isLoading } = useClusterStatus()
+  const { hubMode } = useAuth()
+  const { currentInstanceId } = useInstanceContext()
   const { toggle } = useSidebar()
 
   return (
     <header className="border-b bg-card">
       <div className="flex h-14 md:h-16 items-center justify-between px-4 md:px-6 gap-4">
-        {/* Left side: hamburger + title */}
+        {/* Left side: hamburger + instance breadcrumb */}
         <div className="flex items-center gap-3 min-w-0">
           {/* Hamburger menu - mobile only */}
           <Button
@@ -23,6 +28,9 @@ export function Header() {
           >
             <Menu className="h-5 w-5" />
           </Button>
+
+          {/* Instance breadcrumb in hub mode */}
+          {hubMode && currentInstanceId && <InstanceBreadcrumb />}
         </div>
 
         {/* Right side: status badges */}

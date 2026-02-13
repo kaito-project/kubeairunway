@@ -1,12 +1,21 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Box, Layers, Settings, X } from 'lucide-react'
+import { Box, Layers, Settings, Server, Shield, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/hooks/useAuth'
 
-const navigation = [
+const baseNavigation = [
   { name: 'Models', href: '/', icon: Box },
   { name: 'Deployments', href: '/deployments', icon: Layers },
   { name: 'Settings', href: '/settings', icon: Settings },
+]
+
+const hubNavigation = [
+  { name: 'Instances', href: '/instances', icon: Server },
+  { name: 'Models', href: '/', icon: Box },
+  { name: 'Deployments', href: '/deployments', icon: Layers },
+  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Admin', href: '/admin', icon: Shield },
 ]
 
 interface SidebarProps {
@@ -16,6 +25,8 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate }: SidebarProps) {
   const location = useLocation()
+  const { hubMode } = useAuth()
+  const navigation = hubMode ? hubNavigation : baseNavigation
 
   const handleNavClick = () => {
     onNavigate?.()

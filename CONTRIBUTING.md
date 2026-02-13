@@ -75,6 +75,10 @@ kubefoundry/
 │   │   │   ├── dynamo/       # NVIDIA Dynamo provider
 │   │   │   ├── kuberay/      # KubeRay provider
 │   │   │   └── kaito/        # KAITO provider (CPU/GPU via llama.cpp or vLLM)
+│   │   ├── db/            # Database layer (hub mode)
+│   │   │   ├── index.ts        # DB connection factory (SQLite/PostgreSQL)
+│   │   │   ├── schema-pg.ts    # PostgreSQL schema
+│   │   │   └── schema-sqlite.ts # SQLite schema
 │   │   ├── services/    # Core services
 │   │   │   ├── kubernetes.ts # K8s client
 │   │   │   ├── config.ts     # ConfigMap persistence
@@ -83,7 +87,20 @@ kubefoundry/
 │   │   │   ├── autoscaler.ts # Cluster autoscaler detection
 │   │   │   ├── aikit.ts      # AIKit image building
 │   │   │   ├── buildkit.ts   # BuildKit builder management
-│   │   │   └── registry.ts   # In-cluster registry management
+│   │   │   ├── registry.ts   # In-cluster registry management
+│   │   │   ├── database.ts     # Repository layer (hub mode)
+│   │   │   ├── session.ts      # JWT session management (hub mode)
+│   │   │   ├── rbac.ts         # Role-based access control (hub mode)
+│   │   │   ├── credentials.ts  # Cluster credential loading (hub mode)
+│   │   │   ├── instance-manager.ts  # Instance lifecycle (hub mode)
+│   │   │   ├── cluster-proxy.ts     # Multi-cluster proxy (hub mode)
+│   │   │   └── oauth/         # OAuth providers (hub mode)
+│   │   │       ├── types.ts
+│   │   │       ├── entra.ts   # Azure Entra ID
+│   │   │       └── github.ts  # GitHub
+│   │   ├── middleware/    # Hono middleware (hub mode)
+│   │   │   ├── rbac.ts        # RBAC enforcement
+│   │   │   └── instance-context.ts  # Instance scoping
 │   │   ├── lib/         # Utility libraries
 │   │   │   ├── k8s-errors.ts # K8s error handling
 │   │   │   ├── prometheus-parser.ts # Prometheus text parser
@@ -235,6 +252,8 @@ curl -X POST http://localhost:3001/api/deployments \
 ```
 
 ## API Endpoints
+
+> **Hub Mode API**: When `HUB_MODE=true`, additional endpoints are available for authentication (`/api/auth/*`), instance management (`/api/instances/*`), cluster proxy (`/api/hub/*`), and admin operations (`/api/admin/*`). See [Hub Mode documentation](docs/hub.md) for details.
 
 ### Health & Cluster
 - `GET /api/health` - Health check

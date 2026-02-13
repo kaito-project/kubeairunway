@@ -53,6 +53,7 @@ export interface AppConfig {
  */
 export interface AuthConfig {
   enabled: boolean;
+  hubMode?: boolean;
 }
 
 /**

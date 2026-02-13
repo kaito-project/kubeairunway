@@ -191,6 +191,7 @@ async function request<T>(endpoint: string, options?: RequestOptions): Promise<T
     response = await fetch(url, {
       ...options,
       headers,
+      credentials: 'include',
       signal: isTestEnv ? undefined : controller.signal,
     });
   } catch (error) {
@@ -747,4 +748,73 @@ export const costsApi = {
         hourlyRate: { aws?: number; azure?: number; gcp?: number };
       } | null;
     }>(`/costs/normalize-gpu?label=${encodeURIComponent(label)}`),
+};
+
+// ============================================================================
+// Hub / Instances API
+// ============================================================================
+
+import type {
+  HubInstance,
+  HubUser,
+  HubUserInstanceRole,
+  HubAuthProvider,
+  HubEntraGroupMapping,
+} from '@kubefoundry/shared';
+
+export type { HubInstance, HubUser, HubUserInstanceRole, HubAuthProvider, HubEntraGroupMapping };
+
+export interface InstanceHealthInfo {
+  status: 'connected' | 'disconnected' | 'error';
+  message?: string;
+  gpuCapacity?: { total: number; used: number };
+  nodeCount?: number;
+  deploymentCount?: number;
+}
+
+export interface HubUserInfo extends HubUser {
+  instances: HubUserInstanceRole[];
+}
+
+export const instancesApi = {
+  list: () => request<HubInstance[]>('/instances'),
+  get: (id: string) => request<HubInstance>(`/instances/${encodeURIComponent(id)}`),
+  getHealth: (id: string) => request<InstanceHealthInfo>(`/instances/${encodeURIComponent(id)}/health`),
+  register: (data: { name: string; displayName: string; endpointUrl: string; credentialRef: string }) =>
+    request<HubInstance>('/instances', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: { displayName?: string; endpointUrl?: string; credentialRef?: string }) =>
+    request<HubInstance>(`/instances/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<void>(`/instances/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+};
+
+export const hubApi = {
+  // Instance-scoped deployments
+  getInstanceDeployments: (instanceId: string, namespace?: string) => {
+    const params = namespace ? `?namespace=${namespace}` : '';
+    return request<unknown[]>(`/hub/instances/${encodeURIComponent(instanceId)}/deployments${params}`);
+  },
+
+  // Auth
+  getAuthProviders: () => request<HubAuthProvider[]>('/auth/providers'),
+  getMe: () => request<HubUserInfo>('/auth/me'),
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  refreshToken: () => request<{ expiresIn: number }>('/auth/refresh', { method: 'POST' }),
+
+  // Admin
+  getUsers: () => request<HubUser[]>('/admin/users'),
+  assignRole: (userId: string, data: { instanceId: string; role: string; namespaces: string[] }) =>
+    request<void>(`/admin/users/${encodeURIComponent(userId)}/roles`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  revokeRole: (userId: string, instanceId: string, role: string) =>
+    request<void>(`/admin/users/${encodeURIComponent(userId)}/roles?instance_id=${encodeURIComponent(instanceId)}&role=${encodeURIComponent(role)}`, {
+      method: 'DELETE',
+    }),
+  getGroupMappings: () => request<HubEntraGroupMapping[]>('/admin/group-mappings'),
+  createGroupMapping: (data: { entraGroupId: string; entraGroupName: string; instanceId: string; role: string; namespaces: string[] }) =>
+    request<HubEntraGroupMapping>('/admin/group-mappings', { method: 'POST', body: JSON.stringify(data) }),
+  deleteGroupMapping: (id: string) =>
+    request<void>(`/admin/group-mappings/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

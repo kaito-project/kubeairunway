@@ -63,6 +63,7 @@ Read these files **only when relevant** to your task:
 | [docs/api.md](docs/api.md) | Working on REST endpoints or API client |
 | [docs/development.md](docs/development.md) | Setup issues, build process, testing |
 | [docs/standards.md](docs/standards.md) | Code style questions (prefer running linters instead) |
+| [docs/hub.md](docs/hub.md) | Hub mode setup, OAuth config, RBAC, multi-cluster management |
 | [plugins/headlamp/README.md](plugins/headlamp/README.md) | Headlamp plugin development, patterns, components |
 
 ## Key Files Reference
@@ -89,8 +90,30 @@ Read these files **only when relevant** to your task:
 - Prometheus parser: `backend/src/lib/prometheus-parser.ts`
 - K8s error handling: `backend/src/lib/k8s-errors.ts`
 
+#### Hub Mode (multi-cluster portal)
+- Database layer: `backend/src/db/` (schema, connection factory)
+- Database service: `backend/src/services/database.ts`
+- OAuth providers: `backend/src/services/oauth/` (types, entra, github)
+- Session management: `backend/src/services/session.ts`
+- RBAC service: `backend/src/services/rbac.ts`
+- Credential manager: `backend/src/services/credentials.ts`
+- Instance manager: `backend/src/services/instance-manager.ts`
+- Cluster proxy: `backend/src/services/cluster-proxy.ts`
+- Auth routes: `backend/src/routes/auth.ts`
+- Instance routes: `backend/src/routes/instances.ts`
+- Proxy routes: `backend/src/routes/proxy.ts`
+- Admin routes: `backend/src/routes/admin.ts`
+- RBAC middleware: `backend/src/middleware/rbac.ts`
+
 ### Frontend
 - Frontend API client: `frontend/src/lib/api.ts`
+
+#### Hub Mode Frontend
+- Instance selector: `frontend/src/pages/InstancesPage.tsx`
+- Admin page: `frontend/src/pages/AdminPage.tsx`
+- Instance hooks: `frontend/src/hooks/useInstances.ts`, `frontend/src/hooks/useInstanceContext.ts`
+- Instance components: `frontend/src/components/instances/`
+- Admin components: `frontend/src/components/admin/`
 
 ### Headlamp Plugin
 - Plugin entry point: `plugins/headlamp/src/index.tsx`

@@ -51,9 +51,48 @@ KubeFoundry can also be used as a Headlamp plugin, integrating directly into the
 └──────────────────────────────────────────────┘
 ```
 
+### Hub Mode (Multi-Cluster)
+
+When `HUB_MODE=true`, KubeFoundry runs as a centralized portal that manages multiple Kubernetes clusters from a single interface:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Hub Portal (HUB_MODE=true)                  │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │  OAuth    │  │ Instance │  │    RBAC      │  │  Cluster   │  │
+│  │ (Entra/  │  │ Registry │  │  (Users →    │  │   Proxy    │  │
+│  │  GitHub) │  │  (DB)    │  │  Instances)  │  │            │  │
+│  └──────────┘  └──────────┘  └──────────────┘  └─────┬──────┘  │
+│                                                       │         │
+│  ┌──────────────────────┐  ┌──────────────────────┐   │         │
+│  │  Database            │  │  Credentials Dir     │   │         │
+│  │  (PostgreSQL/SQLite) │  │  (CSI or local       │◄──┘         │
+│  │                      │  │   kubeconfig files)  │             │
+│  └──────────────────────┘  └──────────────────────┘             │
+└─────────────────────────────────────────────────────────────────┘
+        │                           │               │
+        ▼                           ▼               ▼
+  ┌──────────┐              ┌──────────┐     ┌──────────┐
+  │ K8s      │              │ K8s      │     │ K8s      │
+  │ Cluster A│              │ Cluster B│     │ Cluster C│
+  └──────────┘              └──────────┘     └──────────┘
+```
+
+**Hub components:**
+
+- **OAuth providers** — Azure Entra ID and GitHub authentication
+- **Instance registry** — Database-backed registry of managed clusters
+- **RBAC** — Role-based access (admin/deployer/viewer) with namespace isolation
+- **Cluster proxy** — Forwards API calls to target clusters using stored credentials
+- **Credential manager** — Loads kubeconfig files from a directory, watches for changes
+- **Database** — Drizzle ORM with SQLite (dev) or PostgreSQL (prod)
+
+See [Hub Mode documentation](hub.md) for detailed configuration.
+
 ## Authentication Flow
 
-When `AUTH_ENABLED=true`, the system uses Kubernetes OIDC tokens:
+When `AUTH_ENABLED=true`, the system uses Kubernetes OIDC tokens. In Hub mode (`HUB_MODE=true`), authentication uses OAuth (Azure Entra ID or GitHub) with cookie-based sessions instead of Kubernetes TokenReview — see [Hub Mode documentation](hub.md) for details.
 
 ```
 ┌──────────┐    kubefoundry login    ┌─────────────┐

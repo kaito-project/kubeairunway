@@ -1,0 +1,80 @@
+# PostgreSQL database for KubeFoundry Hub.
+# Stores cluster registrations, user accounts, and RBAC policies.
+#
+# The database credentials are read from the kubefoundry-hub-db Secret.
+# Make sure to populate hub-secrets.yaml before deploying.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kubefoundry-hub-db
+  namespace: kubefoundry-system
+  labels:
+    app.kubernetes.io/name: kubefoundry
+    app.kubernetes.io/component: database
+spec:
+  serviceName: kubefoundry-hub-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubefoundry-hub-db
+  template:
+    metadata:
+      labels:
+        app: kubefoundry-hub-db
+        app.kubernetes.io/name: kubefoundry
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: kubefoundry
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-db
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-db
+                  key: password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubefoundry-hub-db
+  namespace: kubefoundry-system
+  labels:
+    app.kubernetes.io/name: kubefoundry
+    app.kubernetes.io/component: database
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app: kubefoundry-hub-db

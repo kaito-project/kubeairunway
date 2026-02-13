@@ -84,6 +84,19 @@ PORT=3001
 DEFAULT_NAMESPACE=kubefoundry-system
 CORS_ORIGIN=http://localhost:5173
 AUTH_ENABLED=false
+
+# Hub Mode (optional — enables multi-cluster portal)
+HUB_MODE=false
+DATABASE_URL=./data/kubefoundry.db
+SESSION_SECRET=dev-secret-change-in-production
+CREDENTIALS_PATH=./credentials
+ENABLED_AUTH_PROVIDERS=
+AZURE_TENANT_ID=
+AZURE_CLIENT_ID=
+AZURE_CLIENT_SECRET=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+AUTH_CALLBACK_URL=
 ```
 
 ## Authentication
@@ -130,6 +143,46 @@ These routes are accessible without authentication:
 - `GET /api/health` - Health check
 - `GET /api/cluster/status` - Cluster connection status
 - `GET /api/settings` - Settings (includes `auth.enabled` for frontend)
+
+## Hub Mode Development
+
+Hub mode transforms KubeFoundry into a multi-cluster portal with OAuth authentication. See [Hub Mode documentation](hub.md) for full details.
+
+### Quick Start
+
+```bash
+# Set hub mode environment variables
+export HUB_MODE=true
+export ENABLED_AUTH_PROVIDERS=github
+export GITHUB_CLIENT_ID=your-client-id
+export GITHUB_CLIENT_SECRET=your-client-secret
+export SESSION_SECRET=$(openssl rand -hex 32)
+
+# Add cluster credentials
+mkdir -p credentials
+cp ~/.kube/config credentials/my-cluster.kubeconfig
+
+# Start development
+bun run dev
+```
+
+### Database
+
+Hub mode uses a database for users, sessions, roles, and instance metadata:
+
+- **Development**: SQLite (auto-created at `./data/kubefoundry.db`)
+- **Production**: PostgreSQL via `DATABASE_URL=postgres://user:pass@host:5432/kubefoundry`
+
+The database schema is applied automatically on startup.
+
+### OAuth Providers
+
+Configure one or both OAuth providers:
+
+- **GitHub**: Requires `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Set callback URL to `http://localhost:3001/api/auth/callback/github`.
+- **Azure Entra ID**: Requires `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and optionally `AZURE_CLIENT_SECRET`. Set callback URL to `http://localhost:3001/api/auth/callback/entra`.
+
+See [Hub Mode > Azure Entra ID Setup](hub.md#azure-entra-id-setup) and [Hub Mode > GitHub OAuth App Setup](hub.md#github-oauth-app-setup) for detailed instructions.
 
 ### CLI Commands
 

@@ -1341,15 +1341,719 @@ Normalize a GPU label to a standard GPU model name.
 - Handles various GPU label formats: NVIDIA prefixes, SXM/PCIe variants, Tesla prefixes
 - Returns GPU specifications when available
 
-## Error Responses
+## Hub Authentication API (`/api/auth`)
 
-All endpoints return errors in this format:
+*Available when `HUB_MODE=true`.* See [Hub Mode](hub.md) for setup details.
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/api/auth/providers` | List enabled OAuth providers | No |
+| GET | `/api/auth/login/:provider` | Initiate OAuth flow (redirects to provider) | No |
+| GET | `/api/auth/callback/:provider` | OAuth callback (creates session, sets cookies) | No |
+| POST | `/api/auth/logout` | Invalidate session and clear cookies | Yes (cookie) |
+| GET | `/api/auth/me` | Get current user info and instance roles | Yes (cookie) |
+| POST | `/api/auth/refresh` | Refresh access token using refresh token cookie | No (uses refresh cookie) |
+
+### GET /auth/providers
+List enabled OAuth providers.
+
+**Response:**
+```json
+[
+  { "id": "entra", "name": "Microsoft Entra ID" },
+  { "id": "github", "name": "GitHub" }
+]
+```
+
+```bash
+curl http://localhost:3001/api/auth/providers
+```
+
+### GET /auth/login/:provider
+Initiate OAuth login flow. Generates a PKCE challenge, stores the verifier, and redirects the user to the identity provider.
+
+**Parameters:**
+- `provider` - OAuth provider ID (`entra` or `github`)
+
+**Response:** `302 Redirect` to the provider's authorization URL.
+
+```bash
+# Open in browser — this redirects to the OAuth provider
+curl -L http://localhost:3001/api/auth/login/github
+```
+
+### GET /auth/callback/:provider
+Handle OAuth callback after user authorizes. Exchanges the authorization code for tokens, upserts the user, creates a session, and sets `kf_access_token` and `kf_refresh_token` as HTTP-only cookies.
+
+**Parameters:**
+- `provider` - OAuth provider ID
+
+**Query Parameters:**
+- `code` - Authorization code from the provider
+- `state` - PKCE state parameter
+
+**Response:** `302 Redirect` to `/` with session cookies set.
+
+**Error Response:**
+```json
+{
+  "error": { "message": "Missing code or state parameter", "statusCode": 400 }
+}
+```
+
+### POST /auth/logout
+Logout the current user, invalidate the session, and clear cookies.
+
+**Response:**
+```json
+{
+  "message": "Logged out"
+}
+```
+
+```bash
+curl -X POST http://localhost:3001/api/auth/logout \
+  -b "kf_access_token=<token>"
+```
+
+### GET /auth/me
+Get current authenticated user information and instance role assignments.
+
+**Response:**
+```json
+{
+  "id": "user-uuid",
+  "email": "user@example.com",
+  "displayName": "Jane Doe",
+  "provider": "github",
+  "instances": [
+    {
+      "instanceId": "prod-east",
+      "role": "deployer",
+      "namespaces": ["ml-team"]
+    }
+  ]
+}
+```
+
+**Error Response (unauthenticated):**
+```json
+{
+  "error": { "message": "Not authenticated", "statusCode": 401 }
+}
+```
+
+```bash
+curl http://localhost:3001/api/auth/me \
+  -b "kf_access_token=<token>"
+```
+
+### POST /auth/refresh
+Refresh the access token using the `kf_refresh_token` cookie. Sets new `kf_access_token` and `kf_refresh_token` cookies.
+
+**Response:**
+```json
+{
+  "expiresIn": 900
+}
+```
+
+**Error Response (invalid/missing refresh token):**
+```json
+{
+  "error": { "message": "No refresh token", "statusCode": 401 }
+}
+```
+
+```bash
+curl -X POST http://localhost:3001/api/auth/refresh \
+  -b "kf_refresh_token=<token>"
+```
+
+**Notes:**
+- Access tokens expire after 15 minutes; refresh tokens after 7 days
+- Tokens are stored as HTTP-only cookies (`kf_access_token` on path `/`, `kf_refresh_token` on path `/api/auth`)
+- PKCE is used for the OAuth authorization code flow
+- For Entra ID logins, group memberships are synced automatically on each login
+
+## Hub Instance API (`/api/instances`)
+
+Manage Kubernetes cluster instances. Requires authentication. Admin role required for create, update, and delete operations.
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/api/instances` | List all instances | Yes |
+| GET | `/api/instances/:id` | Get instance details | Yes |
+| POST | `/api/instances` | Register new instance | Yes (admin) |
+| PUT | `/api/instances/:id` | Update instance | Yes (admin) |
+| DELETE | `/api/instances/:id` | Deregister instance | Yes (admin) |
+| GET | `/api/instances/:id/health` | Real-time health check | Yes |
+
+### GET /instances
+List all registered instances.
+
+**Response:**
+```json
+[
+  {
+    "id": "instance-uuid",
+    "name": "prod-east",
+    "displayName": "Production East",
+    "endpointUrl": "https://k8s.example.com",
+    "credentialRef": "prod-east-creds",
+    "createdAt": "2025-01-15T10:30:00Z",
+    "updatedAt": "2025-01-15T10:30:00Z"
+  }
+]
+```
+
+```bash
+curl http://localhost:3001/api/instances \
+  -b "kf_access_token=<token>"
+```
+
+### GET /instances/:id
+Get details for a specific instance.
+
+**Response:**
+```json
+{
+  "id": "instance-uuid",
+  "name": "prod-east",
+  "displayName": "Production East",
+  "endpointUrl": "https://k8s.example.com",
+  "credentialRef": "prod-east-creds",
+  "createdAt": "2025-01-15T10:30:00Z",
+  "updatedAt": "2025-01-15T10:30:00Z"
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": { "message": "Instance not found", "statusCode": 404 }
+}
+```
+
+```bash
+curl http://localhost:3001/api/instances/instance-uuid \
+  -b "kf_access_token=<token>"
+```
+
+### POST /instances
+Register a new Kubernetes cluster instance. Requires admin role.
+
+**Request Body:**
+```json
+{
+  "name": "prod-east",
+  "displayName": "Production East",
+  "endpointUrl": "https://k8s.example.com",
+  "credentialRef": "prod-east-creds"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Lowercase alphanumeric with optional hyphens (1-63 chars) |
+| `displayName` | string | Yes | Human-readable name (1-255 chars) |
+| `endpointUrl` | string | Yes | Kubernetes API server URL |
+| `credentialRef` | string | Yes | Reference to stored credentials |
+
+**Response (201):**
+```json
+{
+  "id": "instance-uuid",
+  "name": "prod-east",
+  "displayName": "Production East",
+  "endpointUrl": "https://k8s.example.com",
+  "credentialRef": "prod-east-creds",
+  "createdAt": "2025-01-15T10:30:00Z",
+  "updatedAt": "2025-01-15T10:30:00Z"
+}
+```
+
+**Error Response (duplicate name):**
+```json
+{
+  "error": { "message": "Instance with this name already exists", "statusCode": 409 }
+}
+```
+
+```bash
+curl -X POST http://localhost:3001/api/instances \
+  -H "Content-Type: application/json" \
+  -b "kf_access_token=<token>" \
+  -d '{
+    "name": "prod-east",
+    "displayName": "Production East",
+    "endpointUrl": "https://k8s.example.com",
+    "credentialRef": "prod-east-creds"
+  }'
+```
+
+### PUT /instances/:id
+Update an instance. Requires admin role. All fields are optional.
+
+**Request Body:**
+```json
+{
+  "displayName": "Production East (Updated)",
+  "endpointUrl": "https://k8s-new.example.com",
+  "credentialRef": "prod-east-creds-v2"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `displayName` | string | No | Human-readable name (1-255 chars) |
+| `endpointUrl` | string | No | Kubernetes API server URL |
+| `credentialRef` | string | No | Reference to stored credentials |
+
+**Response:**
+```json
+{
+  "id": "instance-uuid",
+  "name": "prod-east",
+  "displayName": "Production East (Updated)",
+  "endpointUrl": "https://k8s-new.example.com",
+  "credentialRef": "prod-east-creds-v2",
+  "createdAt": "2025-01-15T10:30:00Z",
+  "updatedAt": "2025-01-16T08:00:00Z"
+}
+```
+
+```bash
+curl -X PUT http://localhost:3001/api/instances/instance-uuid \
+  -H "Content-Type: application/json" \
+  -b "kf_access_token=<token>" \
+  -d '{ "displayName": "Production East (Updated)" }'
+```
+
+### DELETE /instances/:id
+Deregister an instance. Requires admin role.
+
+**Response:**
+```json
+{
+  "message": "Instance deleted"
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": { "message": "Instance not found", "statusCode": 404 }
+}
+```
+
+```bash
+curl -X DELETE http://localhost:3001/api/instances/instance-uuid \
+  -b "kf_access_token=<token>"
+```
+
+### GET /instances/:id/health
+Get real-time health information for an instance.
+
+**Response:**
+```json
+{
+  "status": "connected",
+  "nodeCount": 5,
+  "deploymentCount": 3,
+  "gpuCapacity": {
+    "total": 8,
+    "available": 4
+  }
+}
+```
+
+```bash
+curl http://localhost:3001/api/instances/instance-uuid/health \
+  -b "kf_access_token=<token>"
+```
+
+## Hub Proxy API (`/api/hub`)
+
+Proxy requests to managed Kubernetes clusters. All proxy routes require authentication and instance-level access (enforced via `requireInstanceAccess` middleware).
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/api/hub/instances/:id/deployments` | List deployments on instance | Yes + instance access |
+| GET | `/api/hub/instances/:id/deployments/:name` | Get deployment details | Yes + instance access |
+| POST | `/api/hub/instances/:id/deployments` | Create deployment | Yes + instance access |
+| DELETE | `/api/hub/instances/:id/deployments/:name` | Delete deployment | Yes + instance access |
+| GET | `/api/hub/instances/:id/health` | Cluster health (nodes, GPUs, namespaces) | Yes + instance access |
+
+### GET /hub/instances/:instanceId/deployments
+List deployments on a specific instance.
+
+**Query Parameters:**
+- `namespace` (optional) - Filter by Kubernetes namespace
+
+**Response:**
+```json
+[
+  {
+    "name": "llama-deployment",
+    "namespace": "ml-team",
+    "modelId": "meta-llama/Llama-3.1-8B-Instruct",
+    "phase": "Running",
+    "replicas": { "desired": 1, "ready": 1, "available": 1 }
+  }
+]
+```
+
+**Error Response:**
+```json
+{
+  "error": { "message": "Failed to list deployments", "statusCode": 502 }
+}
+```
+
+```bash
+curl http://localhost:3001/api/hub/instances/instance-uuid/deployments \
+  -b "kf_access_token=<token>"
+
+# Filter by namespace
+curl http://localhost:3001/api/hub/instances/instance-uuid/deployments?namespace=ml-team \
+  -b "kf_access_token=<token>"
+```
+
+### GET /hub/instances/:instanceId/deployments/:name
+Get details for a specific deployment on an instance.
+
+**Query Parameters:**
+- `namespace` (optional, default: `default`) - Kubernetes namespace
+
+**Response:**
+```json
+{
+  "name": "llama-deployment",
+  "namespace": "ml-team",
+  "modelId": "meta-llama/Llama-3.1-8B-Instruct",
+  "phase": "Running",
+  "replicas": { "desired": 1, "ready": 1, "available": 1 }
+}
+```
+
+```bash
+curl http://localhost:3001/api/hub/instances/instance-uuid/deployments/llama-deployment?namespace=ml-team \
+  -b "kf_access_token=<token>"
+```
+
+### POST /hub/instances/:instanceId/deployments
+Create a deployment on an instance.
+
+**Query Parameters:**
+- `namespace` (optional, default: `default`) - Target Kubernetes namespace
+
+**Request Body:** Same as [POST /deployments](#post-deployments).
+
+**Response (201):** The created deployment object.
+
+```bash
+curl -X POST http://localhost:3001/api/hub/instances/instance-uuid/deployments?namespace=ml-team \
+  -H "Content-Type: application/json" \
+  -b "kf_access_token=<token>" \
+  -d '{
+    "modelId": "meta-llama/Llama-3.1-8B-Instruct",
+    "name": "llama-deployment"
+  }'
+```
+
+### DELETE /hub/instances/:instanceId/deployments/:name
+Delete a deployment on an instance.
+
+**Query Parameters:**
+- `namespace` (optional, default: `default`) - Kubernetes namespace
+
+**Response:**
+```json
+{
+  "message": "Deleted"
+}
+```
+
+```bash
+curl -X DELETE http://localhost:3001/api/hub/instances/instance-uuid/deployments/llama-deployment?namespace=ml-team \
+  -b "kf_access_token=<token>"
+```
+
+### GET /hub/instances/:instanceId/health
+Get cluster health for an instance, including node and GPU information.
+
+**Response:**
+```json
+{
+  "status": "connected",
+  "nodeCount": 5,
+  "deploymentCount": 3
+}
+```
+
+```bash
+curl http://localhost:3001/api/hub/instances/instance-uuid/health \
+  -b "kf_access_token=<token>"
+```
+
+## Admin API (`/api/admin`)
+
+Administrative endpoints. All routes require the `admin` role (enforced via `requireAdmin` middleware).
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/api/admin/users` | List all users with roles | Yes (admin) |
+| GET | `/api/admin/users/:id` | Get user details with roles | Yes (admin) |
+| POST | `/api/admin/users/:id/roles` | Assign role to user | Yes (admin) |
+| DELETE | `/api/admin/users/:id/roles` | Revoke user role | Yes (admin) |
+| GET | `/api/admin/group-mappings` | List Entra group mappings | Yes (admin) |
+| POST | `/api/admin/group-mappings` | Create group mapping | Yes (admin) |
+| DELETE | `/api/admin/group-mappings/:id` | Delete group mapping | Yes (admin) |
+
+### GET /admin/users
+List all users with their role assignments.
+
+**Response:**
+```json
+[
+  {
+    "id": "user-uuid",
+    "email": "user@example.com",
+    "displayName": "Jane Doe",
+    "provider": "github",
+    "providerId": "12345",
+    "avatarUrl": "https://avatars.example.com/u/123",
+    "lastLoginAt": "2025-01-15T10:30:00Z",
+    "createdAt": "2025-01-10T08:00:00Z",
+    "roles": [
+      {
+        "instanceId": "prod-east",
+        "role": "deployer",
+        "namespaces": ["ml-team"]
+      }
+    ]
+  }
+]
+```
+
+```bash
+curl http://localhost:3001/api/admin/users \
+  -b "kf_access_token=<token>"
+```
+
+### GET /admin/users/:id
+Get details for a specific user, including role assignments.
+
+**Response:**
+```json
+{
+  "id": "user-uuid",
+  "email": "user@example.com",
+  "displayName": "Jane Doe",
+  "provider": "github",
+  "providerId": "12345",
+  "avatarUrl": "https://avatars.example.com/u/123",
+  "lastLoginAt": "2025-01-15T10:30:00Z",
+  "createdAt": "2025-01-10T08:00:00Z",
+  "roles": [
+    {
+      "instanceId": "prod-east",
+      "role": "deployer",
+      "namespaces": ["ml-team"]
+    }
+  ]
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": { "message": "User not found", "statusCode": 404 }
+}
+```
+
+```bash
+curl http://localhost:3001/api/admin/users/user-uuid \
+  -b "kf_access_token=<token>"
+```
+
+### POST /admin/users/:id/roles
+Assign a role to a user for a specific instance.
+
+**Request Body:**
+```json
+{
+  "instanceId": "prod-east",
+  "role": "deployer",
+  "namespaces": ["ml-team", "data-science"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `instanceId` | string | Yes | Target instance ID |
+| `role` | string | Yes | Role name: `admin`, `deployer`, or `viewer` |
+| `namespaces` | string[] | Yes | Namespaces the role applies to (min 1) |
+
+**Response (201):** The user object with updated roles.
 
 ```json
 {
-  "error": "Error message",
-  "code": "ERROR_CODE",
-  "details": {}
+  "id": "user-uuid",
+  "email": "user@example.com",
+  "displayName": "Jane Doe",
+  "provider": "github",
+  "roles": [
+    {
+      "instanceId": "prod-east",
+      "role": "deployer",
+      "namespaces": ["ml-team", "data-science"]
+    }
+  ]
+}
+```
+
+```bash
+curl -X POST http://localhost:3001/api/admin/users/user-uuid/roles \
+  -H "Content-Type: application/json" \
+  -b "kf_access_token=<token>" \
+  -d '{
+    "instanceId": "prod-east",
+    "role": "deployer",
+    "namespaces": ["ml-team", "data-science"]
+  }'
+```
+
+### DELETE /admin/users/:id/roles
+Remove a role from a user. Uses query parameters (not request body).
+
+**Query Parameters:**
+- `instance_id` (required) - Instance ID to revoke access from
+- `role` (required) - Role name to remove (`admin`, `deployer`, or `viewer`)
+
+**Response:**
+```json
+{
+  "message": "Role removed"
+}
+```
+
+**Error Response (missing params):**
+```json
+{
+  "error": { "message": "instance_id and role query parameters required", "statusCode": 400 }
+}
+```
+
+```bash
+curl -X DELETE "http://localhost:3001/api/admin/users/user-uuid/roles?instance_id=prod-east&role=deployer" \
+  -b "kf_access_token=<token>"
+```
+
+### GET /admin/group-mappings
+List Entra ID group-to-role mappings.
+
+**Response:**
+```json
+[
+  {
+    "id": "mapping-uuid",
+    "entraGroupId": "azure-group-object-id",
+    "entraGroupName": "ML Engineers",
+    "instanceId": "prod-east",
+    "roleId": "role-uuid",
+    "namespaces": ["ml-team"],
+    "createdAt": "2025-01-15T10:30:00Z"
+  }
+]
+```
+
+```bash
+curl http://localhost:3001/api/admin/group-mappings \
+  -b "kf_access_token=<token>"
+```
+
+### POST /admin/group-mappings
+Create a group-to-role mapping. When users from the mapped Entra group log in, they automatically receive the specified role on the instance.
+
+**Request Body:**
+```json
+{
+  "entraGroupId": "azure-group-object-id",
+  "entraGroupName": "ML Engineers",
+  "instanceId": "prod-east",
+  "role": "deployer",
+  "namespaces": ["ml-team"]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `entraGroupId` | string | Yes | Azure AD / Entra group object ID |
+| `entraGroupName` | string | Yes | Human-readable group name |
+| `instanceId` | string | Yes | Target instance ID |
+| `role` | string | Yes | Role name: `admin`, `deployer`, or `viewer` |
+| `namespaces` | string[] | Yes | Namespaces the role applies to (min 1) |
+
+**Response (201):**
+```json
+{
+  "id": "mapping-uuid",
+  "entraGroupId": "azure-group-object-id",
+  "entraGroupName": "ML Engineers",
+  "instanceId": "prod-east",
+  "roleId": "role-uuid",
+  "namespaces": ["ml-team"],
+  "createdAt": "2025-01-15T10:30:00Z"
+}
+```
+
+```bash
+curl -X POST http://localhost:3001/api/admin/group-mappings \
+  -H "Content-Type: application/json" \
+  -b "kf_access_token=<token>" \
+  -d '{
+    "entraGroupId": "azure-group-object-id",
+    "entraGroupName": "ML Engineers",
+    "instanceId": "prod-east",
+    "role": "deployer",
+    "namespaces": ["ml-team"]
+  }'
+```
+
+### DELETE /admin/group-mappings/:id
+Delete a group mapping.
+
+**Response:**
+```json
+{
+  "message": "Group mapping deleted"
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": { "message": "Group mapping not found", "statusCode": 404 }
+}
+```
+
+```bash
+curl -X DELETE http://localhost:3001/api/admin/group-mappings/mapping-uuid \
+  -b "kf_access_token=<token>"
+```
+
+## Error Responses
+
+Hub mode endpoints return errors in this format:
+
+```json
+{
+  "error": {
+    "message": "Description of what went wrong",
+    "statusCode": 400
+  }
 }
 ```
 
@@ -1358,3 +2062,5 @@ Common error codes:
 - `PROVIDER_NOT_INSTALLED` - Active provider not installed
 - `VALIDATION_ERROR` - Invalid request body
 - `NOT_FOUND` - Resource not found
+- `UNAUTHORIZED` - Authentication required (hub mode)
+- `FORBIDDEN` - Insufficient permissions (hub mode)

@@ -1,0 +1,93 @@
+# Strategic merge patch to enable hub mode on the KubeFoundry deployment.
+# This adds:
+#   - Hub mode environment variables (database, auth, credentials)
+#   - Secrets Store CSI volume for cluster kubeconfigs
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubefoundry
+  namespace: kubefoundry-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: kubefoundry
+          env:
+            # Server configuration (inherited from base)
+            - name: PORT
+              value: "3001"
+            - name: LOG_LEVEL
+              value: "info"
+
+            # --- Hub mode ---
+            - name: HUB_MODE
+              value: "true"
+
+            # PostgreSQL connection string
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@kubefoundry-hub-db.kubefoundry-system.svc.cluster.local:5432/kubefoundry"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-db
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-db
+                  key: password
+
+            # Session secret for cookie signing
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-config
+                  key: session-secret
+
+            # Path where Secrets Store CSI mounts cluster credentials
+            - name: CREDENTIALS_PATH
+              value: "/mnt/credentials"
+
+            # --- OAuth providers (configure as needed) ---
+            # Comma-separated list of enabled providers, e.g. "azure,github"
+            - name: ENABLED_AUTH_PROVIDERS
+              value: ""  # CHANGE_ME: e.g. "azure", "github", or "azure,github"
+
+            # Azure AD / Entra ID
+            - name: AZURE_TENANT_ID
+              value: ""  # CHANGE_ME: your Azure tenant ID
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-config
+                  key: azure-client-id
+            - name: AZURE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-config
+                  key: azure-client-secret
+
+            # GitHub OAuth
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-config
+                  key: github-client-id
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kubefoundry-hub-config
+                  key: github-client-secret
+
+          volumeMounts:
+            - name: hub-credentials
+              mountPath: /mnt/credentials
+              readOnly: true
+
+      volumes:
+        - name: hub-credentials
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kubefoundry-hub-credentials

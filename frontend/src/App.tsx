@@ -7,9 +7,12 @@ import { DeploymentDetailsPage } from './pages/DeploymentDetailsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LoginPage } from './pages/LoginPage'
 import { HuggingFaceCallbackPage } from './pages/HuggingFaceCallbackPage'
+import { InstancesPage } from './pages/InstancesPage'
+import { AdminPage } from './pages/AdminPage'
 import { Toaster } from './components/ui/toaster'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { useAuth } from './hooks/useAuth'
+import { InstanceProvider, useInstanceContext } from './hooks/useInstanceContext'
 
 /**
  * Protected route wrapper - redirects to login if auth is enabled and not authenticated
@@ -44,6 +47,20 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Hub mode: redirect to /instances when no instance is selected on the root route
+ */
+function HubHomeRedirect({ children }: { children: React.ReactNode }) {
+  const { hubMode } = useAuth();
+  const { currentInstanceId } = useInstanceContext();
+
+  if (hubMode && !currentInstanceId) {
+    return <Navigate to="/instances" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -59,7 +76,9 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MainLayout>
-              <ModelsPage />
+              <HubHomeRedirect>
+                <ModelsPage />
+              </HubHomeRedirect>
             </MainLayout>
           </ProtectedRoute>
         }
@@ -108,6 +127,26 @@ function AppRoutes() {
         path="/installation"
         element={<Navigate to="/settings?tab=runtimes" replace />}
       />
+      <Route
+        path="/instances"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <InstancesPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <AdminPage />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }
@@ -116,7 +155,9 @@ function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <AppRoutes />
+        <InstanceProvider>
+          <AppRoutes />
+        </InstanceProvider>
         <Toaster />
       </BrowserRouter>
     </ErrorBoundary>
