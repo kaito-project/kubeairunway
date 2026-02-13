@@ -459,7 +459,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
       toast({
         title: 'Deployment Created',
-        description: `${config.name} is being deployed to ${config.namespace}`,
+        description: `${config.name} is being deployed`,
         variant: 'success',
       })
 
@@ -789,23 +789,26 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
           <CardTitle>Basic Configuration</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">Deployment Name</Label>
-              <Input
-                id="name"
-                value={config.name}
-                onChange={(e) => updateConfig('name', e.target.value)}
-                placeholder="my-deployment"
-                required
-                pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
-              />
-              <p className="text-xs text-muted-foreground">
-                Lowercase letters, numbers, and hyphens only
-              </p>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="name">Deployment Name</Label>
+            <Input
+              id="name"
+              value={config.name}
+              onChange={(e) => updateConfig('name', e.target.value)}
+              placeholder="my-deployment"
+              required
+              pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+            />
+            <p className="text-xs text-muted-foreground">
+              Lowercase letters, numbers, and hyphens only
+            </p>
+          </div>
 
-            <div className="space-y-2">
+          <details className="mt-4">
+            <summary className="text-sm font-medium cursor-pointer text-muted-foreground hover:text-foreground">
+              Advanced Settings
+            </summary>
+            <div className="mt-3 space-y-2">
               <Label htmlFor="namespace">Namespace</Label>
               <Input
                 id="namespace"
@@ -815,7 +818,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                 required
               />
             </div>
-          </div>
+          </details>
         </CardContent>
       </Card>
 
@@ -993,8 +996,8 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               </RadioGroup>
               <p className="text-xs text-muted-foreground">
                   {kaitoComputeType === 'cpu'
-                  ? 'Run inference on CPU nodes - slower but no GPU required'
-                  : 'Run inference on GPU nodes - faster performance'}
+                  ? 'Run inference on CPU compute - slower but no GPU required'
+                  : 'Run inference on GPU compute - faster performance'}
               </p>
             </div>
 

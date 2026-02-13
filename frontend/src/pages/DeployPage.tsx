@@ -60,7 +60,7 @@ export function DeployPage() {
         <div>
           <h1 className="text-3xl font-bold">Deploy Model</h1>
           <p className="text-muted-foreground mt-1">
-            Configure and deploy {model.name} to Kubernetes
+            Configure and deploy {model.name}
           </p>
         </div>
       </div>
