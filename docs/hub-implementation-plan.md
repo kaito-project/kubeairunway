@@ -50,14 +50,16 @@ Infra admins deploy KubeAIRunway to Kubernetes clusters but need to give users a
 - Central portal as proxy (users never see cluster credentials)
 - Instance registration with Azure Key Vault credentials
 - Role-based access: users/groups → instances + namespaces
-- Azure Entra group sync for automatic access mapping
+- Azure Entra group sync for automatic access mapping (with overage claim handling)
+- GitHub org/team membership sync for group-based access
 - Instance health dashboard (GPU capacity, status, deployments)
 - Namespace isolation per user/group
 - One-click model deployment (select instance → deploy)
 - Auto-refresh of rotated credentials (CSI volume watch)
+- Audit logging (all user actions to PostgreSQL) — required for multi-tenant access proxy
+- API path allowlist for cluster proxy — only KubeAIRunway-specific paths forwarded
 
 ### Future Work (noted, not implemented)
-- Audit logging (all user actions to PostgreSQL)
 - API tokens / personal access tokens for CLI/CI-CD
 - GPU quotas per namespace/user
 - Cost visibility / chargeback per user
@@ -92,15 +94,16 @@ Infra admins deploy KubeAIRunway to Kubernetes clusters but need to give users a
 - Create `backend/src/services/oauth/` directory with provider interface
 - Define `OAuthProvider` interface: `getAuthUrl()`, `exchangeCode()`, `getUserInfo()`, `refreshToken()`
 - Implement Azure Entra ID provider:
-  - OIDC discovery (`https://login.microsoftonline.com/{tenant}/.well-known/openid-configuration`)
+  - OIDC discovery (`https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration`)
   - Authorization code + PKCE flow
   - Token exchange, refresh token handling
-  - Extract user info + group memberships from ID token / `/me/memberOf` Graph API
+  - Extract user info + group memberships from ID token `groups` claim
+  - Handle group overage claim: when user belongs to >150 groups, Entra returns a `_claim_names`/`_claim_sources` overage indicator instead of the `groups` claim — detect this and fall back to Microsoft Graph API (`/me/memberOf`) to enumerate groups (see [Microsoft docs](https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/app-integration/get-signed-in-users-groups-in-access-token))
 - Implement GitHub provider:
-  - OAuth App flow (authorization code)
+  - OAuth App flow with PKCE (authorization code + code_challenge, [GitHub PKCE support](https://github.blog/changelog/2025-07-14-pkce-support-for-oauth-and-github-app-authentication/))
   - Token exchange via `https://github.com/login/oauth/access_token`
-  - User info from `https://api.github.com/user`
-  - Org/team membership for group-based access (optional)
+  - User info from `https://api.github.com/user`; request `user:email` scope and call `GET /user/emails` to retrieve primary verified email (the `/user` endpoint email field is null when the user has set their email to private)
+  - Org/team membership for group-based access (required for parity with Entra group sync): fetch via `GET /user/orgs` and `GET /user/teams` with `read:org` scope
 
 **2.2 Auth routes and middleware**
 - Create/update `backend/src/routes/auth.ts`:
@@ -128,7 +131,7 @@ Infra admins deploy KubeAIRunway to Kubernetes clusters but need to give users a
   - Parse kubeconfig files into usable K8s client configs
   - File watcher (fs.watch) for auto-refresh when CSI driver rotates secrets
   - In-memory cache of parsed credentials, invalidated on file change
-- Convention: each file in the mount path = one cluster's credentials, filename = instance identifier
+- Credential file mapping: use `instances.credential_ref` column to explicitly reference the CSI-mounted file path, rather than relying on filename = instance name convention. This decouples AKV secret naming from instance identity and enables reconciliation checks to detect missing or stale credential files
 
 **3.2 Instance registry**
 - Create `backend/src/routes/instances.ts`:
@@ -147,7 +150,13 @@ Infra admins deploy KubeAIRunway to Kubernetes clusters but need to give users a
 - Create `backend/src/services/cluster-proxy.ts`:
   - Accept requests with instance context (from user's session)
   - Validate user has access to target instance + namespace (RBAC check)
-  - Forward API calls to target cluster's KubeAIRunway using stored credentials
+  - **API path allowlist**: only forward requests matching KubeAIRunway-specific paths (model deployments, status, health, metrics). Deny arbitrary K8s API paths (e.g., `/api/v1/secrets`, `/api/v1/configmaps`) to prevent credential over-privilege exploitation. The allowlist should cover:
+    - ModelDeployment CRD operations
+    - Namespace listing (filtered)
+    - Node/GPU capacity queries
+    - Pod logs for model workloads
+    - Deny all other K8s API paths by default
+  - Forward allowed API calls to target cluster's KubeAIRunway using stored credentials
   - Response mapping (add instance context to responses)
 - Update existing routes (`deployments.ts`, `models.ts`, etc.) to be instance-aware:
   - Accept `instance_id` parameter
@@ -170,10 +179,17 @@ Infra admins deploy KubeAIRunway to Kubernetes clusters but need to give users a
   - `DELETE /api/admin/group-mappings/:id` — delete mapping
 
 **4.2 Azure Entra group sync**
-- On user login (Entra), fetch group memberships from ID token `groups` claim or Microsoft Graph API
+- On user login (Entra), fetch group memberships from ID token `groups` claim
+- Handle overage claim: if `_claim_names` contains `groups`, the token has too many groups — fetch full list via Microsoft Graph API `/me/memberOf` using the access token
 - Match groups against `entra_group_mappings` table
 - Auto-assign instance access based on matched groups
 - Periodic background sync (optional) to handle group changes between logins
+
+**4.3 GitHub org/team sync**
+- On user login (GitHub), fetch org memberships via `GET /user/orgs` and team memberships via `GET /user/teams`
+- Match orgs/teams against group mappings table (reuse `entra_group_mappings` schema or create unified `group_mappings` table)
+- Auto-assign instance access based on matched orgs/teams
+- Provides parity with Entra group sync for GitHub-authenticated users
 
 ### Phase 5: Frontend — Hub UI
 
@@ -254,18 +270,26 @@ Infra admins deploy KubeAIRunway to Kubernetes clusters but need to give users a
 
 ### Security Considerations
 - OAuth state parameter to prevent CSRF
-- PKCE for all OAuth flows
+- PKCE for all OAuth flows (both Entra and GitHub)
 - Session tokens are httpOnly, secure, sameSite cookies (not localStorage)
 - Cluster credentials never exposed to frontend or API responses
 - All proxy requests validated against RBAC before forwarding
+- API path allowlist on cluster proxy — only KubeAIRunway-specific K8s API paths are forwarded; arbitrary paths (secrets, configmaps, etc.) are denied even if stored credentials have broad permissions
 - Rate limiting on auth endpoints
+- Audit logging of all user actions (login, deploy, delete, admin operations) for multi-tenant accountability
 
 ### Database Migrations
 - Use a migration tool (drizzle-kit) for schema versioning
 - Migrations run automatically on startup
 - Rollback support for failed migrations
 
+### Audit Logging
+- Log all user actions (login, logout, deploy, delete, admin operations) to PostgreSQL `audit_log` table
+- Schema: `id`, `user_id`, `action`, `resource_type`, `resource_id`, `instance_id`, `details` (JSON), `ip_address`, `created_at`
+- Required for multi-tenant access proxy compliance and incident investigation
+- Query-friendly for admin dashboards and security reviews
+
 ### Testing Strategy
-- Unit tests: OAuth providers, RBAC logic, credential parsing
-- Integration tests: OAuth flow (mocked providers), cluster proxy, session management
+- Unit tests: OAuth providers (including overage claim handling, private email fallback), RBAC logic, credential parsing, API path allowlist
+- Integration tests: OAuth flow (mocked providers), cluster proxy (verify blocked paths), session management
 - E2E tests: Login → select instance → deploy model flow
