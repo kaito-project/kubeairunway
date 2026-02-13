@@ -50,7 +50,7 @@ export function ModelsPage() {
         <div>
           <h1 className="text-3xl font-bold">Model Catalog</h1>
           <p className="text-muted-foreground mt-1">
-            Select a model to deploy to your Kubernetes cluster
+            Select a model to deploy
           </p>
         </div>
         <SkeletonGrid count={8} className="lg:grid-cols-4" />
@@ -80,7 +80,7 @@ export function ModelsPage() {
             <Sparkles className="h-6 w-6 text-nvidia" />
           </h1>
           <p className="text-muted-foreground mt-1">
-            Select a model to deploy to your Kubernetes cluster
+            Select a model to deploy
           </p>
         </div>
         {models && (

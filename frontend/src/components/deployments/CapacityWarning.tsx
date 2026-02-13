@@ -48,11 +48,11 @@ export function CapacityWarning({
     return (
       <Alert variant="destructive">
         <XCircle className="h-4 w-4" />
-        <AlertTitle>Deployment will not fit on any node</AlertTitle>
+        <AlertTitle>Deployment exceeds available capacity</AlertTitle>
         <AlertDescription>
           <p>
-            This deployment requires {largestPodGpus} GPU{largestPodGpus > 1 ? 's' : ''} per pod,
-            but the largest GPU node in the cluster has only {capacity.maxNodeGpuCapacity} GPU{capacity.maxNodeGpuCapacity > 1 ? 's' : ''}.
+            This deployment requires {largestPodGpus} GPU{largestPodGpus > 1 ? 's' : ''} per instance,
+            but the largest available GPU compute resource has only {capacity.maxNodeGpuCapacity} GPU{capacity.maxNodeGpuCapacity > 1 ? 's' : ''}.
           </p>
           {deploymentMode === 'aggregated' && replicas && gpusPerReplica && (
             <p className="mt-1 text-xs">
@@ -63,16 +63,16 @@ export function CapacityWarning({
             You must either:
           </p>
           <ul className="list-disc list-inside mt-1 space-y-1">
-            <li>Reduce GPU count to {capacity.maxNodeGpuCapacity} or fewer per pod</li>
-            <li>Add larger GPU nodes to your cluster</li>
+            <li>Reduce GPU count to {capacity.maxNodeGpuCapacity} or fewer per instance</li>
+            <li>Add larger GPU compute resources</li>
           </ul>
           {capacity.nodePools.length > 0 && (
             <div className="mt-3 text-xs">
-              <p className="font-medium">Current node pools:</p>
+              <p className="font-medium">Current resource pools:</p>
               <ul className="list-disc list-inside mt-1">
                 {capacity.nodePools.map((pool) => (
                   <li key={pool.name}>
-                    {pool.name}: {pool.gpuCount} GPUs across {pool.nodeCount} node{pool.nodeCount > 1 ? 's' : ''}
+                    {pool.name}: {pool.gpuCount} GPUs across {pool.nodeCount} compute resource{pool.nodeCount > 1 ? 's' : ''}
                     {pool.gpuModel && ` (${pool.gpuModel})`}
                   </li>
                 ))}
@@ -91,7 +91,7 @@ export function CapacityWarning({
         <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20">
           <AlertTriangle className="h-4 w-4 text-yellow-600" />
           <AlertTitle className="text-yellow-800 dark:text-yellow-200">
-            Cluster will attempt to scale up
+            System will attempt to scale up
           </AlertTitle>
           <AlertDescription className="text-yellow-700 dark:text-yellow-300">
             <p>
@@ -99,15 +99,15 @@ export function CapacityWarning({
               but only {capacity.availableGpus} {capacity.availableGpus === 1 ? 'is' : 'are'} currently available.
             </p>
             <p className="mt-2">
-              <span className="font-medium">{autoscaler.type === 'aks-managed' ? 'AKS managed autoscaler' : 'Cluster autoscaler'}</span> is
+              <span className="font-medium">{autoscaler.type === 'aks-managed' ? 'AKS managed autoscaler' : 'Autoscaler'}</span> is
               enabled and will attempt to scale up automatically.
             </p>
             <div className="flex items-start gap-2 mt-2 text-sm">
               <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs">
-                  Cluster: {capacity.availableGpus}/{capacity.totalGpus} GPUs available •
-                  {autoscaler.nodeGroupCount && ` ${autoscaler.nodeGroupCount} autoscaling node pool${autoscaler.nodeGroupCount > 1 ? 's' : ''}`}
+                  {capacity.availableGpus}/{capacity.totalGpus} GPUs available •
+                  {autoscaler.nodeGroupCount && ` ${autoscaler.nodeGroupCount} autoscaling resource pool${autoscaler.nodeGroupCount > 1 ? 's' : ''}`}
                 </p>
               </div>
             </div>
@@ -127,7 +127,7 @@ export function CapacityWarning({
               but only {capacity.availableGpus} {capacity.availableGpus === 1 ? 'is' : 'are'} currently available.
             </p>
             <p className="mt-2">
-              Cluster autoscaling is not detected. The deployment will remain pending until resources become available.
+              Autoscaling is not detected. The deployment will remain pending until resources become available.
             </p>
             <div className="mt-3 text-sm">
               <a
@@ -140,7 +140,7 @@ export function CapacityWarning({
               </a>
             </div>
             <p className="text-xs mt-2">
-              Cluster: {capacity.availableGpus}/{capacity.totalGpus} GPUs available
+              {capacity.availableGpus}/{capacity.totalGpus} GPUs available
             </p>
           </AlertDescription>
         </Alert>
