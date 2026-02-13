@@ -59,14 +59,34 @@ This separation allows:
                                              │
                           ┌──────────────────┴──────────────────┐
                           │                                     │
-                          ▼                                     ▼
-               ┌─────────────────────┐              ┌─────────────────────┐
-               │ provider specified? │──── yes ───► │ provider controller │
-               └─────────────────────┘              │ watches & acts      │
-                          │                         └──────────┬──────────┘
-                          no                                   │
-                          │                                    │
-                          ▼                                    │
+                          ▼                                     │
+               ┌─────────────────────┐                         │
+               │ engine specified?   │──── yes ────┐           │
+               └─────────────────────┘             │           │
+                          │                         │           │
+                          no                        │           │
+                          │                         │           │
+                          ▼                         │           │
+               ┌─────────────────────┐             │           │
+               │ auto-select engine  │             │           │
+               │ from provider       │             │           │
+               │ capabilities        │             │           │
+               │ (GPU/CPU + serving  │             │           │
+               │  mode filtered)     │             │           │
+               └─────────┬───────────┘             │           │
+                         │                         │           │
+                         │ sets status.engine.type  │           │
+                         │                         │           │
+                         └────────┬────────────────┘           │
+                                  │                             │
+                                  ▼                             │
+               ┌─────────────────────┐                         │
+               │ provider specified? │──── yes ───────────────►│
+               └─────────────────────┘                         │
+                          │                                     │
+                          no                                    │
+                          │                                     │
+                          ▼                                     │
                ┌─────────────────────┐                         │
                │ built-in provider   │                         │
                │ selection algorithm │                         │
@@ -79,7 +99,8 @@ This separation allows:
                                                                │
                                                                ▼
                                                     ┌─────────────────────┐
-                                                    │ Provider creates    │
+                                                    │ Provider controller │
+                                                    │ watches & creates   │
                                                     │ provider resource   │
                                                     │ (Kaito Workspace or │
                                                     │ Dynamo DGD, etc.)   │
@@ -105,6 +126,8 @@ Multiple controllers write to `ModelDeployment.status` using server-side apply w
 
 | Field                            | Owner               | Description                       |
 | -------------------------------- | ------------------- | --------------------------------- |
+| `status.engine.type`             | Core controller     | Resolved engine type              |
+| `status.engine.selectedReason`   | Core controller     | Why this engine was chosen        |
 | `status.provider.name`           | Core controller     | Selected provider name            |
 | `status.provider.selectedReason` | Core controller     | Why this provider was chosen      |
 | `status.phase`                   | Provider controller | Deploying / Running / Failed      |
@@ -113,6 +136,7 @@ Multiple controllers write to `ModelDeployment.status` using server-side apply w
 | `status.replicas.*`              | Provider controller | Desired, ready, available counts  |
 | `status.endpoint.*`              | Provider controller | Service name and port             |
 | `conditions[Validated]`          | Core webhook        | Spec validation result            |
+| `conditions[EngineSelected]`     | Core controller     | Engine selection result            |
 | `conditions[ProviderSelected]`   | Core controller     | Provider selection result         |
 | `conditions[ProviderCompatible]` | Provider controller | Engine/mode compatibility check   |
 | `conditions[ResourceCreated]`    | Provider controller | Upstream resource creation status |
@@ -175,7 +199,7 @@ When a user updates a `ModelDeployment` spec, changes are handled based on field
 | --------------- | ---------------------------------------------------------------------- |
 | `model.id`      | Changing the model fundamentally changes the deployment                |
 | `model.source`  | Changing from huggingface to custom changes how model is loaded        |
-| `engine.type`   | Changing inference engine requires new containers                      |
+| `engine.type`   | Changing inference engine requires new containers (immutable once set)  |
 | `provider.name` | Changing provider requires different resource type                     |
 | `serving.mode`  | Changing aggregated ↔ disaggregated restructures the entire deployment |
 

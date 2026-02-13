@@ -88,7 +88,24 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhasePending
 	}
 
-	// Step 1: Validate the spec
+	// Step 1: Select engine if needed (before validation, since validation needs engine type)
+	if r.EnableProviderSelector {
+		if err := r.selectEngine(ctx, &md); err != nil {
+			logger.Error(err, "Engine selection failed", "name", md.Name)
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
+			md.Status.Message = fmt.Sprintf("Engine selection failed: %s", err.Error())
+			return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
+		}
+	}
+
+	// Step 2: Inject resolved engine into in-memory spec for CEL evaluation.
+	// This is NOT persisted — only status is patched. It ensures provider selection
+	// CEL rules (e.g., "spec.engine.type == 'vllm'") see the resolved engine type.
+	if md.Spec.Engine.Type == "" && md.Status.Engine != nil {
+		md.Spec.Engine.Type = md.Status.Engine.Type
+	}
+
+	// Step 4: Validate the spec (uses resolved engine type)
 	if err := r.validateSpec(ctx, &md); err != nil {
 		logger.Error(err, "Validation failed", "name", md.Name)
 		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
@@ -98,7 +115,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionTrue, "ValidationPassed", "Schema validation passed")
 
-	// Step 2: Run provider selection if needed
+	// Step 5: Run provider selection if needed
 	if r.EnableProviderSelector {
 		if err := r.selectProvider(ctx, &md); err != nil {
 			logger.Error(err, "Provider selection failed", "name", md.Name)
@@ -108,7 +125,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	// Step 3: Update status
+	// Step 6: Update status
 	// If no provider is selected yet, stay in Pending
 	if md.Status.Provider == nil || md.Status.Provider.Name == "" {
 		if md.Spec.Provider != nil && md.Spec.Provider.Name != "" {
@@ -154,9 +171,10 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeai
 		}
 	}
 
-	// Validate engine type is set
-	if spec.Engine.Type == "" {
-		return fmt.Errorf("engine.type is required")
+	// Resolve engine type (from spec or auto-selected in status)
+	engineType := md.ResolvedEngineType()
+	if engineType == "" {
+		return fmt.Errorf("engine.type must be specified or auto-selected from provider capabilities")
 	}
 
 	// Validate GPU requirements for certain engines
@@ -165,7 +183,7 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeai
 		gpuCount = spec.Resources.GPU.Count
 	}
 
-	switch spec.Engine.Type {
+	switch engineType {
 	case kubeairunwayv1alpha1.EngineTypeVLLM, kubeairunwayv1alpha1.EngineTypeSGLang, kubeairunwayv1alpha1.EngineTypeTRTLLM:
 		// These engines require GPU (unless in disaggregated mode with component-level GPUs)
 		servingMode := kubeairunwayv1alpha1.ServingModeAggregated
@@ -174,7 +192,7 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeai
 		}
 
 		if servingMode == kubeairunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
-			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", spec.Engine.Type)
+			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", engineType)
 		}
 	}
 
@@ -202,6 +220,133 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeai
 	}
 
 	return nil
+}
+
+// selectEngine auto-selects the engine type from provider capabilities if not specified
+func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+	logger := log.FromContext(ctx)
+
+	// If engine type is explicitly specified, just record it in status
+	if md.Spec.Engine.Type != "" {
+		md.Status.Engine = &kubeairunwayv1alpha1.EngineStatus{
+			Type:           md.Spec.Engine.Type,
+			SelectedReason: "explicit engine selection",
+		}
+		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "ExplicitSelection", "Engine explicitly specified in spec")
+		return nil
+	}
+
+	// Skip if engine already auto-selected
+	if md.Status.Engine != nil && md.Status.Engine.Type != "" {
+		return nil
+	}
+
+	// List all InferenceProviderConfigs
+	var providerConfigs kubeairunwayv1alpha1.InferenceProviderConfigList
+	if err := r.List(ctx, &providerConfigs); err != nil {
+		return fmt.Errorf("failed to list provider configs: %w", err)
+	}
+
+	if len(providerConfigs.Items) == 0 {
+		return fmt.Errorf("no providers registered (InferenceProviderConfig resources not found)")
+	}
+
+	// Collect supported engines from ready providers, filtering by compatibility
+	// GPU-requiring engines cannot run on CPU-only deployments
+	gpuRequiringEngines := map[kubeairunwayv1alpha1.EngineType]bool{
+		kubeairunwayv1alpha1.EngineTypeVLLM:   true,
+		kubeairunwayv1alpha1.EngineTypeSGLang: true,
+		kubeairunwayv1alpha1.EngineTypeTRTLLM: true,
+	}
+
+	// Determine deployment characteristics
+	hasGPU := false
+	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
+		hasGPU = true
+	}
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+		hasGPU = true
+	}
+
+	servingMode := kubeairunwayv1alpha1.ServingModeAggregated
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode != "" {
+		servingMode = md.Spec.Serving.Mode
+	}
+
+	availableEngines := make(map[kubeairunwayv1alpha1.EngineType]string) // engine -> provider name
+
+	for _, pc := range providerConfigs.Items {
+		if !pc.Status.Ready || pc.Spec.Capabilities == nil {
+			continue
+		}
+
+		caps := pc.Spec.Capabilities
+
+		// Filter by GPU/CPU compatibility
+		if hasGPU && !caps.GPUSupport {
+			continue
+		}
+		if !hasGPU && !caps.CPUSupport {
+			continue
+		}
+
+		// Filter by serving mode compatibility
+		servingModeSupported := false
+		for _, sm := range caps.ServingModes {
+			if sm == servingMode {
+				servingModeSupported = true
+				break
+			}
+		}
+		if !servingModeSupported {
+			continue
+		}
+
+		for _, engine := range caps.Engines {
+			// Skip GPU-requiring engines for CPU-only deployments
+			if !hasGPU && gpuRequiringEngines[engine] {
+				continue
+			}
+			if _, exists := availableEngines[engine]; !exists {
+				availableEngines[engine] = pc.Name
+			}
+		}
+	}
+
+	if len(availableEngines) == 0 {
+		return fmt.Errorf("no engines available from registered providers")
+	}
+
+	// Select the highest-preference engine that is available
+	enginePreference := []kubeairunwayv1alpha1.EngineType{
+		kubeairunwayv1alpha1.EngineTypeVLLM,
+		kubeairunwayv1alpha1.EngineTypeSGLang,
+		kubeairunwayv1alpha1.EngineTypeTRTLLM,
+		kubeairunwayv1alpha1.EngineTypeLlamaCpp,
+	}
+	for _, engine := range enginePreference {
+		if providerName, ok := availableEngines[engine]; ok {
+			logger.Info("Engine auto-selected", "engine", engine, "fromProvider", providerName)
+			md.Status.Engine = &kubeairunwayv1alpha1.EngineStatus{
+				Type:           engine,
+				SelectedReason: fmt.Sprintf("auto-selected from provider %s capabilities", providerName),
+			}
+			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
+			return nil
+		}
+	}
+
+	// Fallback: pick any available engine (shouldn't happen if preference list is complete)
+	for engine, providerName := range availableEngines {
+		md.Status.Engine = &kubeairunwayv1alpha1.EngineStatus{
+			Type:           engine,
+			SelectedReason: fmt.Sprintf("auto-selected from provider %s capabilities", providerName),
+		}
+		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
+		return nil
+	}
+
+	return fmt.Errorf("no compatible engine found from available providers")
 }
 
 // selectProvider runs the provider selection algorithm
@@ -261,6 +406,7 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 // runSelectionAlgorithm implements the provider selection algorithm
 func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alpha1.ModelDeployment, providers []kubeairunwayv1alpha1.InferenceProviderConfig) (string, string, error) {
 	spec := &md.Spec
+	engineType := md.ResolvedEngineType()
 
 	// Determine GPU requirements
 	hasGPU := false
@@ -294,7 +440,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 		// Check engine support
 		engineSupported := false
 		for _, e := range caps.Engines {
-			if e == spec.Engine.Type {
+			if e == engineType {
 				engineSupported = true
 				break
 			}
@@ -340,7 +486,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 			}
 		}
 
-		reason := fmt.Sprintf("matched capabilities: engine=%s, gpu=%v, mode=%s", spec.Engine.Type, hasGPU, servingMode)
+		reason := fmt.Sprintf("matched capabilities: engine=%s, gpu=%v, mode=%s", engineType, hasGPU, servingMode)
 		candidates = append(candidates, candidate{
 			name:     pc.Name,
 			reason:   reason,

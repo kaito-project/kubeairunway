@@ -49,7 +49,7 @@ See [controller-architecture.md](controller-architecture.md) for controller inte
 | `model.id` | string | Yes (when source=huggingface) | — | HuggingFace model ID |
 | `model.source` | string | No | `huggingface` | `huggingface` or `custom` |
 | `model.servedName` | string | No | Model ID basename | API-facing model name |
-| `engine.type` | string | Yes | — | `vllm`, `sglang`, `trtllm`, or `llamacpp` |
+| `engine.type` | string | No | Auto-selected | `vllm`, `sglang`, `trtllm`, or `llamacpp`. If omitted, auto-selected from provider capabilities |
 | `engine.contextLength` | int | No | Model default | Max context length |
 | `engine.trustRemoteCode` | bool | No | `false` | Allow remote code (vLLM/SGLang only) |
 | `engine.args` | map[string]string | No | `{}` | Engine-specific CLI flags |
@@ -76,7 +76,7 @@ See [controller-architecture.md](controller-architecture.md) for controller inte
 When updating a `ModelDeployment`, changes are handled based on field type:
 
 **Identity fields** — changing these triggers delete + recreate (brief downtime):
-- `model.id`, `model.source`, `engine.type`, `provider.name`, `serving.mode`
+- `model.id`, `model.source`, `engine.type` (once set), `provider.name`, `serving.mode`
 
 **Config fields** — changed in-place without recreation:
 - `model.servedName`, `scaling.*`, `env`, `resources`, `engine.args`, `engine.contextLength`, `image`, `secrets.*`, `podTemplate.metadata`, `nodeSelector`, `tolerations`, `provider.overrides`

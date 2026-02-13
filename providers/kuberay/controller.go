@@ -184,8 +184,8 @@ func (r *KubeRayProviderReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 // validateCompatibility checks if the ModelDeployment configuration is compatible with KubeRay
 func (r *KubeRayProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.ModelDeployment) error {
 	// KubeRay only supports vllm
-	if md.Spec.Engine.Type != kubeairunwayv1alpha1.EngineTypeVLLM {
-		return fmt.Errorf("KubeRay only supports vllm engine, got %s", md.Spec.Engine.Type)
+	if md.ResolvedEngineType() != kubeairunwayv1alpha1.EngineTypeVLLM {
+		return fmt.Errorf("KubeRay only supports vllm engine, got %s", md.ResolvedEngineType())
 	}
 
 	// KubeRay requires GPU

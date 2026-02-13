@@ -80,7 +80,7 @@ make dev                 # Build and deploy for development
 Unified API for deploying ML models. Key fields:
 - `spec.model.id` - HuggingFace model ID or custom identifier
 - `spec.model.source` - `huggingface` or `custom`
-- `spec.engine.type` - `vllm`, `sglang`, `trtllm`, or `llamacpp`
+- `spec.engine.type` - `vllm`, `sglang`, `trtllm`, or `llamacpp` (optional, auto-selected from provider capabilities)
 - `spec.provider.name` - Optional explicit provider selection
 - `spec.serving.mode` - `aggregated` (default) or `disaggregated`
 - `spec.resources.gpu.count` - GPU count for aggregated mode

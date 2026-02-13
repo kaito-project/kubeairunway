@@ -181,12 +181,12 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 // validateCompatibility checks if the ModelDeployment configuration is compatible with KAITO
 func (r *KaitoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.ModelDeployment) error {
 	// KAITO doesn't support sglang
-	if md.Spec.Engine.Type == kubeairunwayv1alpha1.EngineTypeSGLang {
+	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeSGLang {
 		return fmt.Errorf("KAITO does not support sglang engine")
 	}
 
 	// KAITO doesn't support trtllm
-	if md.Spec.Engine.Type == kubeairunwayv1alpha1.EngineTypeTRTLLM {
+	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeTRTLLM {
 		return fmt.Errorf("KAITO does not support trtllm engine")
 	}
 
@@ -196,7 +196,7 @@ func (r *KaitoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1
 	}
 
 	// llamacpp requires spec.image to be set
-	if md.Spec.Engine.Type == kubeairunwayv1alpha1.EngineTypeLlamaCpp && md.Spec.Image == "" {
+	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeLlamaCpp && md.Spec.Image == "" {
 		return fmt.Errorf("llamacpp engine requires spec.image to be set")
 	}
 

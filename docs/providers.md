@@ -1,14 +1,32 @@
 # Providers
 
-## Provider Selection
+## Engine & Provider Selection
 
-When `spec.provider.name` is omitted, the controller auto-selects a provider using CEL-based selection rules from `InferenceProviderConfig` resources. Each provider declares rules with priorities; the highest-priority match wins.
+When `spec.engine.type` is omitted, the controller auto-selects the engine from provider capabilities. When `spec.provider.name` is omitted, the controller auto-selects a provider using CEL-based selection rules from `InferenceProviderConfig` resources. Each provider declares rules with priorities; the highest-priority match wins.
+
+### Engine Auto-Selection
+
+The controller selects the engine in two passes:
+
+1. **Filter providers** by compatibility with the deployment:
+   - GPU/CPU: GPU deployments need `gpuSupport`, CPU deployments need `cpuSupport`
+   - Serving mode: provider must support the requested mode (aggregated/disaggregated)
+2. **Filter engines** from compatible providers:
+   - CPU deployments skip GPU-requiring engines (`vllm`, `sglang`, `trtllm`)
+   - Remaining engines are ranked by preference: `vllm` > `sglang` > `trtllm` > `llamacpp`
+3. **Pick the first available** engine by preference
+
+The selected engine is stored in `status.engine.type` with a reason in `status.engine.selectedReason`.
+
+### Provider Auto-Selection
+
+With the engine resolved, provider selection evaluates CEL rules from each `InferenceProviderConfig`:
 
 **Default selection behavior** (with built-in providers):
 
 ```
 IF gpu.count == 0 OR resources.gpu is omitted:
-    → KAITO (only CPU provider)
+    → KAITO (only CPU provider), engine auto-selected to llamacpp
 
 IF engine == "trtllm" OR engine == "sglang":
     → Dynamo (only provider supporting these engines)

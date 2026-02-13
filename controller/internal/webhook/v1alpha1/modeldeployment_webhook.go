@@ -78,6 +78,16 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeair
 		}
 	}
 
+	// Default GPU to 1 in aggregated mode when resources are unspecified
+	if spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeAggregated && spec.Resources == nil {
+		spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
+			GPU: &kubeairunwayv1alpha1.GPUSpec{
+				Count: 1,
+				Type:  "nvidia.com/gpu",
+			},
+		}
+	}
+
 	// Default GPU type if GPU is specified but type is empty
 	if spec.Resources != nil && spec.Resources.GPU != nil && spec.Resources.GPU.Type == "" {
 		spec.Resources.GPU.Type = "nvidia.com/gpu"
@@ -167,15 +177,12 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.
 		}
 	}
 
-	// Validate engine type is set
-	if spec.Engine.Type == "" {
-		allErrs = append(allErrs, field.Required(
-			specPath.Child("engine", "type"),
-			"engine.type is required",
-		))
+	// Validate engine type if set (empty is allowed - controller will auto-select)
+	if spec.Engine.Type != "" {
+		// Validation of engine type value is handled by the Enum marker on EngineType
 	}
 
-	// Validate GPU requirements for certain engines
+	// Validate GPU requirements for certain engines (only when engine is specified)
 	gpuCount := int32(0)
 	if spec.Resources != nil && spec.Resources.GPU != nil {
 		gpuCount = spec.Resources.GPU.Count
@@ -276,8 +283,8 @@ func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj 
 		))
 	}
 
-	// engine.type is an identity field
-	if oldSpec.Engine.Type != newSpec.Engine.Type {
+	// engine.type is an identity field (once set)
+	if oldSpec.Engine.Type != "" && newSpec.Engine.Type != "" && oldSpec.Engine.Type != newSpec.Engine.Type {
 		allErrs = append(allErrs, field.Invalid(
 			specPath.Child("engine", "type"),
 			newSpec.Engine.Type,

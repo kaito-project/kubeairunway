@@ -74,7 +74,7 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 		"kubeairunway.ai/managed-by":    "kubeairunway",
 		"kubeairunway.ai/deployment":    md.Name,
 		"kubeairunway.ai/model-source":  string(md.Spec.Model.Source),
-		"kubeairunway.ai/engine-type":   string(md.Spec.Engine.Type),
+		"kubeairunway.ai/engine-type":   string(md.ResolvedEngineType()),
 	}
 	// Merge podTemplate labels onto the Workspace
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil {
@@ -144,7 +144,7 @@ func (t *Transformer) buildResource(md *kubeairunwayv1alpha1.ModelDeployment) ma
 func (t *Transformer) buildInference(md *kubeairunwayv1alpha1.ModelDeployment) (map[string]interface{}, error) {
 	inference := map[string]interface{}{}
 
-	switch md.Spec.Engine.Type {
+	switch md.ResolvedEngineType() {
 	case kubeairunwayv1alpha1.EngineTypeVLLM:
 		// vLLM preset path: KAITO manages the image
 		inference["preset"] = map[string]interface{}{
@@ -158,7 +158,7 @@ func (t *Transformer) buildInference(md *kubeairunwayv1alpha1.ModelDeployment) (
 		}
 		inference["template"] = template
 	default:
-		return nil, fmt.Errorf("unsupported engine type for KAITO: %s", md.Spec.Engine.Type)
+		return nil, fmt.Errorf("unsupported engine type for KAITO: %s", md.ResolvedEngineType())
 	}
 
 	return inference, nil

@@ -78,7 +78,7 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 		"kubeairunway.ai/managed-by":   "kubeairunway",
 		"kubeairunway.ai/deployment":   md.Name,
 		"kubeairunway.ai/model-source": string(md.Spec.Model.Source),
-		"kubeairunway.ai/engine-type":  string(md.Spec.Engine.Type),
+		"kubeairunway.ai/engine-type":  string(md.ResolvedEngineType()),
 	}
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil {
 		for k, v := range md.Spec.PodTemplate.Metadata.Labels {

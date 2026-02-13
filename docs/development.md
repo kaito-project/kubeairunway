@@ -135,9 +135,10 @@ The core controller reconciliation follows these steps:
 
 1. **Receive** ModelDeployment event
 2. **Check** for pause annotation (`kubeairunway.ai/reconcile-paused: "true"`) — skip if paused
-3. **Validate** spec (engine/resource compatibility, required fields)
-4. **Select provider** — use explicit `spec.provider.name` or run auto-selection algorithm
-5. **Set status** — `status.provider.name`, `status.provider.selectedReason`, conditions
+3. **Select engine** — use explicit `spec.engine.type` or auto-select from provider capabilities (filtered by GPU/CPU, serving mode, and engine GPU requirements)
+4. **Validate** spec (engine/resource compatibility, required fields)
+5. **Select provider** — use explicit `spec.provider.name` or run auto-selection algorithm (CEL rules now see the resolved engine)
+6. **Set status** — `status.engine`, `status.provider`, conditions
 
 The core controller stops here. Provider controllers then:
 

@@ -101,8 +101,9 @@ type ProviderSpec struct {
 // EngineSpec defines the inference engine configuration
 type EngineSpec struct {
 	// type is the inference engine type
-	// +kubebuilder:validation:Required
-	Type EngineType `json:"type"`
+	// If not specified, the controller will auto-select based on provider capabilities
+	// +optional
+	Type EngineType `json:"type,omitempty"`
 
 	// contextLength is the maximum context length
 	// Maps to engine-specific flags (--max-model-len for vllm, etc.)
@@ -231,8 +232,8 @@ type ModelDeploymentSpec struct {
 	Provider *ProviderSpec `json:"provider,omitempty"`
 
 	// engine defines the inference engine configuration
-	// +kubebuilder:validation:Required
-	Engine EngineSpec `json:"engine"`
+	// +optional
+	Engine EngineSpec `json:"engine,omitempty"`
 
 	// serving defines the serving mode configuration
 	// +optional
@@ -317,6 +318,17 @@ type EndpointStatus struct {
 	Port int32 `json:"port,omitempty"`
 }
 
+// EngineStatus contains information about the selected engine
+type EngineStatus struct {
+	// type is the resolved engine type
+	// +optional
+	Type EngineType `json:"type,omitempty"`
+
+	// selectedReason explains why this engine was selected
+	// +optional
+	SelectedReason string `json:"selectedReason,omitempty"`
+}
+
 // ModelDeploymentStatus defines the observed state of ModelDeployment.
 type ModelDeploymentStatus struct {
 	// phase is the current phase of the deployment
@@ -330,6 +342,10 @@ type ModelDeploymentStatus struct {
 	// provider contains information about the selected provider
 	// +optional
 	Provider *ProviderStatus `json:"provider,omitempty"`
+
+	// engine contains information about the selected engine
+	// +optional
+	Engine *EngineStatus `json:"engine,omitempty"`
 
 	// replicas contains replica count information
 	// +optional
@@ -354,7 +370,7 @@ type ModelDeploymentStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Current phase"
 // +kubebuilder:printcolumn:name="Provider",type="string",JSONPath=".status.provider.name",description="Selected provider"
-// +kubebuilder:printcolumn:name="Engine",type="string",JSONPath=".spec.engine.type",description="Inference engine"
+// +kubebuilder:printcolumn:name="Engine",type="string",JSONPath=".status.engine.type",description="Inference engine"
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".status.replicas.ready",description="Ready replicas"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
@@ -385,10 +401,24 @@ func init() {
 	SchemeBuilder.Register(&ModelDeployment{}, &ModelDeploymentList{})
 }
 
+// ResolvedEngineType returns the engine type from spec if set,
+// otherwise falls back to the auto-selected engine from status.
+func (md *ModelDeployment) ResolvedEngineType() EngineType {
+	if md.Spec.Engine.Type != "" {
+		return md.Spec.Engine.Type
+	}
+	if md.Status.Engine != nil {
+		return md.Status.Engine.Type
+	}
+	return ""
+}
+
 // Condition types for ModelDeployment
 const (
 	// ConditionTypeValidated indicates the spec has been validated
 	ConditionTypeValidated = "Validated"
+	// ConditionTypeEngineSelected indicates an engine has been selected
+	ConditionTypeEngineSelected = "EngineSelected"
 	// ConditionTypeProviderSelected indicates a provider has been selected
 	ConditionTypeProviderSelected = "ProviderSelected"
 	// ConditionTypeProviderCompatible indicates the config is compatible with the provider

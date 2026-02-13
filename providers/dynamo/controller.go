@@ -184,7 +184,7 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 // validateCompatibility checks if the ModelDeployment configuration is compatible with Dynamo
 func (r *DynamoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.ModelDeployment) error {
 	// Dynamo doesn't support llamacpp
-	if md.Spec.Engine.Type == kubeairunwayv1alpha1.EngineTypeLlamaCpp {
+	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeLlamaCpp {
 		return fmt.Errorf("Dynamo does not support llamacpp engine")
 	}
 

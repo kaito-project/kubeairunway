@@ -102,13 +102,13 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 		"kubeairunway.ai/deployment":          md.Name,
 		"kubeairunway.ai/deployment-namespace": md.Namespace,
 		"kubeairunway.ai/model-id":            sanitizeLabelValue(md.Spec.Model.ID),
-		"kubeairunway.ai/engine-type":         string(md.Spec.Engine.Type),
+		"kubeairunway.ai/engine-type":         string(md.ResolvedEngineType()),
 	}
 	dgd.SetLabels(labels)
 
 	// Build the spec
 	spec := map[string]interface{}{
-		"backendFramework": t.mapEngineType(md.Spec.Engine.Type),
+		"backendFramework": t.mapEngineType(md.ResolvedEngineType()),
 	}
 
 	services, err := t.buildServices(md, overrides)
@@ -424,7 +424,7 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 	var args []string
 
 	// Start with the engine runner
-	switch md.Spec.Engine.Type {
+	switch md.ResolvedEngineType() {
 	case kubeairunwayv1alpha1.EngineTypeVLLM:
 		args = append(args, "python3 -m dynamo.vllm")
 	case kubeairunwayv1alpha1.EngineTypeSGLang:
@@ -443,7 +443,7 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 
 	// Add context length
 	if md.Spec.Engine.ContextLength != nil {
-		switch md.Spec.Engine.Type {
+		switch md.ResolvedEngineType() {
 		case kubeairunwayv1alpha1.EngineTypeVLLM:
 			args = append(args, "--max-model-len", fmt.Sprintf("%d", *md.Spec.Engine.ContextLength))
 		case kubeairunwayv1alpha1.EngineTypeSGLang:
@@ -454,7 +454,7 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 
 	// Add trust remote code
 	if md.Spec.Engine.TrustRemoteCode {
-		switch md.Spec.Engine.Type {
+		switch md.ResolvedEngineType() {
 		case kubeairunwayv1alpha1.EngineTypeVLLM, kubeairunwayv1alpha1.EngineTypeSGLang:
 			args = append(args, "--trust-remote-code")
 		}
@@ -487,7 +487,7 @@ func (t *Transformer) getImage(md *kubeairunwayv1alpha1.ModelDeployment) string 
 	}
 
 	// Use default image for engine type
-	if image, ok := defaultImages[md.Spec.Engine.Type]; ok && image != "" {
+	if image, ok := defaultImages[md.ResolvedEngineType()]; ok && image != "" {
 		return image
 	}
 

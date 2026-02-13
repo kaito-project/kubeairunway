@@ -14,7 +14,7 @@ spec:
     id: "Qwen/Qwen3-0.6B"       # HuggingFace model ID
     source: huggingface          # huggingface or custom
   engine:
-    type: vllm                   # vllm, sglang, trtllm, llamacpp
+    type: vllm                   # vllm, sglang, trtllm, llamacpp (optional, auto-selected)
     contextLength: 32768
     trustRemoteCode: false
   provider:

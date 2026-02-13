@@ -24,7 +24,7 @@ spec:
       name: Provider
       type: string
     - description: Inference engine
-      jsonPath: .spec.engine.type
+      jsonPath: .status.engine.type
       name: Engine
       type: string
     - description: Ready replicas
@@ -82,15 +82,15 @@ spec:
                       Only applicable for vllm and sglang engines
                     type: boolean
                   type:
-                    description: type is the inference engine type
+                    description: |-
+                      type is the inference engine type
+                      If not specified, the controller will auto-select based on provider capabilities
                     enum:
                     - vllm
                     - sglang
                     - trtllm
                     - llamacpp
                     type: string
-                required:
-                - type
                 type: object
               env:
                 description: env defines environment variables for the container
@@ -482,7 +482,6 @@ spec:
                   type: object
                 type: array
             required:
-            - engine
             - model
             type: object
           status:
@@ -558,6 +557,21 @@ spec:
                     type: integer
                   service:
                     description: service is the name of the service
+                    type: string
+                type: object
+              engine:
+                description: engine contains information about the selected engine
+                properties:
+                  selectedReason:
+                    description: selectedReason explains why this engine was selected
+                    type: string
+                  type:
+                    description: type is the resolved engine type
+                    enum:
+                    - vllm
+                    - sglang
+                    - trtllm
+                    - llamacpp
                     type: string
                 type: object
               message:
