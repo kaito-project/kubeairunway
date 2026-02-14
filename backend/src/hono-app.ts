@@ -85,7 +85,8 @@ app.use(
 
 // Request logging
 app.use('*', async (c, next) => {
-  logger.info({ method: c.req.method, url: c.req.url }, `${c.req.method} ${c.req.path}`);
+  const level = c.req.path.startsWith('/api/auth/') ? 'debug' : 'info';
+  logger[level]({ method: c.req.method, url: c.req.url }, `${c.req.method} ${c.req.path}`);
   await next();
 });
 

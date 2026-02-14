@@ -54,6 +54,8 @@ export function useAuthMe(hubMode: boolean) {
     enabled: hubMode,
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchInterval: false,
   });
 }
 
