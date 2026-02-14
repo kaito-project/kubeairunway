@@ -25,7 +25,7 @@ const settings = new Hono()
       config,
       providers,
       auth: {
-        enabled: authService.isAuthEnabled(),
+        enabled: authService.isAuthEnabled() || (process.env.HUB_MODE === 'true' || process.env.HUB_MODE === '1'),
         hubMode: process.env.HUB_MODE === 'true' || process.env.HUB_MODE === '1',
       },
     });
