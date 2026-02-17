@@ -1,0 +1,121 @@
+---
+config:
+  look: handDrawn
+  theme: default
+---
+graph TB
+    subgraph UI["🖥️ UI Layer (optional)"]
+        direction TB
+        WebUI["KubeAIRunway Web UI<br/>━━━━━━━━━━━━━━━━<br/>React SPA + Hono backend<br/>Auth · Deploy · Logs · Cost"]
+        Headlamp["Headlamp Plugin<br/>━━━━━━━━━━━━━━━━<br/>Dashboard UI"]
+        CustomUI["Custom UI / CLI<br/>━━━━━━━━━━━━━━━━<br/>Any K8s client"]
+    end
+
+    subgraph CATALOG["📚 Model Catalog"]
+        direction LR
+        HuggingFace["HuggingFace<br/>━━━━━━━━━━━━━━━━<br/>OAuth · Search"]
+        PrivateCatalog["Custom<br/>━━━━━━━━━━━━━━━━<br/>Private registry"]
+    end
+
+    subgraph APPS["🤖 Agentic Apps"]
+        direction LR
+        AIAgents["AI Agents<br/>━━━━━━━━━━━━━━━━<br/>LangChain · Copilot CLI<br/>Semantic Kernel"]
+        ChatApps["Chat Apps<br/>━━━━━━━━━━━━━━━━<br/>OpenAI-compatible API"]
+        Pipelines["Pipelines<br/>━━━━━━━━━━━━━━━━<br/>Batch inference · RAG"]
+    end
+
+    %% Force UI, CATALOG, APPS onto same row
+    UI ~~~ CATALOG ~~~ APPS
+
+    subgraph K8S["⚙️ Kubernetes Cluster"]
+        direction TB
+
+        CoreController["KubeAIRunway Core Controller<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>Engine selection · Provider matching (CEL)"]
+
+        subgraph CONTROL_PLANE[" "]
+            direction LR
+            subgraph CRDS["📋 Custom Resources"]
+                direction TB
+                ModelDeployment["ModelDeployment<br/>━━━━━━━━━━━━━━━━<br/>CRD · User-facing API"]
+                ProviderConfig["InferenceProviderConfig<br/>━━━━━━━━━━━━━━━━<br/>CRD · Provider registration"]
+            end
+
+            subgraph PROVIDERS["🔌 Provider Controllers"]
+                direction TB
+                KAITO["KAITO<br/>→ Workspace"]
+                Dynamo["Dynamo<br/>→ DynamoGraphDeployment"]
+                KubeRay["KubeRay<br/>→ RayService"]
+                NewProvider["New Provider<br/>→ extensible"]
+            end
+        end
+
+        subgraph DATA_PLANE[" "]
+            direction LR
+            subgraph ENGINES["🚀 Inference Engines"]
+                direction TB
+                vLLM["vLLM"]
+                SGLang["SGLang"]
+                TRLLM["TRT-LLM"]
+                LlamaCpp["llama.cpp"]
+            end
+
+            InferenceEndpoints["⚡ Inference Endpoints<br/>━━━━━━━━━━━━━━━━<br/>GPU / CPU nodes"]
+        end
+
+        subgraph GATEWAY_LAYER["🌐 Gateway API + Inference Extension"]
+            direction LR
+            K8sGateway["Kubernetes Gateway<br/>━━━━━━━━━━━━━━━━<br/>Ingress endpoint<br/>HTTPRoute"]
+            InferencePool["InferencePool<br/>━━━━━━━━━━━━━━━━<br/>Model-aware routing<br/>Endpoint picker"]
+        end
+    end
+
+    %% Model Catalog connections
+    WebUI -.->|connects| HuggingFace
+    WebUI -.->|connects| PrivateCatalog
+
+    %% Kubernetes API connections
+    WebUI -->|Kubernetes API| CoreController
+    Headlamp -->|Kubernetes API| CoreController
+    CustomUI -->|Kubernetes API| CoreController
+
+    %% Controller operations
+    CoreController -->|watches &<br/>reconciles| ModelDeployment
+    CoreController -->|watches &<br/>reconciles| ProviderConfig
+
+    %% Provider registration
+    ProviderConfig -.->|self-registers| PROVIDERS
+
+    %% Provider creates workloads
+    PROVIDERS -->|deploys with| ENGINES
+    ENGINES -->|creates| InferenceEndpoints
+
+    %% Inference request flow
+    APPS -->|inference requests| K8sGateway
+    K8sGateway -->|routes via<br/>HTTPRoute| InferencePool
+    InferencePool -->|selects<br/>endpoint| InferenceEndpoints
+
+    %% Styling
+    classDef ui fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#1a1a1a
+    classDef catalog fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#1a1a1a
+    classDef apps fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#1a1a1a
+    classDef controller fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px,color:#1a1a1a
+    classDef crd fill:#dcedc8,stroke:#689f38,stroke-width:2px,color:#1a1a1a
+    classDef provider fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray:5 5,color:#1a1a1a
+    classDef engine fill:#b3e5fc,stroke:#0277bd,stroke-width:2px,color:#1a1a1a
+    classDef endpoint fill:#fff9c4,stroke:#f57c00,stroke-width:3px,color:#1a1a1a
+    classDef gateway fill:#ffe0b2,stroke:#e65100,stroke-width:2px,color:#1a1a1a
+    classDef pool fill:#ffccbc,stroke:#d84315,stroke-width:2px,color:#1a1a1a
+
+    class WebUI,Headlamp,CustomUI ui
+    class HuggingFace,PrivateCatalog catalog
+    class AIAgents,ChatApps,Pipelines apps
+    class CoreController controller
+    class ModelDeployment,ProviderConfig crd
+    class KAITO,Dynamo,KubeRay,NewProvider provider
+    class vLLM,SGLang,TRLLM,LlamaCpp engine
+    class InferenceEndpoints endpoint
+    class K8sGateway gateway
+    class InferencePool pool
+
+    style CONTROL_PLANE fill:none,stroke:none
+    style DATA_PLANE fill:none,stroke:none
