@@ -85,6 +85,8 @@ Unified API for deploying ML models. Key fields:
 - `spec.serving.mode` - `aggregated` (default) or `disaggregated`
 - `spec.resources.gpu.count` - GPU count for aggregated mode
 - `spec.scaling.prefill/decode` - Component scaling for disaggregated mode
+- `spec.gateway.enabled` - Optional: disable gateway integration for this deployment
+- `spec.gateway.modelName` - Optional: override model name for gateway routing
 
 ### InferenceProviderConfig
 Cluster-scoped resource for provider registration:
@@ -100,6 +102,8 @@ Cluster-scoped resource for provider registration:
 - CRD types: `controller/api/v1alpha1/modeldeployment_types.go`
 - Provider config types: `controller/api/v1alpha1/inferenceproviderconfig_types.go`
 - Reconciler: `controller/internal/controller/modeldeployment_controller.go`
+- Gateway reconciler: `controller/internal/controller/gateway_reconciler.go`
+- Gateway detection: `controller/internal/gateway/detection.go`
 - Webhook: `controller/internal/webhook/v1alpha1/modeldeployment_webhook.go`
 - Main: `controller/cmd/main.go`
 
@@ -108,6 +112,7 @@ Cluster-scoped resource for provider registration:
 - Provider interface: `backend/src/providers/types.ts`
 - Provider registry: `backend/src/providers/index.ts`
 - Kubernetes client: `backend/src/services/kubernetes.ts`
+- Gateway routes: `backend/src/routes/gateway.ts`
 - Frontend API client: `frontend/src/lib/api.ts`
 
 ## Documentation (Progressive Disclosure)
@@ -124,5 +129,6 @@ Read these files **only when relevant** to your task:
 | [docs/web-ui-architecture.md](docs/web-ui-architecture.md) | Web UI, auth flow, backend services |
 | [docs/api.md](docs/api.md) | Working on REST endpoints or API client |
 | [docs/development.md](docs/development.md) | Setup issues, build process, testing |
+| [docs/gateway.md](docs/gateway.md) | Gateway API Inference Extension integration |
 | [docs/standards.md](docs/standards.md) | Code style questions (prefer running linters instead) |
 | [plugins/headlamp/README.md](plugins/headlamp/README.md) | Headlamp plugin development, patterns, components |

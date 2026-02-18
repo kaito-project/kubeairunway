@@ -70,6 +70,8 @@ See [controller-architecture.md](controller-architecture.md) for controller inte
 | `secrets.huggingFaceToken` | string | No | — | K8s secret name for HF token |
 | `nodeSelector` | map | No | `{}` | Node selector |
 | `tolerations` | []Toleration | No | `[]` | Tolerations |
+| `gateway.enabled` | *bool | No | `true` (when Gateway detected) | Enable/disable gateway integration |
+| `gateway.modelName` | string | No | Model served name or ID | Override model name for gateway routing |
 
 ### Update Semantics
 
@@ -1618,6 +1620,34 @@ Normalize a GPU label to a standard GPU model name.
 **Notes:**
 - Handles various GPU label formats: NVIDIA prefixes, SXM/PCIe variants, Tesla prefixes
 - Returns GPU specifications when available
+
+## Gateway
+
+### GET /gateway/status
+Get Gateway API Inference Extension availability and endpoint.
+
+**Response:**
+```json
+{
+  "available": true,
+  "endpoint": "http://10.0.0.1"
+}
+```
+
+### GET /gateway/models
+List all models accessible through the unified gateway endpoint.
+
+**Response:**
+```json
+[
+  {
+    "name": "llama-3-8b",
+    "deploymentName": "my-llama",
+    "provider": "kaito",
+    "ready": true
+  }
+]
+```
 
 ## Error Responses
 

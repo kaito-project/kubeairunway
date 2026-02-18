@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
 )
 
 // ModelDeploymentReconciler reconciles a ModelDeployment object
@@ -40,12 +41,18 @@ type ModelDeploymentReconciler struct {
 
 	// EnableProviderSelector controls whether the controller runs provider selection
 	EnableProviderSelector bool
+
+	// GatewayDetector checks for Gateway API CRD availability and resolves gateway config
+	GatewayDetector *gateway.Detector
 }
 
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=inference.networking.k8s.io,resources=inferencepools,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch
 
 // Reconcile handles the reconciliation loop for ModelDeployment resources.
 //
@@ -154,6 +161,21 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// - status.replicas
 	// - status.endpoint
 	// - ProviderCompatible, ResourceCreated, Ready conditions
+
+	// Step 7: Reconcile gateway resources (InferencePool + HTTPRoute) when deployment is running
+	if md.Status.Phase == kubeairunwayv1alpha1.DeploymentPhaseRunning {
+		if md.Spec.Gateway != nil && md.Spec.Gateway.Enabled != nil && !*md.Spec.Gateway.Enabled {
+			// Gateway explicitly disabled — clean up any existing resources
+			if err := r.cleanupGatewayResources(ctx, &md); err != nil {
+				logger.Error(err, "Failed to clean up gateway resources")
+			}
+		} else {
+			if err := r.reconcileGateway(ctx, &md); err != nil {
+				logger.Error(err, "Gateway reconciliation failed", "name", md.Name)
+				// Non-fatal: don't block overall reconciliation
+			}
+		}
+	}
 
 	logger.Info("Reconciliation complete", "name", md.Name, "phase", md.Status.Phase, "provider", md.Status.Provider)
 

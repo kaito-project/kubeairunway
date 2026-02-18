@@ -221,6 +221,18 @@ type SecretsSpec struct {
 	HuggingFaceToken string `json:"huggingFaceToken,omitempty"`
 }
 
+// GatewaySpec defines the Gateway API integration configuration
+type GatewaySpec struct {
+	// enabled controls whether an InferencePool + HTTPRoute are created for this model.
+	// Defaults to true when a Gateway is detected in the cluster.
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+	// modelName overrides the model name used in HTTPRoute routing.
+	// Defaults to spec.model.servedName or spec.model.id
+	// +optional
+	ModelName string `json:"modelName,omitempty"`
+}
+
 // ModelDeploymentSpec defines the desired state of ModelDeployment
 type ModelDeploymentSpec struct {
 	// model defines the model specification
@@ -263,6 +275,10 @@ type ModelDeploymentSpec struct {
 	// secrets defines secret references
 	// +optional
 	Secrets *SecretsSpec `json:"secrets,omitempty"`
+
+	// gateway defines the Gateway API integration configuration
+	// +optional
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
 
 	// nodeSelector constrains scheduling to nodes with specific labels
 	// +optional
@@ -329,6 +345,19 @@ type EngineStatus struct {
 	SelectedReason string `json:"selectedReason,omitempty"`
 }
 
+// GatewayStatus contains information about the gateway integration
+type GatewayStatus struct {
+	// endpoint is the unified gateway endpoint URL
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+	// modelName is the model name to use in API requests
+	// +optional
+	ModelName string `json:"modelName,omitempty"`
+	// ready indicates if the gateway route is active
+	// +optional
+	Ready bool `json:"ready,omitempty"`
+}
+
 // ModelDeploymentStatus defines the observed state of ModelDeployment.
 type ModelDeploymentStatus struct {
 	// phase is the current phase of the deployment
@@ -346,6 +375,10 @@ type ModelDeploymentStatus struct {
 	// engine contains information about the selected engine
 	// +optional
 	Engine *EngineStatus `json:"engine,omitempty"`
+
+	// gateway contains information about the gateway integration
+	// +optional
+	Gateway *GatewayStatus `json:"gateway,omitempty"`
 
 	// replicas contains replica count information
 	// +optional
@@ -413,6 +446,18 @@ func (md *ModelDeployment) ResolvedEngineType() EngineType {
 	return ""
 }
 
+// ResolvedGatewayModelName returns the model name for gateway routing.
+// Priority: spec.gateway.modelName > spec.model.servedName > basename of spec.model.id
+func (md *ModelDeployment) ResolvedGatewayModelName() string {
+	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
+		return md.Spec.Gateway.ModelName
+	}
+	if md.Spec.Model.ServedName != "" {
+		return md.Spec.Model.ServedName
+	}
+	return md.Spec.Model.ID
+}
+
 // Condition types for ModelDeployment
 const (
 	// ConditionTypeValidated indicates the spec has been validated
@@ -427,4 +472,10 @@ const (
 	ConditionTypeResourceCreated = "ResourceCreated"
 	// ConditionTypeReady indicates the deployment is ready
 	ConditionTypeReady = "Ready"
+	// ConditionTypeGatewayReady indicates the gateway route is active
+	ConditionTypeGatewayReady = "GatewayReady"
+)
+
+const (
+	LabelModelDeployment = "kubeairunway.ai/model-deployment"
 )

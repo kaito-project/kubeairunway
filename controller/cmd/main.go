@@ -40,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -50,7 +51,10 @@ import (
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	"github.com/kaito-project/kubeairunway/controller/internal/controller"
+	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
 	webhookv1alpha1 "github.com/kaito-project/kubeairunway/controller/internal/webhook/v1alpha1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -72,6 +76,8 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(kubeairunwayv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1.Install(scheme))
+	utilruntime.Must(inferencev1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -144,6 +150,8 @@ func main() {
 	var enableProviderSelector bool
 	var disableCertRotation bool
 	var certServiceName string
+	var gatewayName string
+	var gatewayNamespace string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -165,6 +173,10 @@ func main() {
 		"Disable automatic generation and rotation of webhook TLS certificates/keys")
 	flag.StringVar(&certServiceName, "cert-service-name", "kubeairunway-webhook-service",
 		"The service name used to generate the TLS cert's hostname. Defaults to kubeairunway-webhook-service")
+	flag.StringVar(&gatewayName, "gateway-name", "",
+		"Explicit Gateway resource name for HTTPRoute parent. If empty, auto-detects from cluster.")
+	flag.StringVar(&gatewayNamespace, "gateway-namespace", "",
+		"Namespace of the Gateway resource. Required when --gateway-name is set.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -322,10 +334,21 @@ func main() {
 		close(setupFinished)
 	}
 
+	// Create gateway detector
+	dc, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create discovery client")
+		os.Exit(1)
+	}
+	gatewayDetector := gateway.NewDetector(dc)
+	gatewayDetector.ExplicitGatewayName = gatewayName
+	gatewayDetector.ExplicitGatewayNamespace = gatewayNamespace
+
 	if err := (&controller.ModelDeploymentReconciler{
 		Client:                 mgr.GetClient(),
 		Scheme:                 mgr.GetScheme(),
 		EnableProviderSelector: enableProviderSelector,
+		GatewayDetector:        gatewayDetector,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ModelDeployment")
 		os.Exit(1)

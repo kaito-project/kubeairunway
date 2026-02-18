@@ -1,6 +1,6 @@
 import * as k8s from '@kubernetes/client-node';
 import { configService } from './config';
-import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment } from '@kubeairunway/shared';
+import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo } from '@kubeairunway/shared';
 import { toModelDeploymentManifest, toDeploymentStatus } from '@kubeairunway/shared';
 import { withRetry } from '../lib/retry';
 import logger from '../lib/logger';
@@ -1376,6 +1376,104 @@ class KubernetesService {
       logger.error({ error, namespace }, 'Error deleting namespace');
       return { success: false, message: `Failed to delete namespace ${namespace}: ${error?.message || 'Unknown error'}` };
     }
+  }
+
+  /**
+   * Get gateway status: checks if Gateway API InferencePool CRD exists,
+   * lists InferencePool resources, and finds gateway endpoint from Gateway resources.
+   */
+  async getGatewayStatus(): Promise<GatewayInfo> {
+    // Check if InferencePool CRD exists
+    const inferencePoolCrdExists = await this.checkCRDExists('inferencepools.inference.networking.x-k8s.io');
+    if (!inferencePoolCrdExists) {
+      return { available: false };
+    }
+
+    // List InferencePool resources across all namespaces
+    let poolCount = 0;
+    try {
+      const response = await withRetry(
+        () => this.customObjectsApi.listClusterCustomObject(
+          'inference.networking.x-k8s.io',
+          'v1alpha2',
+          'inferencepools'
+        ),
+        { operationName: 'listInferencePools', maxRetries: 1 }
+      );
+      const items = (response.body as { items?: unknown[] }).items || [];
+      poolCount = items.length;
+    } catch (error: any) {
+      logger.debug({ error: error?.message }, 'Could not list InferencePool resources');
+    }
+
+    if (poolCount === 0) {
+      return { available: false };
+    }
+
+    // Try to find a Gateway endpoint
+    let endpoint: string | undefined;
+    const gatewayCrdExists = await this.checkCRDExists('gateways.gateway.networking.k8s.io');
+    if (gatewayCrdExists) {
+      try {
+        const response = await withRetry(
+          () => this.customObjectsApi.listClusterCustomObject(
+            'gateway.networking.k8s.io',
+            'v1',
+            'gateways'
+          ),
+          { operationName: 'listGateways', maxRetries: 1 }
+        );
+        const items = (response.body as { items?: Array<{ status?: { addresses?: Array<{ value?: string }> } }> }).items || [];
+        for (const gw of items) {
+          const addr = gw.status?.addresses?.[0]?.value;
+          if (addr) {
+            endpoint = addr;
+            break;
+          }
+        }
+      } catch (error: any) {
+        logger.debug({ error: error?.message }, 'Could not list Gateway resources');
+      }
+    }
+
+    return { available: true, endpoint };
+  }
+
+  /**
+   * List all models accessible through the gateway by checking ModelDeployment status.gateway
+   */
+  async getGatewayModels(): Promise<GatewayModelInfo[]> {
+    const namespace = await this.getDefaultNamespace();
+    const models: GatewayModelInfo[] = [];
+
+    try {
+      const response = await withRetry(
+        () => this.customObjectsApi.listNamespacedCustomObject(
+          MODEL_DEPLOYMENT_CRD.apiGroup,
+          MODEL_DEPLOYMENT_CRD.apiVersion,
+          namespace,
+          MODEL_DEPLOYMENT_CRD.plural
+        ),
+        { operationName: 'listDeploymentsForGateway' }
+      );
+
+      const items = (response.body as { items?: ModelDeployment[] }).items || [];
+      for (const md of items) {
+        const gw = md.status?.gateway;
+        if (gw?.modelName) {
+          models.push({
+            name: gw.modelName,
+            deploymentName: md.metadata.name,
+            provider: md.status?.provider?.name || md.spec.provider?.name,
+            ready: gw.ready ?? false,
+          });
+        }
+      }
+    } catch (error: any) {
+      logger.debug({ error: error?.message }, 'Could not list ModelDeployments for gateway models');
+    }
+
+    return models;
   }
 }
 

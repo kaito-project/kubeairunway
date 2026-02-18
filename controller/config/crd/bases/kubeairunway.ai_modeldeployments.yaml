@@ -249,6 +249,20 @@ spec:
                   - name
                   type: object
                 type: array
+              gateway:
+                description: gateway defines the Gateway API integration configuration
+                properties:
+                  enabled:
+                    description: |-
+                      enabled controls whether an InferencePool + HTTPRoute are created for this model.
+                      Defaults to true when a Gateway is detected in the cluster.
+                    type: boolean
+                  modelName:
+                    description: |-
+                      modelName overrides the model name used in HTTPRoute routing.
+                      Defaults to spec.model.servedName or spec.model.id
+                    type: string
+                type: object
               image:
                 description: image is a custom container image
                 type: string
@@ -573,6 +587,19 @@ spec:
                     - trtllm
                     - llamacpp
                     type: string
+                type: object
+              gateway:
+                description: gateway contains information about the gateway integration
+                properties:
+                  endpoint:
+                    description: endpoint is the unified gateway endpoint URL
+                    type: string
+                  modelName:
+                    description: modelName is the model name to use in API requests
+                    type: string
+                  ready:
+                    description: ready indicates if the gateway route is active
+                    type: boolean
                 type: object
               message:
                 description: message is a human-readable message about the current
