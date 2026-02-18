@@ -54,3 +54,4 @@ backend/src/embedded-assets.ts
 /playwright-report/
 /playwright/.cache/
 backend/data/
+credentials/

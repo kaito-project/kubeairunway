@@ -11,11 +11,15 @@ ARG GIT_COMMIT=unknown
 
 WORKDIR /app
 
+# Install build tools needed for native modules (better-sqlite3)
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 # Copy package files for dependency installation
 COPY package.json bun.lock* ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
 COPY shared/package.json shared/
+COPY plugins/headlamp/package.json plugins/headlamp/
 
 # Install dependencies
 RUN bun install --frozen-lockfile

@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useInstances } from '@/hooks/useInstances'
+import { useInstanceContext } from '@/hooks/useInstanceContext'
 import { useQueries } from '@tanstack/react-query'
 import { instancesApi } from '@/lib/api'
 import { InstanceCard } from '@/components/instances/InstanceCard'
@@ -10,6 +11,7 @@ import { RefreshCw, Server } from 'lucide-react'
 
 export function InstancesPage() {
   const navigate = useNavigate()
+  const { setCurrentInstance } = useInstanceContext()
   const { data: instances, isLoading, error, refetch, isFetching } = useInstances()
 
   // Fetch health for all instances in parallel
@@ -23,7 +25,9 @@ export function InstancesPage() {
   })
 
   const handleSelectInstance = (instanceId: string) => {
-    navigate(`/?instance=${encodeURIComponent(instanceId)}`)
+    const instance = instances?.find(i => i.id === instanceId)
+    setCurrentInstance(instanceId, instance?.name || instance?.displayName || null)
+    navigate('/')
   }
 
   if (isLoading) {

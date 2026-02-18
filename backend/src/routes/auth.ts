@@ -169,7 +169,18 @@ const auth = new Hono()
 
   // Get current user info
   .get('/me', async (c) => {
-    const user = c.get('hubUser') as { sub: string; email: string; displayName: string; provider: string } | undefined;
+    // This route is public (skips auth middleware) so it can return 401
+    // for the frontend refresh flow. Validate the cookie inline.
+    let user = c.get('hubUser') as { sub: string; email: string; displayName: string; provider: string } | undefined;
+    if (!user) {
+      const accessToken = getCookie(c, 'kf_access_token');
+      if (accessToken) {
+        const payload = await sessionService.validateAccessToken(accessToken);
+        if (payload) {
+          user = payload;
+        }
+      }
+    }
     if (!user) {
       return c.json({ error: { message: 'Not authenticated', statusCode: 401 } }, 401);
     }

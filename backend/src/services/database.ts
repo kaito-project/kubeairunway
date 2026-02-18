@@ -37,6 +37,12 @@ class UserRepository {
     };
   }
 
+  async countAll(): Promise<number> {
+    const s = getSchema();
+    const rows = await db().select().from(s.users);
+    return rows.length;
+  }
+
   async findByEmail(email: string): Promise<HubUser | null> {
     const s = getSchema();
     const rows = await db().select().from(s.users).where(eq(s.users.email, email));

@@ -173,6 +173,20 @@ async function initializeSqlite(
     )
   `);
 
+  db.run(sql`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id TEXT,
+      instance_id TEXT REFERENCES instances(id) ON DELETE SET NULL,
+      details TEXT,
+      ip_address TEXT,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   // Seed default roles
   for (const role of DEFAULT_ROLES) {
     db.insert(sqliteSchema.roles)
@@ -269,6 +283,20 @@ async function initializePg(
       tenant_id TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      resource_type TEXT,
+      resource_id TEXT,
+      instance_id UUID REFERENCES instances(id) ON DELETE SET NULL,
+      details TEXT,
+      ip_address TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
 

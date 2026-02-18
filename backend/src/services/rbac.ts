@@ -1,4 +1,4 @@
-import { roleRepository } from './database';
+import { roleRepository, userRepository } from './database';
 import type { HubRole } from '@kubefoundry/shared';
 import logger from '../lib/logger';
 
@@ -28,7 +28,16 @@ class RBACService {
 
   async canManage(userId: string): Promise<boolean> {
     const roles = await roleRepository.getUserRoles(userId);
-    return roles.some((r) => r.role === 'admin');
+    if (roles.some((r) => r.role === 'admin')) return true;
+
+    // Bootstrap: first user is auto-admin when no roles exist yet
+    const totalUsers = await userRepository.countAll();
+    if (totalUsers <= 1) {
+      logger.info({ userId }, 'Bootstrap: granting admin access to first user');
+      return true;
+    }
+
+    return false;
   }
 
   async getUserAllowedNamespaces(userId: string, instanceId: string): Promise<string[]> {
