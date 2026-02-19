@@ -155,14 +155,21 @@ jobs:
 
       - name: Verify gateway status and model name auto-discovery
         run: |
-          # Check GatewayReady condition
-          GW_READY=$(kubectl get modeldeployment llama-gw-e2e -n default \
-            -o jsonpath='{.status.conditions[?(@.type=="GatewayReady")].status}')
-          if [ "$GW_READY" != "True" ]; then
-            echo "❌ GatewayReady condition is not True: $GW_READY"
-            exit 1
-          fi
-          echo "✅ GatewayReady condition is True"
+          echo "Waiting for GatewayReady condition..."
+          for i in $(seq 1 30); do
+            GW_READY=$(kubectl get modeldeployment llama-gw-e2e -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="GatewayReady")].status}' 2>/dev/null || echo "")
+            if [ "$GW_READY" = "True" ]; then
+              echo "✅ GatewayReady condition is True"
+              break
+            fi
+            echo "Attempt $i/30: GatewayReady=$GW_READY"
+            if [ "$i" = "30" ]; then
+              echo "❌ Timed out waiting for GatewayReady condition"
+              exit 1
+            fi
+            sleep 5
+          done
 
           # Check auto-discovered model name
           MODEL_NAME=$(kubectl get modeldeployment llama-gw-e2e -n default \
