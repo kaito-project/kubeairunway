@@ -49,6 +49,8 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
 
 ## Gateway Implementations
 
+KubeAIRunway works with any Gateway API implementation that supports the [Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension). You are responsible for installing and managing your own gateway. Some known implementations:
+
 | Implementation | `gatewayClassName` | Docs |
 |---|---|---|
 | [Envoy Gateway](https://gateway.envoyproxy.io/) | `eg` | [Inference Extension guide](https://gateway.envoyproxy.io/docs/tasks/ai-gateway/gateway-api-inference-extension/) |
