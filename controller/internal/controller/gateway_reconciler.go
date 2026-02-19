@@ -67,10 +67,15 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		return nil
 	}
 
-	// Determine target port from endpoint status
+	// Determine target port for InferencePool (needs the pod/container port, not service port)
 	port := int32(8000) // sensible default
-	if md.Status.Endpoint != nil && md.Status.Endpoint.Port > 0 {
-		port = md.Status.Endpoint.Port
+	if md.Status.Endpoint != nil && md.Status.Endpoint.Service != "" {
+		// Look up the service's target port (the actual container port)
+		if targetPort := r.resolveTargetPort(ctx, md.Status.Endpoint.Service, md.Namespace); targetPort > 0 {
+			port = targetPort
+		} else if md.Status.Endpoint.Port > 0 {
+			port = md.Status.Endpoint.Port
+		}
 	}
 
 	// Ensure model pods have the selector label for InferencePool
@@ -509,6 +514,29 @@ func (r *ModelDeploymentReconciler) resolveServicePort(ctx context.Context, serv
 		}
 	}
 	if len(svc.Spec.Ports) > 0 {
+		return svc.Spec.Ports[0].Port
+	}
+	return 0
+}
+
+// resolveTargetPort looks up the target (container) port from the service's first HTTP port.
+func (r *ModelDeploymentReconciler) resolveTargetPort(ctx context.Context, serviceName, namespace string) int32 {
+	var svc corev1.Service
+	if err := r.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, &svc); err != nil {
+		return 0
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Name == "http" || p.Port == 80 || p.Port == 8080 {
+			if p.TargetPort.IntValue() > 0 {
+				return int32(p.TargetPort.IntValue())
+			}
+			return p.Port
+		}
+	}
+	if len(svc.Spec.Ports) > 0 {
+		if svc.Spec.Ports[0].TargetPort.IntValue() > 0 {
+			return int32(svc.Spec.Ports[0].TargetPort.IntValue())
+		}
 		return svc.Spec.Ports[0].Port
 	}
 	return 0
