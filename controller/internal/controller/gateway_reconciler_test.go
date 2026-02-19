@@ -315,6 +315,76 @@ func TestGateway_DisabledCleansUpExistingResources(t *testing.T) {
 	if md.Status.Gateway != nil {
 		t.Error("expected gateway status to be nil after cleanup")
 	}
+
+	// Verify GatewayReady condition is set to False
+	found := false
+	for _, c := range md.Status.Conditions {
+		if c.Type == kubeairunwayv1alpha1.ConditionTypeGatewayReady {
+			found = true
+			if c.Status != metav1.ConditionFalse {
+				t.Errorf("expected GatewayReady condition to be False after cleanup, got %s", c.Status)
+			}
+			if c.Reason != "GatewayDisabled" {
+				t.Errorf("expected reason GatewayDisabled, got %s", c.Reason)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected GatewayReady condition to be set after cleanup")
+	}
+}
+
+func TestGateway_CleanupOnPhaseTransition(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	// Simulate a deployment that was Running with gateway resources
+	md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
+		Endpoint:  "10.0.0.1",
+		ModelName: "some-model",
+		Ready:     true,
+	}
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+
+	// Pre-create gateway resources
+	pool := &inferencev1.InferencePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-model", Namespace: "default"},
+	}
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-model", Namespace: "default"},
+	}
+	r := newTestReconciler(scheme, detector, md, pool, route)
+	ctx := context.Background()
+
+	// cleanupGatewayResources should clean up since phase != Running but gateway exists
+	err := r.cleanupGatewayResources(ctx, md)
+	if err != nil {
+		t.Fatalf("cleanupGatewayResources failed: %v", err)
+	}
+
+	// Verify resources deleted
+	var p inferencev1.InferencePool
+	if err := r.Get(ctx, types.NamespacedName{Name: "test-model", Namespace: "default"}, &p); err == nil {
+		t.Error("expected InferencePool to be deleted on phase transition")
+	}
+	var rt gatewayv1.HTTPRoute
+	if err := r.Get(ctx, types.NamespacedName{Name: "test-model", Namespace: "default"}, &rt); err == nil {
+		t.Error("expected HTTPRoute to be deleted on phase transition")
+	}
+
+	// Verify status cleared and condition set
+	if md.Status.Gateway != nil {
+		t.Error("expected gateway status to be nil after phase transition cleanup")
+	}
+	for _, c := range md.Status.Conditions {
+		if c.Type == kubeairunwayv1alpha1.ConditionTypeGatewayReady {
+			if c.Status != metav1.ConditionFalse {
+				t.Errorf("expected GatewayReady False after phase transition, got %s", c.Status)
+			}
+			return
+		}
+	}
+	t.Error("expected GatewayReady condition to be set after phase transition")
 }
 
 func TestGateway_NotAvailableSkipsSilently(t *testing.T) {

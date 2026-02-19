@@ -305,9 +305,8 @@ func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, servi
 	return ""
 }
 
-// cleanupGatewayResources removes gateway resources when gateway is disabled.
-// Owner references handle deletion automatically when the ModelDeployment is deleted,
-// but this handles the case where gateway is explicitly disabled on an existing deployment.
+// cleanupGatewayResources removes gateway resources when gateway is disabled or
+// the deployment is no longer running. Also sets GatewayReady=False.
 func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
@@ -334,6 +333,7 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 	}
 
 	md.Status.Gateway = nil
+	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayDisabled", "Gateway resources cleaned up")
 	logger.Info("Gateway resources cleaned up", "name", md.Name)
 	return nil
 }
