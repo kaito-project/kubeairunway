@@ -228,6 +228,26 @@ jobs:
             sleep 10
           done
 
+      - name: Install Istio DestinationRule for EPP
+        run: |
+          # The upstream chart creates gateway-implementation-specific resources
+          # (DestinationRule for Istio) needed to wire the gateway to the EPP.
+          # Our controller deploys the EPP itself, but Istio-specific wiring is BYO.
+          cat <<EOF | kubectl apply -f -
+          apiVersion: networking.istio.io/v1
+          kind: DestinationRule
+          metadata:
+            name: kubeairunway-epp
+            namespace: default
+          spec:
+            host: kubeairunway-epp.default.svc.cluster.local
+            trafficPolicy:
+              connectionPool:
+                http:
+                  h2UpgradePolicy: UPGRADE
+          EOF
+          echo "✅ Istio DestinationRule created"
+
       - name: Test inference through gateway
         run: |
           # Get the auto-discovered model name
