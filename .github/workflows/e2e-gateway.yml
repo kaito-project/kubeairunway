@@ -107,8 +107,19 @@ jobs:
 
       - name: Verify InferencePool created
         run: |
-          echo "Checking InferencePool..."
-          kubectl get inferencepool llama-gw-e2e -n default -o yaml
+          echo "Waiting for InferencePool..."
+          for i in $(seq 1 30); do
+            if kubectl get inferencepool llama-gw-e2e -n default > /dev/null 2>&1; then
+              echo "✅ InferencePool found"
+              break
+            fi
+            echo "Attempt $i/30: InferencePool not found yet"
+            if [ "$i" = "30" ]; then
+              echo "❌ Timed out waiting for InferencePool"
+              exit 1
+            fi
+            sleep 5
+          done
 
           # Verify selector label
           SELECTOR=$(kubectl get inferencepool llama-gw-e2e -n default \
