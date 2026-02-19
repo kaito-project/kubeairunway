@@ -47,14 +47,14 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
 - [Gateway API Inference Extension CRDs](https://github.com/kubernetes-sigs/gateway-api-inference-extension) installed (provides `InferencePool`)
 - A compatible gateway implementation (see below)
 
-## Compatible Gateway Implementations
+## Gateway Implementations
 
-| Implementation | `gatewayClassName` | Status | Docs |
-|---|---|---|---|
-| [Envoy Gateway](https://gateway.envoyproxy.io/) | `eg` | GA support | [Inference Extension guide](https://gateway.envoyproxy.io/docs/tasks/ai-gateway/gateway-api-inference-extension/) |
-| [Istio](https://istio.io/) | `istio` | Supported | [Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/inference/) |
-| [kgateway](https://kgateway.dev/) | `kgateway` | Supported | [Inference Extension guide](https://kgateway.dev/docs/ai/gateway-api-inference-extension/) |
-| [GKE Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) | `gke-l7-rilb` | Supported | [GKE Inference guide](https://cloud.google.com/kubernetes-engine/docs/how-to/serve-llms-with-gateway-api) |
+| Implementation | `gatewayClassName` | Docs |
+|---|---|---|
+| [Envoy Gateway](https://gateway.envoyproxy.io/) | `eg` | [Inference Extension guide](https://gateway.envoyproxy.io/docs/tasks/ai-gateway/gateway-api-inference-extension/) |
+| [Istio](https://istio.io/) | `istio` | [Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/inference/) |
+| [kgateway](https://kgateway.dev/) | `kgateway` | [Inference Extension guide](https://kgateway.dev/docs/ai/gateway-api-inference-extension/) |
+| [GKE Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) | `gke-l7-rilb` | [GKE Inference guide](https://cloud.google.com/kubernetes-engine/docs/how-to/serve-llms-with-gateway-api) |
 
 > **Note:** The only difference between implementations is the `gatewayClassName` in your Gateway resource. All KubeAIRunway-managed resources (InferencePool, HTTPRoute) are identical regardless of which gateway you use.
 
