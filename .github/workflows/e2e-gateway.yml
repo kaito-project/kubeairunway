@@ -189,34 +189,54 @@ jobs:
           fi
           echo "✅ Gateway status ready"
 
-      - name: Test inference endpoint directly
+      - name: Install EPP for InferencePool
         run: |
-          # Port-forward to the model service to verify it's working
-          SVC_PORT=$(kubectl get svc llama-gw-e2e -n default -o jsonpath='{.spec.ports[0].port}')
-          echo "Service port: $SVC_PORT"
+          helm install llama-gw-e2e \
+            oci://us-central1-docker.pkg.dev/k8s-staging-charts/gateway-api-inference-extension/inferencepool \
+            --version v0.3.0 \
+            --set provider.name=istio \
+            --set inferencePool.modelServers.matchLabels."kubeairunway\.ai/model-deployment"=llama-gw-e2e \
+            --set inferencePool.targetPorts[0].number=5000 \
+            --namespace default \
+            --wait --timeout 120s
+          echo "✅ EPP installed"
 
-          kubectl port-forward svc/llama-gw-e2e 8080:${SVC_PORT} -n default &
+      - name: Test inference through gateway
+        run: |
+          # Get the auto-discovered model name
+          MODEL_NAME=$(kubectl get modeldeployment llama-gw-e2e -n default \
+            -o jsonpath='{.status.gateway.modelName}')
+          echo "Model name: $MODEL_NAME"
+
+          # Port-forward to the Istio gateway pod
+          GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "Gateway pod: $GW_POD"
+
+          kubectl port-forward "pod/$GW_POD" 8080:80 -n default &
           sleep 5
 
-          # Verify /v1/models endpoint works (this is what auto-discovery probes)
-          MODELS=$(curl -sf --max-time 10 http://localhost:8080/v1/models)
-          echo "Models: $MODELS"
-          echo "$MODELS" | jq -e '.data[0].id' > /dev/null
-          echo "✅ Model server /v1/models endpoint is working"
+          # Send inference request through the gateway
+          echo "Sending inference request through gateway..."
+          for i in $(seq 1 12); do
+            RESPONSE=$(curl -s --max-time 30 http://localhost:8080/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"model\": \"$MODEL_NAME\",
+                \"messages\": [{\"role\": \"user\", \"content\": \"Say hello in one word.\"}],
+                \"max_tokens\": 10
+              }" 2>&1)
 
-          # Send inference request
-          ACTUAL_MODEL=$(echo "$MODELS" | jq -r '.data[0].id')
-          RESPONSE=$(curl -sf --max-time 30 http://localhost:8080/v1/chat/completions \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"model\": \"$ACTUAL_MODEL\",
-              \"messages\": [{\"role\": \"user\", \"content\": \"Say hello in one word.\"}],
-              \"max_tokens\": 10
-            }")
-
-          echo "Response: $RESPONSE"
-          echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null
-          echo "✅ Inference endpoint responded with valid chat completion"
+            if echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
+              echo "Response: $RESPONSE"
+              echo "✅ Inference through gateway succeeded"
+              exit 0
+            fi
+            echo "Attempt $i/12: $RESPONSE"
+            sleep 10
+          done
+          echo "❌ Inference through gateway failed"
+          exit 1
 
       - name: Test gateway disable and cleanup
         run: |
@@ -269,6 +289,8 @@ jobs:
           kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
           echo "=== Istio Logs ==="
           kubectl logs -n istio-system -l app=istiod --tail=100
+          echo "=== EPP Logs ==="
+          kubectl logs -n default -l app.kubernetes.io/name=inferencepool --tail=100 2>/dev/null || echo "No EPP logs"
           echo "=== Gateway Pods ==="
           kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o yaml
           echo "=== Events ==="
