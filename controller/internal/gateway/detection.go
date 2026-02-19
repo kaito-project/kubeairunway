@@ -49,6 +49,10 @@ type Detector struct {
 	// Explicit gateway override from flags
 	ExplicitGatewayName      string
 	ExplicitGatewayNamespace string
+
+	// EPP (Endpoint Picker Proxy) configuration
+	EPPServiceName string
+	EPPServicePort int32
 }
 
 // NewDetector creates a new Gateway API detector

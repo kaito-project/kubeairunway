@@ -80,7 +80,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 
 	// Update gateway status
 	modelName := md.ResolvedGatewayModelName()
-	endpoint := fmt.Sprintf("%s.%s.svc", gwConfig.GatewayName, gwConfig.GatewayNamespace)
+	endpoint := r.resolveGatewayEndpoint(ctx, gwConfig)
 	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
 		Endpoint:  endpoint,
 		ModelName: modelName,
@@ -138,6 +138,15 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 		},
 	}
 
+	eppName := r.GatewayDetector.EPPServiceName
+	if eppName == "" {
+		eppName = "kubeairunway-epp"
+	}
+	eppPort := r.GatewayDetector.EPPServicePort
+	if eppPort == 0 {
+		eppPort = 9002
+	}
+
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, pool, func() error {
 		pool.Spec.Selector = inferencev1.LabelSelector{
 			MatchLabels: map[inferencev1.LabelKey]inferencev1.LabelValue{
@@ -146,6 +155,10 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 		}
 		pool.Spec.TargetPorts = []inferencev1.Port{
 			{Number: inferencev1.PortNumber(port)},
+		}
+		pool.Spec.EndpointPickerRef = inferencev1.EndpointPickerRef{
+			Name: inferencev1.ObjectName(eppName),
+			Port: &inferencev1.Port{Number: inferencev1.PortNumber(eppPort)},
 		}
 		return ctrl.SetControllerReference(md, pool, r.Scheme)
 	})
@@ -204,6 +217,21 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 
 	log.FromContext(ctx).V(1).Info("HTTPRoute reconciled", "name", route.Name, "result", result)
 	return nil
+}
+
+// resolveGatewayEndpoint reads the Gateway resource's status to find the actual endpoint address.
+func (r *ModelDeploymentReconciler) resolveGatewayEndpoint(ctx context.Context, gwConfig *gateway.GatewayConfig) string {
+	var gw gatewayv1.Gateway
+	if err := r.Get(ctx, client.ObjectKey{Name: gwConfig.GatewayName, Namespace: gwConfig.GatewayNamespace}, &gw); err != nil {
+		log.FromContext(ctx).V(1).Info("Could not read Gateway status for endpoint", "error", err)
+		return ""
+	}
+	for _, addr := range gw.Status.Addresses {
+		if addr.Value != "" {
+			return addr.Value
+		}
+	}
+	return ""
 }
 
 // cleanupGatewayResources removes gateway resources when gateway is disabled.

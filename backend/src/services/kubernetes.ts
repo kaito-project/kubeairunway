@@ -1384,7 +1384,7 @@ class KubernetesService {
    */
   async getGatewayStatus(): Promise<GatewayInfo> {
     // Check if InferencePool CRD exists
-    const inferencePoolCrdExists = await this.checkCRDExists('inferencepools.inference.networking.x-k8s.io');
+    const inferencePoolCrdExists = await this.checkCRDExists('inferencepools.inference.networking.k8s.io');
     if (!inferencePoolCrdExists) {
       return { available: false };
     }
@@ -1394,8 +1394,8 @@ class KubernetesService {
     try {
       const response = await withRetry(
         () => this.customObjectsApi.listClusterCustomObject(
-          'inference.networking.x-k8s.io',
-          'v1alpha2',
+          'inference.networking.k8s.io',
+          'v1',
           'inferencepools'
         ),
         { operationName: 'listInferencePools', maxRetries: 1 }

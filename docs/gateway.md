@@ -58,8 +58,6 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
 
 > **Note:** The only difference between implementations is the `gatewayClassName` in your Gateway resource. All KubeAIRunway-managed resources (InferencePool, HTTPRoute) are identical regardless of which gateway you use.
 
-> **Istio note:** Istio requires the `ENABLE_INFERENCE_EXTENSION=true` environment variable on the `istiod` deployment. Refer to the [Istio documentation](https://istio.io/latest/docs/tasks/traffic-management/inference/) for setup details.
-
 ## Setup
 
 ### Step 1: Install Gateway API CRDs
@@ -82,6 +80,9 @@ Follow the installation guide for your chosen implementation:
 - **Istio:** [getting started](https://istio.io/latest/docs/setup/getting-started/)
 - **kgateway:** [quickstart](https://kgateway.dev/docs/quickstart/)
 - **GKE Gateway:** [enable Gateway controller](https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways)
+
+> [!NOTE]
+> **Istio:** Inference Extension support must be explicitly enabled by setting `ENABLE_INFERENCE_EXTENSION=true` on the `istiod` deployment (or passing `--set values.pilot.env.ENABLE_INFERENCE_EXTENSION=true` during `istioctl install`). Without this, Istio ignores InferencePool backend refs in HTTPRoutes. The `minimal` profile is sufficient — Istio auto-creates a gateway deployment and LoadBalancer Service when you create a Gateway resource. See the [Istio Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/inference/) for full details.
 
 ### Step 4: Create a Gateway Resource
 
@@ -144,6 +145,17 @@ If you have multiple Gateways or want deterministic behavior, use controller fla
 ```
 
 When set, the controller always uses the specified Gateway as the HTTPRoute parent instead of auto-detecting.
+
+### Endpoint Picker (EPP) Configuration
+
+The InferencePool requires a reference to an Endpoint Picker extension service. By default the controller uses:
+
+```
+--epp-service-name=kubeairunway-epp   # EPP Service name
+--epp-service-port=9002               # EPP Service port
+```
+
+Override these if your EPP service has a different name or port.
 
 ### Auto-detection with Multiple Gateways
 

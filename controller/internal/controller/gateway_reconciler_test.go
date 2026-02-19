@@ -144,6 +144,14 @@ func TestGateway_InferencePoolCreation(t *testing.T) {
 		t.Errorf("expected target port 8080, got %d", pool.Spec.TargetPorts[0].Number)
 	}
 
+	// Check EndpointPickerRef
+	if string(pool.Spec.EndpointPickerRef.Name) != "kubeairunway-epp" {
+		t.Errorf("expected EndpointPickerRef name %q, got %q", "kubeairunway-epp", pool.Spec.EndpointPickerRef.Name)
+	}
+	if pool.Spec.EndpointPickerRef.Port == nil || pool.Spec.EndpointPickerRef.Port.Number != 9002 {
+		t.Errorf("expected EndpointPickerRef port 9002, got %v", pool.Spec.EndpointPickerRef.Port)
+	}
+
 	// Check OwnerReference
 	if len(pool.OwnerReferences) != 1 {
 		t.Fatalf("expected 1 owner reference, got %d", len(pool.OwnerReferences))
@@ -362,8 +370,8 @@ func TestGateway_StatusUpdate(t *testing.T) {
 	if !md.Status.Gateway.Ready {
 		t.Error("expected gateway status to be ready")
 	}
-	if md.Status.Gateway.Endpoint != "my-gateway.gateway-ns.svc" {
-		t.Errorf("expected endpoint %q, got %q", "my-gateway.gateway-ns.svc", md.Status.Gateway.Endpoint)
+	if md.Status.Gateway.Endpoint != "" {
+		t.Errorf("expected empty endpoint when Gateway has no status address, got %q", md.Status.Gateway.Endpoint)
 	}
 	if md.Status.Gateway.ModelName != "meta-llama/Llama-3-8B" {
 		t.Errorf("expected model name %q, got %q", "meta-llama/Llama-3-8B", md.Status.Gateway.ModelName)
@@ -381,6 +389,40 @@ func TestGateway_StatusUpdate(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected GatewayReady condition to be set")
+	}
+}
+
+func TestGateway_StatusEndpointFromGatewayAddress(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	gw := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-gateway",
+			Namespace: "gateway-ns",
+		},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: "istio",
+		},
+		Status: gatewayv1.GatewayStatus{
+			Addresses: []gatewayv1.GatewayStatusAddress{
+				{Value: "10.0.0.42"},
+			},
+		},
+	}
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md, gw)
+	ctx := context.Background()
+
+	err := r.reconcileGateway(ctx, md)
+	if err != nil {
+		t.Fatalf("reconcileGateway failed: %v", err)
+	}
+
+	if md.Status.Gateway == nil {
+		t.Fatal("expected gateway status to be set")
+	}
+	if md.Status.Gateway.Endpoint != "10.0.0.42" {
+		t.Errorf("expected endpoint %q, got %q", "10.0.0.42", md.Status.Gateway.Endpoint)
 	}
 }
 

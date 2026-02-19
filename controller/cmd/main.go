@@ -152,6 +152,8 @@ func main() {
 	var certServiceName string
 	var gatewayName string
 	var gatewayNamespace string
+	var eppServiceName string
+	var eppServicePort int
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -177,6 +179,10 @@ func main() {
 		"Explicit Gateway resource name for HTTPRoute parent. If empty, auto-detects from cluster.")
 	flag.StringVar(&gatewayNamespace, "gateway-namespace", "",
 		"Namespace of the Gateway resource. Required when --gateway-name is set.")
+	flag.StringVar(&eppServiceName, "epp-service-name", "kubeairunway-epp",
+		"Name of the Endpoint Picker Proxy (EPP) Service for InferencePool.")
+	flag.IntVar(&eppServicePort, "epp-service-port", 9002,
+		"Port of the Endpoint Picker Proxy (EPP) Service.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -343,6 +349,8 @@ func main() {
 	gatewayDetector := gateway.NewDetector(dc)
 	gatewayDetector.ExplicitGatewayName = gatewayName
 	gatewayDetector.ExplicitGatewayNamespace = gatewayNamespace
+	gatewayDetector.EPPServiceName = eppServiceName
+	gatewayDetector.EPPServicePort = int32(eppServicePort)
 
 	if err := (&controller.ModelDeploymentReconciler{
 		Client:                 mgr.GetClient(),
