@@ -73,6 +73,12 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		port = md.Status.Endpoint.Port
 	}
 
+	// Ensure model pods have the selector label for InferencePool
+	if err := r.labelModelPods(ctx, md); err != nil {
+		logger.V(1).Info("Could not label model pods", "error", err)
+		// Non-fatal: pods may not exist yet or provider may handle labels
+	}
+
 	// Create or update InferencePool
 	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
 		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
@@ -501,6 +507,53 @@ func (r *ModelDeploymentReconciler) resolveServicePort(ctx context.Context, serv
 		return svc.Spec.Ports[0].Port
 	}
 	return 0
+}
+
+// labelModelPods finds pods backing the model's service and ensures they have the
+// kubeairunway.ai/model-deployment label so the InferencePool selector can match them.
+func (r *ModelDeploymentReconciler) labelModelPods(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+	if md.Status.Endpoint == nil || md.Status.Endpoint.Service == "" {
+		return nil
+	}
+
+	// Get the service to find its selector
+	var svc corev1.Service
+	if err := r.Get(ctx, client.ObjectKey{Name: md.Status.Endpoint.Service, Namespace: md.Namespace}, &svc); err != nil {
+		return fmt.Errorf("failed to get service: %w", err)
+	}
+
+	if len(svc.Spec.Selector) == 0 {
+		return nil
+	}
+
+	// List pods matching the service selector
+	var pods corev1.PodList
+	if err := r.List(ctx, &pods,
+		client.InNamespace(md.Namespace),
+		client.MatchingLabels(svc.Spec.Selector),
+	); err != nil {
+		return fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	labelKey := kubeairunwayv1alpha1.LabelModelDeployment
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if pod.Labels[labelKey] == md.Name {
+			continue // already labeled
+		}
+		patch := client.MergeFrom(pod.DeepCopy())
+		if pod.Labels == nil {
+			pod.Labels = make(map[string]string)
+		}
+		pod.Labels[labelKey] = md.Name
+		if err := r.Patch(ctx, pod, patch); err != nil {
+			log.FromContext(ctx).V(1).Info("Could not label pod", "pod", pod.Name, "error", err)
+			continue
+		}
+		log.FromContext(ctx).V(1).Info("Labeled pod for InferencePool", "pod", pod.Name)
+	}
+
+	return nil
 }
 
 // discoverModelName probes the model server's /v1/models endpoint to find the actual served model name.

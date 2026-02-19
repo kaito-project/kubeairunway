@@ -306,7 +306,7 @@ jobs:
           echo "=== Istio Logs ==="
           kubectl logs -n istio-system -l app=istiod --tail=100
           echo "=== EPP Logs ==="
-          kubectl logs -n default -l app.kubernetes.io/name=inferencepool --tail=100 2>/dev/null || echo "No EPP logs"
+          kubectl logs -n default -l app.kubernetes.io/name=kubeairunway-epp --tail=100 2>/dev/null || echo "No EPP logs"
           echo "=== Gateway Pods ==="
           kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o yaml
           echo "=== Events ==="
