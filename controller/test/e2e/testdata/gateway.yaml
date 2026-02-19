@@ -5,6 +5,9 @@ metadata:
   namespace: default
   labels:
     kubeairunway.ai/inference-gateway: "true"
+  annotations:
+    # Use NodePort in Kind since LoadBalancer is not available
+    networking.istio.io/service-type: NodePort
 spec:
   gatewayClassName: istio
   listeners:

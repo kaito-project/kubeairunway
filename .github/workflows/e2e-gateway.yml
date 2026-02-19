@@ -81,6 +81,9 @@ jobs:
               break
             fi
             echo "Attempt $i/30: programmed=$PROGRAMMED"
+            if [ "$i" = "30" ]; then
+              echo "⚠️ Gateway not programmed after 30 attempts, continuing anyway (Kind may not support LoadBalancer)"
+            fi
             sleep 5
           done
 
