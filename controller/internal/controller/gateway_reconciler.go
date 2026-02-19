@@ -18,7 +18,11 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -79,7 +83,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 	}
 
 	// Update gateway status
-	modelName := md.ResolvedGatewayModelName()
+	modelName := r.resolveModelName(ctx, md)
 	endpoint := r.resolveGatewayEndpoint(ctx, gwConfig)
 	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
 		Endpoint:  endpoint,
@@ -230,6 +234,73 @@ func (r *ModelDeploymentReconciler) resolveGatewayEndpoint(ctx context.Context, 
 		if addr.Value != "" {
 			return addr.Value
 		}
+	}
+	return ""
+}
+
+// resolveModelName determines the model name for gateway routing.
+// Priority: spec.gateway.modelName > spec.model.servedName > auto-discovered from /v1/models > spec.model.id
+func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) string {
+	// Use explicit overrides first
+	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
+		return md.Spec.Gateway.ModelName
+	}
+	if md.Spec.Model.ServedName != "" {
+		return md.Spec.Model.ServedName
+	}
+
+	// Auto-discover from the running model server
+	if md.Status.Endpoint != nil && md.Status.Endpoint.Service != "" {
+		port := md.Status.Endpoint.Port
+		if port == 0 {
+			port = 8000
+		}
+		if discovered := r.discoverModelName(ctx, md.Status.Endpoint.Service, md.Namespace, port); discovered != "" {
+			log.FromContext(ctx).Info("Auto-discovered model name from server", "name", md.Name, "modelName", discovered)
+			return discovered
+		}
+	}
+
+	return md.Spec.Model.ID
+}
+
+// discoverModelName probes the model server's /v1/models endpoint to find the actual served model name.
+func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, service, namespace string, port int32) string {
+	url := fmt.Sprintf("http://%s.%s.svc:%d/v1/models", service, namespace, port)
+
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return ""
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.FromContext(ctx).V(1).Info("Could not probe model endpoint", "url", url, "error", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return ""
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return ""
+	}
+
+	if len(result.Data) > 0 && result.Data[0].ID != "" {
+		return result.Data[0].ID
 	}
 	return ""
 }
