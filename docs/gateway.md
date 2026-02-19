@@ -84,7 +84,7 @@ Follow the installation guide for your chosen implementation:
 - **GKE Gateway:** [enable Gateway controller](https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways)
 
 > [!NOTE]
-> **Istio:** Inference Extension support must be explicitly enabled by setting `ENABLE_INFERENCE_EXTENSION=true` on the `istiod` deployment (or passing `--set values.pilot.env.ENABLE_INFERENCE_EXTENSION=true` during `istioctl install`). Without this, Istio ignores InferencePool backend refs in HTTPRoutes. The `minimal` profile is sufficient — Istio auto-creates a gateway deployment and LoadBalancer Service when you create a Gateway resource. See the [Istio Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/inference/) for full details.
+> **Istio:** Inference Extension support must be explicitly enabled by setting `ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true` on the `istiod` deployment (or passing `--set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true` during `istioctl install`). Without this, Istio ignores InferencePool backend refs in HTTPRoutes. The `minimal` profile is sufficient — Istio auto-creates a gateway deployment and LoadBalancer Service when you create a Gateway resource. See the [Istio Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/inference/) for full details.
 
 ### Step 4: Create a Gateway Resource
 
