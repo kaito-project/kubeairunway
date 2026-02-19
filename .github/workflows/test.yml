@@ -1,4 +1,4 @@
-name: Unit Tests
+name: CI
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +21,9 @@ jobs:
 
       - name: Install dependencies
         run: bun ci
+
+      - name: Build
+        run: make compile
 
       - name: Run backend tests with coverage
         run: |

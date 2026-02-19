@@ -221,40 +221,6 @@ export interface DeploymentStatus {
   };
 }
 
-// Legacy DeploymentConfig for backward compatibility with existing UI
-export interface DeploymentConfig {
-  name: string;
-  namespace: string;
-  modelId: string;
-  engine: Engine;
-  mode: DeploymentMode;
-  provider?: string;
-  servedModelName?: string;
-  routerMode: RouterMode;
-  replicas: number;
-  hfTokenSecret: string;
-  contextLength?: number;
-  enforceEager: boolean;
-  enablePrefixCaching: boolean;
-  trustRemoteCode: boolean;
-  resources?: {
-    gpu: number;
-    memory?: string;
-  };
-  engineArgs?: Record<string, unknown>;
-  prefillReplicas?: number;
-  decodeReplicas?: number;
-  prefillGpus?: number;
-  decodeGpus?: number;
-  modelSource?: 'premade' | 'huggingface' | 'vllm';
-  premadeModel?: string;
-  ggufFile?: string;
-  ggufRunMode?: GgufRunMode;
-  imageRef?: string;
-  computeType?: 'cpu' | 'gpu';
-  maxModelLen?: number;
-}
-
 // ==================== Conversion Functions ====================
 
 export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeploymentSpec {
