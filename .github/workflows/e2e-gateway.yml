@@ -272,22 +272,24 @@ jobs:
           echo "Node IP: $NODE_IP"
 
           # Send inference request through the gateway NodePort
-          echo "Sending inference request through gateway..."
+          echo "Sending inference request through gateway at http://${NODE_IP}:${NODE_PORT}..."
           for i in $(seq 1 12); do
-            RESPONSE=$(curl -s --max-time 30 http://${NODE_IP}:${NODE_PORT}/v1/chat/completions \
+            HTTP_CODE=$(curl -s -o /tmp/response.json -w '%{http_code}' --max-time 30 \
+              http://${NODE_IP}:${NODE_PORT}/v1/chat/completions \
               -H "Content-Type: application/json" \
               -d "{
                 \"model\": \"$MODEL_NAME\",
                 \"messages\": [{\"role\": \"user\", \"content\": \"Say hello in one word.\"}],
                 \"max_tokens\": 10
-              }" 2>&1)
+              }" 2>&1 || true)
+            RESPONSE=$(cat /tmp/response.json 2>/dev/null || echo "")
 
-            if echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
+            if [ "$HTTP_CODE" = "200" ] && echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
               echo "Response: $RESPONSE"
               echo "✅ Inference through gateway succeeded"
               exit 0
             fi
-            echo "Attempt $i/12: $RESPONSE"
+            echo "Attempt $i/12: HTTP=$HTTP_CODE body=$RESPONSE"
             sleep 10
           done
           echo "❌ Inference through gateway failed"
