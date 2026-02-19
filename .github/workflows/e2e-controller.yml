@@ -54,10 +54,6 @@ jobs:
         run: |
           kubectl wait --for=jsonpath='{.status.ready}'=true inferenceproviderconfig/kaito --timeout=120s
 
-      - name: Pre-pull inference image
-        run: |
-          docker exec kubeairunway-e2e-control-plane crictl pull ghcr.io/kaito-project/aikit/llama3.2:1b
-
       - name: Create CPU-only ModelDeployment
         run: |
           kubectl apply -f controller/test/e2e/testdata/cpu-modeldeployment.yaml
