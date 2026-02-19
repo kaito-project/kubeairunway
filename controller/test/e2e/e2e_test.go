@@ -431,9 +431,9 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		It("should serve inference requests", func() {
-			By("starting port-forward to the ModelDeployment service")
+			By("starting port-forward to the ModelDeployment pod")
 			portForwardCmd = exec.Command("kubectl", "port-forward",
-				"svc/llama-cpu-e2e", "8081:5000", "-n", "default")
+				"pod/llama-cpu-e2e-0", "8081:5000", "-n", "default")
 			// Start port-forward in the background
 			portForwardCmd.Stdout = GinkgoWriter
 			portForwardCmd.Stderr = GinkgoWriter
