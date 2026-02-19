@@ -84,6 +84,15 @@ rules:
   - update
   - watch
 - apiGroups:
+  - inference.networking.x-k8s.io
+  resources:
+  - inferencemodelrewrites
+  - inferenceobjectives
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - kubeairunway.ai
   resources:
   - inferenceproviderconfigs
