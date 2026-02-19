@@ -248,6 +248,11 @@ func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *kubeai
 				Resources: []string{"leases"},
 				Verbs:     []string{"create", "get", "update"},
 			},
+			{
+				APIGroups: []string{"inference.networking.x-k8s.io"},
+				Resources: []string{"inferenceobjectives", "inferencemodelrewrites"},
+				Verbs:     []string{"get", "watch", "list"},
+			},
 		}
 		return ctrl.SetControllerReference(md, role, r.Scheme)
 	}); err != nil {
