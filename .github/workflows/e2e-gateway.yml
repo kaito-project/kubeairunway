@@ -130,8 +130,19 @@ jobs:
 
       - name: Verify HTTPRoute created
         run: |
-          echo "Checking HTTPRoute..."
-          kubectl get httproute llama-gw-e2e -n default -o yaml
+          echo "Waiting for HTTPRoute..."
+          for i in $(seq 1 30); do
+            if kubectl get httproute llama-gw-e2e -n default > /dev/null 2>&1; then
+              echo "✅ HTTPRoute found"
+              break
+            fi
+            echo "Attempt $i/30: HTTPRoute not found yet"
+            if [ "$i" = "30" ]; then
+              echo "❌ Timed out waiting for HTTPRoute"
+              exit 1
+            fi
+            sleep 5
+          done
 
           # Verify parent ref points to gateway
           PARENT=$(kubectl get httproute llama-gw-e2e -n default \
