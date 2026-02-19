@@ -58,6 +58,7 @@ type Detector struct {
 	// EPP (Endpoint Picker Proxy) configuration
 	EPPServiceName string
 	EPPServicePort int32
+	EPPImage       string
 }
 
 // NewDetector creates a new Gateway API detector

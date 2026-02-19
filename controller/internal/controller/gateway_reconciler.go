@@ -25,7 +25,9 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -75,6 +77,12 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
 		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
 		return fmt.Errorf("reconciling InferencePool: %w", err)
+	}
+
+	// Create or update EPP (Endpoint Picker Proxy) for the InferencePool
+	if err := r.reconcileEPP(ctx, md); err != nil {
+		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
+		return fmt.Errorf("reconciling EPP: %w", err)
 	}
 
 	// Create or update HTTPRoute
@@ -174,6 +182,215 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 	log.FromContext(ctx).V(1).Info("InferencePool reconciled", "name", pool.Name, "result", result)
 	return nil
 }
+
+// reconcileEPP creates or updates the Endpoint Picker Proxy deployment and service
+// for a ModelDeployment's InferencePool.
+func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+	eppName := r.GatewayDetector.EPPServiceName
+	if eppName == "" {
+		eppName = "kubeairunway-epp"
+	}
+	eppPort := r.GatewayDetector.EPPServicePort
+	if eppPort == 0 {
+		eppPort = 9002
+	}
+	eppImage := r.GatewayDetector.EPPImage
+	if eppImage == "" {
+		eppImage = "us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/epp:main"
+	}
+
+	labels := map[string]string{
+		"app.kubernetes.io/name":       "kubeairunway-epp",
+		"app.kubernetes.io/instance":   md.Name,
+		"app.kubernetes.io/managed-by": "kubeairunway",
+	}
+
+	// ServiceAccount
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      eppName,
+			Namespace: md.Namespace,
+		},
+	}
+	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, sa, func() error {
+		return ctrl.SetControllerReference(md, sa, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("failed to create/update EPP ServiceAccount: %w", err)
+	}
+
+	// Role for EPP (needs to watch pods and inferencepools)
+	role := &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      eppName,
+			Namespace: md.Namespace,
+		},
+	}
+	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, role, func() error {
+		role.Rules = []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods"},
+				Verbs:     []string{"get", "watch", "list"},
+			},
+			{
+				APIGroups: []string{"inference.networking.k8s.io"},
+				Resources: []string{"inferencepools"},
+				Verbs:     []string{"get", "watch", "list"},
+			},
+			{
+				APIGroups: []string{"coordination.k8s.io"},
+				Resources: []string{"leases"},
+				Verbs:     []string{"create", "get", "update"},
+			},
+		}
+		return ctrl.SetControllerReference(md, role, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("failed to create/update EPP Role: %w", err)
+	}
+
+	// RoleBinding
+	rb := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      eppName,
+			Namespace: md.Namespace,
+		},
+	}
+	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, rb, func() error {
+		rb.RoleRef = rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "Role",
+			Name:     eppName,
+		}
+		rb.Subjects = []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      eppName,
+				Namespace: md.Namespace,
+			},
+		}
+		return ctrl.SetControllerReference(md, rb, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("failed to create/update EPP RoleBinding: %w", err)
+	}
+
+	// ConfigMap for EPP plugins config
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      eppName,
+			Namespace: md.Namespace,
+		},
+	}
+	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, cm, func() error {
+		cm.Data = map[string]string{
+			"default-plugins.yaml": `apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+`,
+		}
+		return ctrl.SetControllerReference(md, cm, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("failed to create/update EPP ConfigMap: %w", err)
+	}
+
+	// Deployment
+	replicas := int32(1)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      eppName,
+			Namespace: md.Namespace,
+		},
+	}
+	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, dep, func() error {
+		dep.Spec = appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Spec: corev1.PodSpec{
+					ServiceAccountName:            eppName,
+					TerminationGracePeriodSeconds: int64Ptr(130),
+					Containers: []corev1.Container{
+						{
+							Name:            "epp",
+							Image:           eppImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Args: []string{
+								"--pool-name", md.Name,
+								"--pool-namespace", md.Namespace,
+								"--zap-encoder", "json",
+								"--config-file", "/config/default-plugins.yaml",
+								"--tracing=false",
+							},
+							Ports: []corev1.ContainerPort{
+								{Name: "grpc", ContainerPort: eppPort},
+								{Name: "grpc-health", ContainerPort: 9003},
+							},
+							Env: []corev1.EnvVar{
+								{Name: "NAMESPACE", ValueFrom: &corev1.EnvVarSource{
+									FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+								}},
+								{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{
+									FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"},
+								}},
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler:        corev1.ProbeHandler{GRPC: &corev1.GRPCAction{Port: 9003, Service: strPtr("inference-extension")}},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       10,
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler:  corev1.ProbeHandler{GRPC: &corev1.GRPCAction{Port: 9003, Service: strPtr("inference-extension")}},
+								PeriodSeconds: 2,
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "plugins-config", MountPath: "/config"},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "plugins-config",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{Name: eppName},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		return ctrl.SetControllerReference(md, dep, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("failed to create/update EPP Deployment: %w", err)
+	}
+
+	// Service
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      eppName,
+			Namespace: md.Namespace,
+		},
+	}
+	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, svc, func() error {
+		svc.Spec = corev1.ServiceSpec{
+			Selector: labels,
+			Ports: []corev1.ServicePort{
+				{Name: "grpc-ext-proc", Protocol: corev1.ProtocolTCP, Port: eppPort},
+			},
+			Type: corev1.ServiceTypeClusterIP,
+		}
+		return ctrl.SetControllerReference(md, svc, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("failed to create/update EPP Service: %w", err)
+	}
+
+	log.FromContext(ctx).V(1).Info("EPP reconciled", "name", eppName, "image", eppImage)
+	return nil
+}
+
+func int64Ptr(i int64) *int64 { return &i }
+func strPtr(s string) *string { return &s }
 
 // reconcileHTTPRoute creates or updates the HTTPRoute for a ModelDeployment.
 func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig) error {

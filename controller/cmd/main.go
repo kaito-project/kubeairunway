@@ -154,6 +154,7 @@ func main() {
 	var gatewayNamespace string
 	var eppServiceName string
 	var eppServicePort int
+	var eppImage string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -183,6 +184,9 @@ func main() {
 		"Name of the Endpoint Picker Proxy (EPP) Service for InferencePool.")
 	flag.IntVar(&eppServicePort, "epp-service-port", 9002,
 		"Port of the Endpoint Picker Proxy (EPP) Service.")
+	flag.StringVar(&eppImage, "epp-image",
+		"us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/epp:main",
+		"Container image for the Endpoint Picker Proxy (EPP).")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -357,6 +361,7 @@ func main() {
 	gatewayDetector.ExplicitGatewayNamespace = gatewayNamespace
 	gatewayDetector.EPPServiceName = eppServiceName
 	gatewayDetector.EPPServicePort = int32(eppServicePort)
+	gatewayDetector.EPPImage = eppImage
 
 	if err := (&controller.ModelDeploymentReconciler{
 		Client:                 mgr.GetClient(),

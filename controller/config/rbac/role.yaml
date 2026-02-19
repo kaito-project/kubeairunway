@@ -7,10 +7,28 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  - serviceaccounts
   - services
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - gateway.networking.k8s.io
@@ -78,3 +96,16 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  - roles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

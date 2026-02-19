@@ -189,17 +189,22 @@ jobs:
           fi
           echo "✅ Gateway status ready"
 
-      - name: Install EPP for InferencePool
+      - name: Wait for EPP to be ready
         run: |
-          helm install llama-gw-e2e \
-            oci://us-central1-docker.pkg.dev/k8s-staging-charts/gateway-api-inference-extension/inferencepool \
-            --version v0.3.0 \
-            --set provider.name=istio \
-            --set inferencePool.modelServers.matchLabels."kubeairunway\.ai/model-deployment"=llama-gw-e2e \
-            --set inferencePool.targetPorts[0].number=5000 \
-            --namespace default \
-            --wait --timeout 120s
-          echo "✅ EPP installed"
+          echo "Waiting for EPP deployment..."
+          for i in $(seq 1 30); do
+            READY=$(kubectl get deployment kubeairunway-epp -n default -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            if [ "$READY" = "1" ]; then
+              echo "✅ EPP is ready"
+              break
+            fi
+            echo "Attempt $i/30: EPP readyReplicas=$READY"
+            if [ "$i" = "30" ]; then
+              echo "❌ Timed out waiting for EPP"
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Test inference through gateway
         run: |
