@@ -26,6 +26,8 @@ jobs:
         run: |
           go install sigs.k8s.io/kind@latest
           kind create cluster --name kubeairunway-gw-e2e --wait 120s
+          # Allow workloads on control plane node for LoadBalancer access
+          kubectl label node kubeairunway-gw-e2e-control-plane node.kubernetes.io/exclude-from-external-load-balancers- 2>/dev/null || true
 
       - name: Install Gateway API CRDs
         run: |
@@ -258,18 +260,21 @@ jobs:
             -o jsonpath='{.status.gateway.modelName}')
           echo "Model name: $MODEL_NAME"
 
-          # Port-forward to the Istio gateway pod
-          GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway \
-            -o jsonpath='{.items[0].metadata.name}')
-          echo "Gateway pod: $GW_POD"
+          # Get the NodePort for the gateway service
+          NODE_PORT=$(kubectl get svc inference-gateway-istio -n default \
+            -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || \
+            kubectl get svc inference-gateway-istio -n default \
+            -o jsonpath='{.spec.ports[?(@.port==80)].nodePort}')
+          echo "NodePort: $NODE_PORT"
 
-          kubectl port-forward "pod/$GW_POD" 8080:80 -n default &
-          sleep 5
+          # Get the node IP (Kind control plane)
+          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+          echo "Node IP: $NODE_IP"
 
-          # Send inference request through the gateway
+          # Send inference request through the gateway NodePort
           echo "Sending inference request through gateway..."
           for i in $(seq 1 12); do
-            RESPONSE=$(curl -s --max-time 30 http://localhost:8080/v1/chat/completions \
+            RESPONSE=$(curl -s --max-time 30 http://${NODE_IP}:${NODE_PORT}/v1/chat/completions \
               -H "Content-Type: application/json" \
               -d "{
                 \"model\": \"$MODEL_NAME\",
