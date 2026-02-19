@@ -300,11 +300,3 @@ curl http://${GATEWAY_IP}/v1/chat/completions \
    kubectl get inferencepool <deployment-name> -o yaml
    kubectl get pods -l kubeairunway.ai/model-deployment=<deployment-name>
    ```
-
-### Istio-specific issues
-
-Ensure the `ENABLE_INFERENCE_EXTENSION=true` environment variable is set on the `istiod` deployment:
-
-```bash
-kubectl set env deployment/istiod -n istio-system ENABLE_INFERENCE_EXTENSION=true
-```
