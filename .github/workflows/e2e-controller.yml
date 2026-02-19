@@ -1,0 +1,126 @@
+name: E2E Controller Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e-controller:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KAITO_INSTALLED: "true"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: controller/go.sum
+
+      - name: Setup Kind
+        run: |
+          go install sigs.k8s.io/kind@latest
+          kind create cluster --name kubeairunway-e2e --wait 120s
+
+      - name: Install KAITO operator
+        run: |
+          helm repo add kaito https://kaito-project.github.io/kaito/charts/kaito
+          helm install kaito-workspace kaito/workspace \
+            --namespace kaito-workspace \
+            --create-namespace \
+            --set featureGates.disableNodeAutoProvisioning=true
+          kubectl wait --for=condition=Available deployment -n kaito-workspace -l app.kubernetes.io/name=workspace --timeout=120s
+
+      - name: Build and deploy controller
+        run: |
+          make controller-docker-build CONTROLLER_IMG=kubeairunway-controller:e2e
+          kind load docker-image kubeairunway-controller:e2e --name kubeairunway-e2e
+          make controller-deploy CONTROLLER_IMG=kubeairunway-controller:e2e
+          kubectl wait --for=condition=Available deployment -n kubeairunway-system -l control-plane=controller-manager --timeout=120s
+
+      - name: Build and deploy KAITO provider
+        run: |
+          make kaito-provider-docker-build KAITO_PROVIDER_IMG=kaito-provider:e2e
+          kind load docker-image kaito-provider:e2e --name kubeairunway-e2e
+          make kaito-provider-deploy KAITO_PROVIDER_IMG=kaito-provider:e2e
+          kubectl wait --for=condition=Available deployment -n kubeairunway-system -l control-plane=kaito-provider --timeout=120s
+
+      - name: Wait for provider registration
+        run: |
+          kubectl wait --for=jsonpath='{.status.ready}'=true inferenceproviderconfig/kaito --timeout=120s
+
+      - name: Pre-pull inference image
+        run: |
+          docker pull ghcr.io/kaito-project/aikit/llama3.2:1b
+          kind load docker-image ghcr.io/kaito-project/aikit/llama3.2:1b --name kubeairunway-e2e
+
+      - name: Create CPU-only ModelDeployment
+        run: |
+          kubectl apply -f controller/test/e2e/testdata/cpu-modeldeployment.yaml
+
+      - name: Wait for ModelDeployment to reach Running phase
+        run: |
+          kubectl wait --for=condition=WorkspaceSucceeded workspace/llama-cpu-e2e -n default --timeout=600s 2>/dev/null || true
+
+          echo "Waiting for ModelDeployment to reach Running phase..."
+          for i in $(seq 1 60); do
+            PHASE=$(kubectl get modeldeployment llama-cpu-e2e -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "Attempt $i/60: phase=$PHASE"
+            if [ "$PHASE" = "Running" ]; then
+              echo "✅ ModelDeployment is Running"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ Timed out waiting for ModelDeployment to reach Running phase"
+          exit 1
+
+      - name: Test inference endpoint
+        run: |
+          kubectl port-forward svc/llama-cpu-e2e 8080:5000 -n default &
+          sleep 5
+
+          RESPONSE=$(curl -sf http://localhost:8080/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -d '{
+              "model": "llama-3.2-1b-instruct",
+              "messages": [{"role": "user", "content": "Say hello in one word."}],
+              "max_tokens": 10
+            }')
+
+          echo "Response: $RESPONSE"
+
+          echo "$RESPONSE" | jq -e '.choices' > /dev/null
+          echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null
+
+          echo "✅ Inference endpoint responded with valid chat completion"
+
+      - name: Collect debug info
+        if: failure()
+        run: |
+          echo "=== ModelDeployments ==="
+          kubectl get modeldeployments -A -o yaml
+          echo "=== InferenceProviderConfigs ==="
+          kubectl get inferenceproviderconfigs -o yaml
+          echo "=== Workspaces ==="
+          kubectl get workspaces -A -o yaml
+          echo "=== Controller Logs ==="
+          kubectl logs -n kubeairunway-system -l control-plane=controller-manager --tail=100
+          echo "=== KAITO Provider Logs ==="
+          kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
+          echo "=== Events ==="
+          kubectl get events -A --sort-by=.lastTimestamp
+          echo "=== Pods ==="
+          kubectl get pods -A
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kind delete cluster --name kubeairunway-e2e

@@ -344,6 +344,12 @@ var _ = Describe("Manager", Ordered, func() {
 	})
 
 	Context("ModelDeployment Lifecycle", Ordered, func() {
+		// These tests require KAITO operator and provider to be installed.
+		// Skip when running standalone `make test-e2e` without KAITO.
+		if os.Getenv("KAITO_INSTALLED") != "true" {
+			return
+		}
+
 		var portForwardCmd *exec.Cmd
 
 		AfterAll(func() {
@@ -439,7 +445,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 			By("sending an inference request")
 			verifyChatCompletion := func(g Gomega) {
-				requestBody := `{"model":"llama3.2:1b","messages":[{"role":"user","content":"Say hello in one word."}],"max_tokens":10}`
+				requestBody := `{"model":"llama-3.2-1b-instruct","messages":[{"role":"user","content":"Say hello in one word."}],"max_tokens":10}`
 				cmd := exec.Command("curl", "-s", "-X", "POST",
 					"http://localhost:8081/v1/chat/completions",
 					"-H", "Content-Type: application/json",
