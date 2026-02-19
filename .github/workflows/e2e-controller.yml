@@ -58,8 +58,7 @@ jobs:
 
       - name: Pre-pull inference image
         run: |
-          docker pull ghcr.io/kaito-project/aikit/llama3.2:1b
-          kind load docker-image ghcr.io/kaito-project/aikit/llama3.2:1b --name kubeairunway-e2e
+          docker exec kubeairunway-e2e-control-plane crictl pull ghcr.io/kaito-project/aikit/llama3.2:1b
 
       - name: Create CPU-only ModelDeployment
         run: |
