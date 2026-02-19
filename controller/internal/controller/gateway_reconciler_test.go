@@ -464,6 +464,77 @@ func TestGateway_StatusServedNameFallback(t *testing.T) {
 	}
 }
 
+func TestGateway_ModelNameAutoDiscoveryFallsBackToModelID(t *testing.T) {
+	// When no server is reachable, resolveModelName should fall back to spec.model.id
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	md.Status.Endpoint = &kubeairunwayv1alpha1.EndpointStatus{
+		Service: "nonexistent-svc",
+		Port:    8080,
+	}
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md)
+	ctx := context.Background()
+
+	name := r.resolveModelName(ctx, md)
+	if name != "meta-llama/Llama-3-8B" {
+		t.Errorf("expected fallback to spec.model.id %q, got %q", "meta-llama/Llama-3-8B", name)
+	}
+}
+
+func TestGateway_ModelNameExplicitOverrideTakesPriority(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	md.Spec.Gateway = &kubeairunwayv1alpha1.GatewaySpec{
+		ModelName: "my-override",
+	}
+	md.Spec.Model.ServedName = "should-not-use"
+	md.Status.Endpoint = &kubeairunwayv1alpha1.EndpointStatus{
+		Service: "some-svc",
+		Port:    8080,
+	}
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md)
+	ctx := context.Background()
+
+	name := r.resolveModelName(ctx, md)
+	if name != "my-override" {
+		t.Errorf("expected explicit override %q, got %q", "my-override", name)
+	}
+}
+
+func TestGateway_ModelNameServedNameSkipsDiscovery(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	md.Spec.Model.ServedName = "explicit-served"
+	md.Status.Endpoint = &kubeairunwayv1alpha1.EndpointStatus{
+		Service: "some-svc",
+		Port:    8080,
+	}
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md)
+	ctx := context.Background()
+
+	name := r.resolveModelName(ctx, md)
+	if name != "explicit-served" {
+		t.Errorf("expected served name %q, got %q", "explicit-served", name)
+	}
+}
+
+func TestGateway_ModelNameNoEndpointFallsBack(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	md.Status.Endpoint = nil // no endpoint info
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md)
+	ctx := context.Background()
+
+	name := r.resolveModelName(ctx, md)
+	if name != "meta-llama/Llama-3-8B" {
+		t.Errorf("expected fallback to spec.model.id %q, got %q", "meta-llama/Llama-3-8B", name)
+	}
+}
+
 func TestGateway_CleanupNonExistentResourcesNoError(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")

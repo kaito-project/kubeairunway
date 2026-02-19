@@ -2,7 +2,7 @@
 
 ## Overview
 
-KubeAIRunway integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8s.io/geps/gep-3567/) to provide a unified inference gateway. Instead of port-forwarding to each model's Service individually, you deploy a single Gateway and call **all** models through one endpoint using the standard OpenAI-compatible API. The Gateway routes requests to the correct model based on the `model` field in the request body.
+KubeAIRunway integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8swh.io/geps/gep-3567/) to provide a unified inference gateway. Instead of port-forwarding to each model's Service individually, you deploy a single Gateway and call **all** models through one endpoint using the standard OpenAI-compatible API. The Gateway routes requests to the correct model based on the `model` field in the request body.
 
 When gateway integration is active, KubeAIRunway automatically creates an **InferencePool** and an **HTTPRoute** for each `ModelDeployment`. You only need to provide the Gateway itself.
 
@@ -176,14 +176,25 @@ spec:
   gateway:
     # Disable gateway integration for this specific deployment
     enabled: false
-    # Override the model name used in routing (defaults to spec.model.servedName or spec.model.id)
+    # Override the model name used in routing (defaults to auto-discovered from /v1/models, or spec.model.id)
     modelName: "my-custom-model-name"
 ```
 
 | Field | Default | Description |
 |---|---|---|
 | `spec.gateway.enabled` | `true` (when Gateway detected) | Set to `false` to skip InferencePool/HTTPRoute creation |
-| `spec.gateway.modelName` | `spec.model.servedName` or `spec.model.id` | Model name used for routing and in API requests |
+| `spec.gateway.modelName` | Auto-discovered or `spec.model.id` | Model name used for routing and in API requests |
+
+### Model Name Resolution
+
+The controller resolves the gateway model name using this priority:
+
+1. **`spec.gateway.modelName`** — explicit override, always wins
+2. **`spec.model.servedName`** — user-specified served name
+3. **Auto-discovered from `/v1/models`** — the controller probes the running model server's OpenAI-compatible `/v1/models` endpoint and uses the first model ID returned. This handles baked-in images where the served name differs from `spec.model.id`.
+4. **`spec.model.id`** — final fallback
+
+Auto-discovery runs only when the deployment reaches `Running` phase. If the probe fails (timeout, error, no models), it silently falls through to the next level.
 
 ## Using the Gateway
 
