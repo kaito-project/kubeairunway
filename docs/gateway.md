@@ -2,7 +2,7 @@
 
 ## Overview
 
-KubeAIRunway integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8swh.io/geps/gep-3567/) to provide a unified inference gateway. Instead of port-forwarding to each model's Service individually, you deploy a single Gateway and call **all** models through one endpoint using the standard OpenAI-compatible API. The Gateway routes requests to the correct model based on the `model` field in the request body.
+KubeAIRunway integrates with the [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) to provide a unified inference gateway. Instead of port-forwarding to each model's Service individually, you deploy a single Gateway and call **all** models through one endpoint using the standard OpenAI-compatible API. The Gateway routes requests to the correct model based on the `model` field in the request body.
 
 When gateway integration is active, KubeAIRunway automatically creates an **InferencePool** and an **HTTPRoute** for each `ModelDeployment`. You only need to provide the Gateway itself.
 
