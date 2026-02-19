@@ -4,7 +4,6 @@ metadata:
   name: llama-gw-e2e
 spec:
   model:
-    id: "llama3.2:1b"
     source: custom
   resources:
     cpu: "4"

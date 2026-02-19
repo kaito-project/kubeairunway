@@ -159,15 +159,10 @@ func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured, 
 
 // extractEndpoint extracts service endpoint information for the Workspace
 func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *kubeairunwayv1alpha1.EndpointStatus {
-	port := defaultKAITOPort
-	// Template-based workspaces (e.g. llamacpp) use a different port
-	if _, hasTemplate, _ := unstructured.NestedMap(upstream.Object, "inference", "template"); hasTemplate {
-		port = DefaultLlamaCppPort
-	}
 	return &kubeairunwayv1alpha1.EndpointStatus{
-		// KAITO creates a service with the same name as the Workspace
+		// KAITO creates a service with the same name as the Workspace, always on port 80
 		Service: upstream.GetName(),
-		Port:    port,
+		Port:    defaultKAITOPort,
 	}
 }
 

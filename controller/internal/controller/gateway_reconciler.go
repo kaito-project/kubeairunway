@@ -25,6 +25,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -251,7 +252,11 @@ func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *ku
 
 	// Auto-discover from the running model server
 	if md.Status.Endpoint != nil && md.Status.Endpoint.Service != "" {
-		port := md.Status.Endpoint.Port
+		// Look up the actual service port (status.endpoint.port may be the container port)
+		port := r.resolveServicePort(ctx, md.Status.Endpoint.Service, md.Namespace)
+		if port == 0 {
+			port = md.Status.Endpoint.Port
+		}
 		if port == 0 {
 			port = 8000
 		}
@@ -262,6 +267,23 @@ func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *ku
 	}
 
 	return md.Spec.Model.ID
+}
+
+// resolveServicePort looks up the first HTTP port on the named service.
+func (r *ModelDeploymentReconciler) resolveServicePort(ctx context.Context, serviceName, namespace string) int32 {
+	var svc corev1.Service
+	if err := r.Get(ctx, client.ObjectKey{Name: serviceName, Namespace: namespace}, &svc); err != nil {
+		return 0
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Name == "http" || p.Port == 80 || p.Port == 8080 {
+			return p.Port
+		}
+	}
+	if len(svc.Spec.Ports) > 0 {
+		return svc.Spec.Ports[0].Port
+	}
+	return 0
 }
 
 // discoverModelName probes the model server's /v1/models endpoint to find the actual served model name.
