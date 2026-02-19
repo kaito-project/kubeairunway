@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/discovery"
@@ -11,6 +12,9 @@ import (
 )
 
 const (
+	// negativeCacheTTL is how long a "not available" result is cached before re-checking.
+	// Positive results are cached permanently since CRDs don't disappear.
+	negativeCacheTTL = 60 * time.Second
 	// InferencePoolCRDGroup is the API group for InferencePool
 	InferencePoolCRDGroup = "inference.networking.k8s.io"
 	// InferencePoolCRDVersion is the API version for InferencePool
@@ -45,6 +49,7 @@ type Detector struct {
 	discovery discovery.DiscoveryInterface
 	mu        sync.RWMutex
 	available *bool
+	checkedAt time.Time
 
 	// Explicit gateway override from flags
 	ExplicitGatewayName      string
@@ -63,32 +68,43 @@ func NewDetector(dc discovery.DiscoveryInterface) *Detector {
 }
 
 // IsAvailable checks if the Gateway API Inference Extension CRDs are installed.
-// Results are cached after first check.
+// Positive results are cached permanently. Negative results expire after negativeCacheTTL
+// so the controller can self-enable if CRDs are installed after startup.
 func (d *Detector) IsAvailable(ctx context.Context) bool {
 	d.mu.RLock()
 	if d.available != nil {
 		result := *d.available
+		expired := !result && time.Since(d.checkedAt) > negativeCacheTTL
 		d.mu.RUnlock()
-		return result
+		if !expired {
+			return result
+		}
+		// Negative cache expired, re-check below
+	} else {
+		d.mu.RUnlock()
 	}
-	d.mu.RUnlock()
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	// Double-check after acquiring write lock
 	if d.available != nil {
-		return *d.available
+		expired := !*d.available && time.Since(d.checkedAt) > negativeCacheTTL
+		if !expired {
+			return *d.available
+		}
 	}
 
 	log := log.FromContext(ctx)
 	available := d.checkCRDs(ctx)
 	d.available = &available
+	d.checkedAt = time.Now()
 
 	if available {
 		log.Info("Gateway API Inference Extension CRDs detected, gateway integration enabled")
 	} else {
-		log.Info("Gateway API Inference Extension CRDs not found, gateway integration disabled")
+		log.Info("Gateway API Inference Extension CRDs not found, gateway integration disabled",
+			"retryAfter", negativeCacheTTL)
 	}
 
 	return available
