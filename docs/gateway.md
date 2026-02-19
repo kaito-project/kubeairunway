@@ -123,6 +123,8 @@ metadata:
 spec:
   model:
     id: "Qwen/Qwen3-0.6B"
+  gateway:
+    enabled: true  # Optional: enabled by default when Gateway is detected
 ```
 
 The `ModelDeployment` status will show gateway information once ready:
