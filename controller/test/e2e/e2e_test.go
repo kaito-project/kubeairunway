@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -340,6 +341,171 @@ var _ = Describe("Manager", Ordered, func() {
 		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
 		//    strings.ToLower(<Kind>),
 		// ))
+	})
+
+	Context("ModelDeployment Lifecycle", Ordered, func() {
+		// These tests require KAITO operator and provider to be installed.
+		// Skip when running standalone `make test-e2e` without KAITO.
+		if os.Getenv("KAITO_INSTALLED") != "true" {
+			return
+		}
+
+		var portForwardCmd *exec.Cmd
+
+		AfterAll(func() {
+			By("cleaning up the CPU ModelDeployment")
+			cmd := exec.Command("kubectl", "delete", "-f",
+				"test/e2e/testdata/cpu-modeldeployment.yaml", "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+
+			By("cleaning up the invalid ModelDeployment")
+			cmd = exec.Command("kubectl", "delete", "modeldeployment", "invalid-test",
+				"--ignore-not-found", "-n", "default")
+			_, _ = utils.Run(cmd)
+
+			if portForwardCmd != nil && portForwardCmd.Process != nil {
+				_ = portForwardCmd.Process.Kill()
+			}
+		})
+
+		It("should have KAITO provider registered and ready", func() {
+			By("verifying InferenceProviderConfig 'kaito' exists and is ready")
+			verifyProvider := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "inferenceproviderconfig", "kaito")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "InferenceProviderConfig 'kaito' should exist")
+
+				cmd = exec.Command("kubectl", "get", "inferenceproviderconfig", "kaito",
+					"-o", "jsonpath={.status.ready}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true"), "KAITO provider should be ready")
+			}
+			Eventually(verifyProvider, 2*time.Minute, time.Second).Should(Succeed())
+		})
+
+		It("should create a CPU-only ModelDeployment and reach Running phase", func() {
+			By("applying the CPU ModelDeployment fixture")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/testdata/cpu-modeldeployment.yaml")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply CPU ModelDeployment")
+
+			By("waiting for ModelDeployment to reach Running phase")
+			verifyRunning := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "modeldeployment", "llama-cpu-e2e",
+					"-n", "default", "-o", "jsonpath={.status.phase}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Running"),
+					fmt.Sprintf("ModelDeployment phase is %q, expected Running", output))
+			}
+			Eventually(verifyRunning, 10*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("verifying status conditions exist")
+			verifyConditions := func(g Gomega) {
+				for _, condType := range []string{"Validated", "EngineSelected", "ProviderSelected"} {
+					cmd := exec.Command("kubectl", "get", "modeldeployment", "llama-cpu-e2e",
+						"-n", "default", "-o",
+						fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].status}", condType))
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("True"),
+						fmt.Sprintf("Condition %s should be True, got %q", condType, output))
+				}
+			}
+			Eventually(verifyConditions, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying provider is KAITO")
+			cmd = exec.Command("kubectl", "get", "modeldeployment", "llama-cpu-e2e",
+				"-n", "default", "-o", "jsonpath={.status.provider.name}")
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal("kaito"), "Expected provider to be 'kaito'")
+
+			By("verifying engine type is llamacpp")
+			cmd = exec.Command("kubectl", "get", "modeldeployment", "llama-cpu-e2e",
+				"-n", "default", "-o", "jsonpath={.status.engine.type}")
+			output, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal("llamacpp"), "Expected engine type to be 'llamacpp'")
+		})
+
+		It("should serve inference requests", func() {
+			By("starting port-forward to the ModelDeployment pod")
+			portForwardCmd = exec.Command("kubectl", "port-forward",
+				"pod/llama-cpu-e2e-0", "8081:5000", "-n", "default")
+			// Start port-forward in the background
+			portForwardCmd.Stdout = GinkgoWriter
+			portForwardCmd.Stderr = GinkgoWriter
+			err := portForwardCmd.Start()
+			Expect(err).NotTo(HaveOccurred(), "Failed to start port-forward")
+
+			// Give port-forward time to establish
+			time.Sleep(3 * time.Second)
+
+			By("sending an inference request")
+			verifyChatCompletion := func(g Gomega) {
+				requestBody := `{"model":"llama-3.2-1b-instruct","messages":[{"role":"user","content":"Say hello in one word."}],"max_tokens":10}`
+				cmd := exec.Command("curl", "-s", "-X", "POST",
+					"http://localhost:8081/v1/chat/completions",
+					"-H", "Content-Type: application/json",
+					"-d", requestBody,
+					"--max-time", "30")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Inference request failed")
+
+				_, _ = fmt.Fprintf(GinkgoWriter, "Inference response: %s\n", output)
+
+				var response map[string]interface{}
+				g.Expect(json.Unmarshal([]byte(output), &response)).To(Succeed(),
+					"Response should be valid JSON")
+				g.Expect(response).To(HaveKey("choices"), "Response should have 'choices' field")
+
+				choices, ok := response["choices"].([]interface{})
+				g.Expect(ok).To(BeTrue(), "choices should be an array")
+				g.Expect(choices).NotTo(BeEmpty(), "choices should not be empty")
+
+				firstChoice, ok := choices[0].(map[string]interface{})
+				g.Expect(ok).To(BeTrue())
+				message, ok := firstChoice["message"].(map[string]interface{})
+				g.Expect(ok).To(BeTrue(), "choice should have a message")
+				content, ok := message["content"].(string)
+				g.Expect(ok).To(BeTrue(), "message should have content")
+				g.Expect(content).NotTo(BeEmpty(), "content should not be empty")
+			}
+			Eventually(verifyChatCompletion, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("cleaning up port-forward")
+			if portForwardCmd.Process != nil {
+				_ = portForwardCmd.Process.Kill()
+				_, _ = portForwardCmd.Process.Wait()
+				portForwardCmd = nil
+			}
+		})
+
+		It("should reject invalid ModelDeployment", func() {
+			By("attempting to create a ModelDeployment with missing model.id for huggingface source")
+			invalidYAML := `apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: invalid-test
+  namespace: default
+spec:
+  model:
+    source: huggingface
+  engine:
+    type: vllm
+  resources:
+    gpu:
+      count: 1`
+
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(invalidYAML)
+			output, err := utils.Run(cmd)
+			Expect(err).To(HaveOccurred(),
+				"Expected webhook to reject ModelDeployment without model.id, but it was accepted")
+			_, _ = fmt.Fprintf(GinkgoWriter, "Expected rejection output: %s\n", output)
+		})
 	})
 })
 
