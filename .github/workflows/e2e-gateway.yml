@@ -42,11 +42,12 @@ jobs:
           curl -L https://istio.io/downloadIstio | sh -
           cd istio-*/bin
           ./istioctl install --set profile=minimal \
-            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true \
-            --set meshConfig.enableAutoMtls=false -y
+            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true -y
           kubectl wait --for=condition=Available deployment/istiod -n istio-system --timeout=120s
           # Verify inference extension is enabled
           kubectl get deploy istiod -n istio-system -o jsonpath='{.spec.template.spec.containers[0].env}' | grep -o 'ENABLE_GATEWAY_API_INFERENCE_EXTENSION[^}]*' || echo "WARNING: env var not found on istiod"
+          # Enable sidecar injection for EPP to get mTLS with gateway
+          kubectl label namespace default istio-injection=enabled --overwrite
 
       - name: Install KAITO operator
         run: |
@@ -235,38 +236,6 @@ jobs:
             fi
             sleep 10
           done
-
-      - name: Configure Istio for EPP
-        run: |
-          # Set mesh-wide mTLS to PERMISSIVE so gateway can reach EPP without sidecar
-          cat <<EOF | kubectl apply -f -
-          apiVersion: security.istio.io/v1
-          kind: PeerAuthentication
-          metadata:
-            name: default
-            namespace: istio-system
-          spec:
-            mtls:
-              mode: PERMISSIVE
-          EOF
-
-          # DestinationRule to set h2c for EPP gRPC connection
-          cat <<EOF | kubectl apply -f -
-          apiVersion: networking.istio.io/v1
-          kind: DestinationRule
-          metadata:
-            name: kubeairunway-epp
-            namespace: default
-          spec:
-            host: kubeairunway-epp.default.svc.cluster.local
-            trafficPolicy:
-              tls:
-                mode: DISABLE
-              connectionPool:
-                http:
-                  h2UpgradePolicy: UPGRADE
-          EOF
-          echo "✅ Istio configuration for EPP applied"
 
       - name: Test inference through gateway
         run: |

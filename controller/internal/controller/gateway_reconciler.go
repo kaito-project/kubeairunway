@@ -321,7 +321,13 @@ kind: EndpointPickerConfig
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+					Annotations: map[string]string{
+						// Enable Istio sidecar injection for mTLS with gateway proxy
+						"sidecar.istio.io/inject": "true",
+					},
+				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName:            eppName,
 					TerminationGracePeriodSeconds: int64Ptr(130),
