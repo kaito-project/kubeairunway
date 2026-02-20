@@ -29,6 +29,13 @@ jobs:
           # Allow workloads on control plane node for LoadBalancer access
           kubectl label node kubeairunway-gw-e2e-control-plane node.kubernetes.io/exclude-from-external-load-balancers- 2>/dev/null || true
 
+      - name: Install cloud-provider-kind
+        run: |
+          go install sigs.k8s.io/cloud-provider-kind@latest
+          cloud-provider-kind &
+          sleep 5
+          echo "✅ cloud-provider-kind running"
+
       - name: Install Gateway API CRDs
         run: |
           kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml
@@ -37,13 +44,14 @@ jobs:
         run: |
           kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
 
-      - name: Install Envoy Gateway
+      - name: Install Istio with Inference Extension support
         run: |
-          helm install eg oci://docker.io/envoyproxy/gateway-helm \
-            --version v1.7.0 \
-            -n envoy-gateway-system --create-namespace --wait --timeout 180s
-          kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
-          echo "✅ Envoy Gateway installed"
+          curl -L https://istio.io/downloadIstio | sh -
+          cd istio-*/bin
+          ./istioctl install --set profile=minimal \
+            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true -y
+          kubectl wait --for=condition=Available deployment/istiod -n istio-system --timeout=120s
+          echo "✅ Istio installed"
 
       - name: Install KAITO operator
         run: |
@@ -216,14 +224,68 @@ jobs:
           fi
           echo "✅ Gateway status ready"
 
-      - name: Verify EPP deployed
+      - name: Wait for EPP to be ready
         run: |
-          echo "Checking EPP deployment..."
-          if kubectl get deployment llama-gw-e2e-epp -n default > /dev/null 2>&1; then
-            echo "✅ EPP deployment created"
-          else
-            echo "⚠️ EPP deployment not found (may need more time)"
+          echo "Waiting for EPP deployment..."
+          for i in $(seq 1 30); do
+            READY=$(kubectl get deployment llama-gw-e2e-epp -n default -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            if [ "$READY" = "1" ]; then
+              echo "✅ EPP is ready"
+              break
+            fi
+            echo "Attempt $i/30: EPP readyReplicas=$READY"
+            if [ "$i" = "30" ]; then
+              echo "❌ EPP not ready"
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Test inference through gateway
+        run: |
+          MODEL_NAME=$(kubectl get modeldeployment llama-gw-e2e -n default \
+            -o jsonpath='{.status.gateway.modelName}')
+          echo "Model name: $MODEL_NAME"
+
+          # Get the Gateway LoadBalancer IP (provided by cloud-provider-kind)
+          GW_IP=""
+          for i in $(seq 1 30); do
+            GW_IP=$(kubectl get gateway inference-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+            if [ -n "$GW_IP" ]; then
+              echo "Gateway IP: $GW_IP"
+              break
+            fi
+            echo "Waiting for Gateway IP... attempt $i/30"
+            sleep 5
+          done
+
+          if [ -z "$GW_IP" ]; then
+            echo "❌ Gateway IP not assigned"
+            exit 1
           fi
+
+          echo "Sending inference request through gateway at http://${GW_IP}..."
+          for i in $(seq 1 18); do
+            HTTP_CODE=$(curl -s -o /tmp/response.json -w '%{http_code}' --max-time 30 \
+              http://${GW_IP}/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"model\": \"$MODEL_NAME\",
+                \"messages\": [{\"role\": \"user\", \"content\": \"Say hello in one word.\"}],
+                \"max_tokens\": 10
+              }" 2>&1 || true)
+            RESPONSE=$(cat /tmp/response.json 2>/dev/null || echo "")
+
+            if [ "$HTTP_CODE" = "200" ] && echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
+              echo "Response: $RESPONSE"
+              echo "✅ Inference through gateway succeeded"
+              exit 0
+            fi
+            echo "Attempt $i/18: HTTP=$HTTP_CODE body=$(echo $RESPONSE | head -c 200)"
+            sleep 10
+          done
+          echo "❌ Inference through gateway failed"
+          exit 1
 
       - name: Test gateway disable and cleanup
         run: |
@@ -276,6 +338,11 @@ jobs:
           kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
           echo "=== EPP Logs ==="
           kubectl logs -n default -l app.kubernetes.io/name=llama-gw-e2e-epp --tail=100 2>/dev/null || echo "No EPP logs"
+          echo "=== Istio Logs ==="
+          kubectl logs -n istio-system -l app=istiod --tail=100 2>/dev/null || echo "No Istio logs"
+          echo "=== Gateway Proxy Logs ==="
+          GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          [ -n "$GW_POD" ] && kubectl logs "$GW_POD" -n default --tail=50 2>/dev/null || echo "No gateway proxy logs"
           echo "=== Gateway Pods ==="
           kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o yaml
           echo "=== Events ==="
