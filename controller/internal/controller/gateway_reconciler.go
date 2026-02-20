@@ -142,17 +142,25 @@ func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md
 			GatewayNamespace: gw.Namespace,
 		}, nil
 	default:
-		// Multiple gateways: look for one with the inference-gateway label
+		// Multiple gateways: look for ones with the inference-gateway label
+		var labeled []*gatewayv1.Gateway
 		for i := range gateways.Items {
 			gw := &gateways.Items[i]
 			if gw.Labels != nil && gw.Labels[gateway.LabelInferenceGateway] == "true" {
-				return &gateway.GatewayConfig{
-					GatewayName:      gw.Name,
-					GatewayNamespace: gw.Namespace,
-				}, nil
+				labeled = append(labeled, gw)
 			}
 		}
-		return nil, fmt.Errorf("multiple Gateways found but none labeled with %s=true", gateway.LabelInferenceGateway)
+		if len(labeled) == 0 {
+			return nil, fmt.Errorf("multiple Gateways found but none labeled with %s=true", gateway.LabelInferenceGateway)
+		}
+		if len(labeled) > 1 {
+			log.FromContext(ctx).Info("WARNING: multiple Gateways labeled with inference-gateway, using the first one. Consider using spec.gateway.gatewayRef for explicit selection.",
+				"count", len(labeled), "selected", labeled[0].Name)
+		}
+		return &gateway.GatewayConfig{
+			GatewayName:      labeled[0].Name,
+			GatewayNamespace: labeled[0].Namespace,
+		}, nil
 	}
 }
 
