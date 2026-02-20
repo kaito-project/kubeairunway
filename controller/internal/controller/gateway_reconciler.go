@@ -458,6 +458,12 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 								},
 							},
 						},
+						{
+							Path: &gatewayv1.HTTPPathMatch{
+								Type:  &pathPrefix,
+								Value: strPtr("/"),
+							},
+						},
 					},
 					BackendRefs: []gatewayv1.HTTPBackendRef{
 						{
