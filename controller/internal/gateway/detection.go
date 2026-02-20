@@ -68,8 +68,9 @@ func NewDetector(dc discovery.DiscoveryInterface) *Detector {
 }
 
 // IsAvailable checks if the Gateway API Inference Extension CRDs are installed.
-// Positive results are cached permanently. Negative results expire after negativeCacheTTL
-// so the controller can self-enable if CRDs are installed after startup.
+// Positive results are cached permanently (the reconciler refreshes via Refresh()
+// if resource creation fails due to missing CRDs). Negative results expire after
+// negativeCacheTTL so the controller can self-enable if CRDs are installed after startup.
 func (d *Detector) IsAvailable(ctx context.Context) bool {
 	d.mu.RLock()
 	if d.available != nil {

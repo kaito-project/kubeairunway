@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -178,6 +179,11 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		} else {
 			if err := r.reconcileGateway(ctx, &md); err != nil {
 				logger.Error(err, "Gateway reconciliation failed", "name", md.Name)
+				// If the error suggests CRDs were removed, refresh the detection cache
+				if isNoMatchError(err) && r.GatewayDetector != nil {
+					logger.Info("Gateway CRDs may have been removed, refreshing detection cache")
+					r.GatewayDetector.Refresh()
+				}
 				// Non-fatal: don't block overall reconciliation
 			}
 		}
@@ -191,6 +197,17 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	logger.Info("Reconciliation complete", "name", md.Name, "phase", md.Status.Phase, "provider", md.Status.Provider)
 
 	return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
+}
+
+// isNoMatchError checks if an error indicates that a CRD/resource type is not registered.
+func isNoMatchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "no matches for kind") ||
+		strings.Contains(errStr, "the server could not find the requested resource") ||
+		strings.Contains(errStr, "no kind is registered for the type")
 }
 
 // validateSpec performs validation on the ModelDeployment spec
