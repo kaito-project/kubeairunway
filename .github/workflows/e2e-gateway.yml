@@ -237,19 +237,16 @@ jobs:
 
       - name: Configure Istio for EPP
         run: |
-          # Disable mTLS for EPP since it doesn't have an Istio sidecar
+          # Set mesh-wide mTLS to PERMISSIVE so gateway can reach EPP without sidecar
           cat <<EOF | kubectl apply -f -
           apiVersion: security.istio.io/v1
           kind: PeerAuthentication
           metadata:
-            name: kubeairunway-epp
-            namespace: default
+            name: default
+            namespace: istio-system
           spec:
-            selector:
-              matchLabels:
-                app.kubernetes.io/name: kubeairunway-epp
             mtls:
-              mode: DISABLE
+              mode: PERMISSIVE
           EOF
 
           # DestinationRule to set h2c for EPP gRPC connection
