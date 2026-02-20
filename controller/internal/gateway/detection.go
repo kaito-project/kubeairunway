@@ -15,6 +15,11 @@ const (
 	// negativeCacheTTL is how long a "not available" result is cached before re-checking.
 	// Positive results are cached permanently since CRDs don't disappear.
 	negativeCacheTTL = 60 * time.Second
+
+	// DefaultGAIEVersion is the default Gateway API Inference Extension version.
+	// Can be overridden at build time via ldflags or at runtime via --epp-image flag.
+	DefaultGAIEVersion = "v1.3.1"
+
 	// InferencePoolCRDGroup is the API group for InferencePool
 	InferencePoolCRDGroup = "inference.networking.k8s.io"
 	// InferencePoolCRDVersion is the API version for InferencePool

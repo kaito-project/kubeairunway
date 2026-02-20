@@ -214,7 +214,7 @@ func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *kubeai
 	}
 	eppImage := r.GatewayDetector.EPPImage
 	if eppImage == "" {
-		eppImage = "registry.k8s.io/gateway-api-inference-extension/epp:v1.3.1"
+		eppImage = "registry.k8s.io/gateway-api-inference-extension/epp:" + gateway.DefaultGAIEVersion
 	}
 
 	labels := map[string]string{

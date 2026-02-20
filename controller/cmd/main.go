@@ -182,7 +182,7 @@ func main() {
 	flag.IntVar(&eppServicePort, "epp-service-port", 9002,
 		"Port of the Endpoint Picker Proxy (EPP) Service.")
 	flag.StringVar(&eppImage, "epp-image",
-		"registry.k8s.io/gateway-api-inference-extension/epp:v1.3.1",
+		"registry.k8s.io/gateway-api-inference-extension/epp:"+gateway.DefaultGAIEVersion,
 		"Container image for the Endpoint Picker Proxy (EPP).")
 	opts := zap.Options{
 		Development: true,
