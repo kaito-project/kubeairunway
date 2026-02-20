@@ -39,8 +39,10 @@ jobs:
 
       - name: Install Envoy Gateway
         run: |
+          printf 'config:\n  envoyGateway:\n    extensionManager:\n      backendResources:\n        - group: inference.networking.k8s.io\n          kind: InferencePool\n          version: v1\n' > /tmp/eg-values.yaml
           helm install eg oci://docker.io/envoyproxy/gateway-helm \
-            --version v1.7.0 \
+            --version v0.0.0-latest \
+            -f /tmp/eg-values.yaml \
             -n envoy-gateway-system --create-namespace --wait --timeout 180s
           kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
           echo "✅ Envoy Gateway installed"
