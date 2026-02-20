@@ -389,10 +389,11 @@ kind: EndpointPickerConfig
 		},
 	}
 	if _, err := ctrl.CreateOrUpdate(ctx, r.Client, svc, func() error {
+		h2c := "kubernetes.io/h2c"
 		svc.Spec = corev1.ServiceSpec{
 			Selector: labels,
 			Ports: []corev1.ServicePort{
-				{Name: "grpc-ext-proc", Protocol: corev1.ProtocolTCP, Port: eppPort},
+				{Name: "grpc-ext-proc", Protocol: corev1.ProtocolTCP, Port: eppPort, AppProtocol: &h2c},
 			},
 			Type: corev1.ServiceTypeClusterIP,
 		}
