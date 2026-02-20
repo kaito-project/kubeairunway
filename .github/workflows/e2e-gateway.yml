@@ -350,6 +350,13 @@ jobs:
           kubectl logs -n istio-system -l app=istiod --tail=100
           echo "=== EPP Logs ==="
           kubectl logs -n default -l app.kubernetes.io/name=kubeairunway-epp --tail=100 2>/dev/null || echo "No EPP logs"
+          echo "=== Gateway Proxy Logs ==="
+          GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$GW_POD" ]; then
+            kubectl logs "$GW_POD" -n default --tail=100 2>/dev/null || echo "No gateway proxy logs"
+          fi
+          echo "=== DestinationRules ==="
+          kubectl get destinationrules -A -o yaml 2>/dev/null || echo "No DestinationRules"
           echo "=== Gateway Pods ==="
           kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o yaml
           echo "=== Events ==="
