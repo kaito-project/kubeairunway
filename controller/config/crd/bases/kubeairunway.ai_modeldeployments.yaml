@@ -603,9 +603,6 @@ spec:
                   modelName:
                     description: modelName is the model name to use in API requests
                     type: string
-                  ready:
-                    description: ready indicates if the gateway route is active
-                    type: boolean
                 type: object
               message:
                 description: message is a human-readable message about the current

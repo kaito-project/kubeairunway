@@ -342,7 +342,6 @@ func TestGateway_CleanupOnPhaseTransition(t *testing.T) {
 	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
 		Endpoint:  "10.0.0.1",
 		ModelName: "some-model",
-		Ready:     true,
 	}
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
 
@@ -436,9 +435,6 @@ func TestGateway_StatusUpdate(t *testing.T) {
 	// Check gateway status
 	if md.Status.Gateway == nil {
 		t.Fatal("expected gateway status to be set")
-	}
-	if !md.Status.Gateway.Ready {
-		t.Error("expected gateway status to be ready")
 	}
 	if md.Status.Gateway.Endpoint != "" {
 		t.Errorf("expected empty endpoint when Gateway has no status address, got %q", md.Status.Gateway.Endpoint)
@@ -608,7 +604,7 @@ func TestGateway_ModelNameNoEndpointFallsBack(t *testing.T) {
 func TestGateway_CleanupNonExistentResourcesNoError(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
-	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{Ready: true}
+	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{Endpoint: "10.0.0.1"}
 	r := newTestReconciler(scheme, nil, md)
 	ctx := context.Background()
 

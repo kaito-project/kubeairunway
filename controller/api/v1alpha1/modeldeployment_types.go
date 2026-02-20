@@ -358,9 +358,6 @@ type GatewayStatus struct {
 	// modelName is the model name to use in API requests
 	// +optional
 	ModelName string `json:"modelName,omitempty"`
-	// ready indicates if the gateway route is active
-	// +optional
-	Ready bool `json:"ready,omitempty"`
 }
 
 // ModelDeploymentStatus defines the observed state of ModelDeployment.

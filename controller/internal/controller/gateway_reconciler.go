@@ -112,7 +112,6 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
 		Endpoint:  endpoint,
 		ModelName: modelName,
-		Ready:     true,
 	}
 	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionTrue, "GatewayConfigured", "InferencePool and HTTPRoute created")
 

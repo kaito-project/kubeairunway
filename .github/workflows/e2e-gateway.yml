@@ -215,15 +215,6 @@ jobs:
           fi
           echo "✅ Gateway model name auto-discovered: $MODEL_NAME"
 
-          # Check gateway ready status
-          GW_STATUS_READY=$(kubectl get modeldeployment llama-gw-e2e -n default \
-            -o jsonpath='{.status.gateway.ready}')
-          if [ "$GW_STATUS_READY" != "true" ]; then
-            echo "❌ Gateway status ready is not true: $GW_STATUS_READY"
-            exit 1
-          fi
-          echo "✅ Gateway status ready"
-
       - name: Wait for EPP to be ready
         run: |
           echo "Waiting for EPP deployment..."

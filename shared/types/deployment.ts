@@ -154,7 +154,6 @@ export interface Condition {
 export interface GatewayStatus {
   endpoint?: string;
   modelName?: string;
-  ready?: boolean;
 }
 
 export interface GatewayInfo {
