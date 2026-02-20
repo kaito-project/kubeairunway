@@ -371,7 +371,20 @@ jobs:
           echo "=== Gateway Proxy Config ==="
           GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
           if [ -n "$GW_POD" ]; then
-            kubectl exec "$GW_POD" -n default -- curl -s localhost:15000/config_dump 2>/dev/null | grep -i "ext_proc\|inference" | head -10 || echo "Could not get proxy config"
+            kubectl exec "$GW_POD" -n default -- curl -s localhost:15000/config_dump 2>/dev/null | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+for c in d.get('configs',[]):
+  s=json.dumps(c)
+  if 'ext_proc' in s or 'inference' in s.lower():
+    # Find the ext_proc filter config
+    if 'ext_proc' in s:
+      for k,v in c.items():
+        vs=json.dumps(v)
+        if 'ext_proc' in vs:
+          print('EXT_PROC CONFIG:', vs[:500])
+          break
+" 2>/dev/null || echo "Could not parse proxy config"
           fi
           echo "=== Gateway Proxy Logs ==="
           GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
