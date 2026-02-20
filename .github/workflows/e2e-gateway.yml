@@ -235,26 +235,8 @@ jobs:
             sleep 10
           done
 
-      - name: Install Istio DestinationRule for EPP
+      - name: Configure Istio for EPP
         run: |
-          # The upstream chart creates gateway-implementation-specific resources
-          # (DestinationRule for Istio) needed to wire the gateway to the EPP.
-          # Our controller deploys the EPP itself, but Istio-specific wiring is BYO.
-          cat <<EOF | kubectl apply -f -
-          apiVersion: networking.istio.io/v1
-          kind: DestinationRule
-          metadata:
-            name: kubeairunway-epp
-            namespace: default
-          spec:
-            host: kubeairunway-epp.default.svc.cluster.local
-            trafficPolicy:
-              connectionPool:
-                http:
-                  h2UpgradePolicy: UPGRADE
-          EOF
-          echo "✅ Istio DestinationRule created"
-
           # Disable mTLS for EPP since it doesn't have an Istio sidecar
           cat <<EOF | kubectl apply -f -
           apiVersion: security.istio.io/v1
@@ -269,7 +251,24 @@ jobs:
             mtls:
               mode: DISABLE
           EOF
-          echo "✅ PeerAuthentication created (mTLS disabled for EPP)"
+
+          # DestinationRule to set h2c for EPP gRPC connection
+          cat <<EOF | kubectl apply -f -
+          apiVersion: networking.istio.io/v1
+          kind: DestinationRule
+          metadata:
+            name: kubeairunway-epp
+            namespace: default
+          spec:
+            host: kubeairunway-epp.default.svc.cluster.local
+            trafficPolicy:
+              tls:
+                mode: DISABLE
+              connectionPool:
+                http:
+                  h2UpgradePolicy: UPGRADE
+          EOF
+          echo "✅ Istio configuration for EPP applied"
 
       - name: Test inference through gateway
         run: |
