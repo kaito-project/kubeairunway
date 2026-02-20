@@ -257,6 +257,12 @@ spec:
                       enabled controls whether an InferencePool + HTTPRoute are created for this model.
                       Defaults to true when a Gateway is detected in the cluster.
                     type: boolean
+                  httpRouteRef:
+                    description: |-
+                      httpRouteRef references an existing HTTPRoute by name instead of auto-creating one.
+                      When set, the controller skips HTTPRoute creation and uses the referenced route.
+                      The HTTPRoute must be in the same namespace as the ModelDeployment.
+                    type: string
                   modelName:
                     description: |-
                       modelName overrides the model name used in HTTPRoute routing.

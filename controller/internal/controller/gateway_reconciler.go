@@ -96,10 +96,14 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		return fmt.Errorf("reconciling EPP: %w", err)
 	}
 
-	// Create or update HTTPRoute
-	if err := r.reconcileHTTPRoute(ctx, md, gwConfig); err != nil {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "HTTPRouteFailed", err.Error())
-		return fmt.Errorf("reconciling HTTPRoute: %w", err)
+	// Create or update HTTPRoute (skip if user provides their own)
+	if md.Spec.Gateway != nil && md.Spec.Gateway.HTTPRouteRef != "" {
+		logger.V(1).Info("Using user-provided HTTPRoute", "httpRouteRef", md.Spec.Gateway.HTTPRouteRef)
+	} else {
+		if err := r.reconcileHTTPRoute(ctx, md, gwConfig); err != nil {
+			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "HTTPRouteFailed", err.Error())
+			return fmt.Errorf("reconciling HTTPRoute: %w", err)
+		}
 	}
 
 	// Update gateway status
@@ -655,15 +659,17 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 		return fmt.Errorf("failed to delete InferencePool: %w", err)
 	}
 
-	// Delete HTTPRoute if it exists
-	route := &gatewayv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      md.Name,
-			Namespace: md.Namespace,
-		},
-	}
-	if err := r.Delete(ctx, route); client.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to delete HTTPRoute: %w", err)
+	// Delete auto-created HTTPRoute (skip if user-provided)
+	if md.Spec.Gateway == nil || md.Spec.Gateway.HTTPRouteRef == "" {
+		route := &gatewayv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      md.Name,
+				Namespace: md.Namespace,
+			},
+		}
+		if err := r.Delete(ctx, route); client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("failed to delete HTTPRoute: %w", err)
+		}
 	}
 
 	// Delete EPP resources

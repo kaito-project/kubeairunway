@@ -231,6 +231,11 @@ type GatewaySpec struct {
 	// Defaults to spec.model.servedName or spec.model.id
 	// +optional
 	ModelName string `json:"modelName,omitempty"`
+	// httpRouteRef references an existing HTTPRoute by name instead of auto-creating one.
+	// When set, the controller skips HTTPRoute creation and uses the referenced route.
+	// The HTTPRoute must be in the same namespace as the ModelDeployment.
+	// +optional
+	HTTPRouteRef string `json:"httpRouteRef,omitempty"`
 }
 
 // ModelDeploymentSpec defines the desired state of ModelDeployment
