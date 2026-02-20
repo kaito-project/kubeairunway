@@ -315,13 +315,7 @@ kind: EndpointPickerConfig
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-					Annotations: map[string]string{
-						// Ensure sidecar intercepts the ext_proc gRPC port
-						"traffic.sidecar.istio.io/includeInboundPorts": "9002",
-					},
-				},
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					ServiceAccountName:            eppName,
 					TerminationGracePeriodSeconds: int64Ptr(130),
