@@ -259,18 +259,17 @@ jobs:
             -o jsonpath='{.status.gateway.modelName}')
           echo "Model name: $MODEL_NAME"
 
-          # Port-forward to the Envoy Gateway proxy service
-          GW_SVC=$(kubectl get svc -n envoy-gateway-system -o jsonpath='{.items[?(@.metadata.labels.gateway\.envoyproxy\.io/owning-gateway-name=="inference-gateway")].metadata.name}' 2>/dev/null || echo "")
-          if [ -z "$GW_SVC" ]; then
-            # Fallback: find by label
-            GW_SVC=$(kubectl get svc -A -l gateway.envoyproxy.io/owning-gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-          fi
-          GW_NS=$(kubectl get svc -A -l gateway.envoyproxy.io/owning-gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "envoy-gateway-system")
+          # Find the Envoy Gateway proxy service
+          echo "Looking for gateway proxy service..."
+          kubectl get svc -A --show-labels 2>/dev/null | grep -i "gateway\|envoy" || true
+          GW_SVC=$(kubectl get svc -A -l "gateway.envoyproxy.io/owning-gateway-name=inference-gateway" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          GW_NS=$(kubectl get svc -A -l "gateway.envoyproxy.io/owning-gateway-name=inference-gateway" -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "")
           echo "Gateway service: $GW_SVC in $GW_NS"
 
           if [ -z "$GW_SVC" ]; then
-            echo "⚠️ Gateway service not found, skipping traffic test"
-            exit 0
+            echo "❌ Gateway proxy service not found"
+            kubectl get svc -A
+            exit 1
           fi
 
           kubectl port-forward "svc/$GW_SVC" 8080:80 -n "$GW_NS" &
