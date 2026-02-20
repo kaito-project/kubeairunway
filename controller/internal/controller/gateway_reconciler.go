@@ -325,7 +325,8 @@ kind: EndpointPickerConfig
 					Labels: labels,
 					Annotations: map[string]string{
 						// Enable Istio sidecar injection for mTLS with gateway proxy
-						"sidecar.istio.io/inject": "true",
+						"sidecar.istio.io/inject":          "true",
+						"traffic.sidecar.istio.io/excludeInboundPorts": "9003",
 					},
 				},
 				Spec: corev1.PodSpec{
