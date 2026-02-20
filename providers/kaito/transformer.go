@@ -35,8 +35,8 @@ const (
 	// WorkspaceKind is the kind for KAITO Workspace
 	WorkspaceKind = "Workspace"
 
-	// DefaultLlamaCppPort is the default serving port for llamacpp containers
-	DefaultLlamaCppPort = 5000
+	// defaultLlamaCppPort is the default serving port for llamacpp containers
+	defaultLlamaCppPort = 5000
 	// DefaultPresetPort is the default serving port for KAITO preset models
 	DefaultPresetPort = 80
 )
@@ -183,7 +183,7 @@ func (t *Transformer) buildLlamaCppTemplate(md *kubeairunwayv1alpha1.ModelDeploy
 	// Build container ports
 	ports := []interface{}{
 		map[string]interface{}{
-			"containerPort": int64(DefaultLlamaCppPort),
+			"containerPort": int64(defaultLlamaCppPort),
 		},
 	}
 

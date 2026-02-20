@@ -446,20 +446,6 @@ func (md *ModelDeployment) ResolvedEngineType() EngineType {
 	return ""
 }
 
-// ResolvedGatewayModelName returns the model name for gateway routing.
-// This is used as a fallback when auto-discovery is not available.
-// Priority: spec.gateway.modelName > spec.model.servedName > spec.model.id
-// Note: the reconciler's resolveModelName() adds auto-discovery from /v1/models between steps 2 and 3.
-func (md *ModelDeployment) ResolvedGatewayModelName() string {
-	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
-		return md.Spec.Gateway.ModelName
-	}
-	if md.Spec.Model.ServedName != "" {
-		return md.Spec.Model.ServedName
-	}
-	return md.Spec.Model.ID
-}
-
 // Condition types for ModelDeployment
 const (
 	// ConditionTypeValidated indicates the spec has been validated
