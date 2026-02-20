@@ -39,32 +39,35 @@ jobs:
 
       - name: Install Envoy Gateway with InferencePool support
         run: |
-          # Install Envoy Gateway
+          # Install Envoy Gateway with InferencePool backend resource support
+          printf 'config:\n  envoyGateway:\n    extensionManager:\n      backendResources:\n        - group: inference.networking.k8s.io\n          kind: InferencePool\n          version: v1\n' > /tmp/eg-values.yaml
+          cat /tmp/eg-values.yaml
           helm install eg oci://docker.io/envoyproxy/gateway-helm \
             --version v1.4.0 \
-            -n envoy-gateway-system --create-namespace --wait --timeout 120s
-          kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
-
-          # Enable InferencePool backend resource support
-          kubectl get configmap envoy-gateway-config -n envoy-gateway-system -o yaml 2>/dev/null || true
-          kubectl patch configmap envoy-gateway-config -n envoy-gateway-system --type merge -p '
-          data:
-            envoy-gateway.yaml: |
-              apiVersion: gateway.envoyproxy.io/v1alpha1
-              kind: EnvoyGateway
-              provider:
-                type: Kubernetes
-              gateway:
-                controllerName: gateway.envoyproxy.io/gatewayclass-controller
-              extensionManager:
-                backendResources:
-                  - group: inference.networking.k8s.io
-                    kind: InferencePool
-                    version: v1
-          ' 2>/dev/null || echo "Could not patch configmap, trying restart"
-          kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
-          kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
-          echo "✅ Envoy Gateway installed with InferencePool support"
+            -f /tmp/eg-values.yaml \
+            -n envoy-gateway-system --create-namespace --timeout 300s
+          echo "Waiting for Envoy Gateway..."
+          for i in $(seq 1 30); do
+            READY=$(kubectl get deployment envoy-gateway -n envoy-gateway-system -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            if [ "$READY" = "1" ]; then
+              echo "✅ Envoy Gateway is ready"
+              break
+            fi
+            echo "Attempt $i/30: readyReplicas=$READY"
+            # Check for CrashLoopBackOff
+            POD_STATUS=$(kubectl get pods -n envoy-gateway-system -l control-plane=envoy-gateway -o jsonpath='{.items[0].status.containerStatuses[0].state}' 2>/dev/null || echo "")
+            if echo "$POD_STATUS" | grep -q "CrashLoopBackOff\|Error"; then
+              echo "Envoy Gateway pod failing, checking logs..."
+              kubectl logs -n envoy-gateway-system -l control-plane=envoy-gateway --tail=20 2>/dev/null || true
+            fi
+            if [ "$i" = "30" ]; then
+              echo "❌ Envoy Gateway not ready"
+              kubectl get pods -n envoy-gateway-system
+              kubectl logs -n envoy-gateway-system -l control-plane=envoy-gateway --tail=30 2>/dev/null || true
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Install KAITO operator
         run: |
