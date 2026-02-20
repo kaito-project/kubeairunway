@@ -200,7 +200,7 @@ func TestGateway_HTTPRouteCreation(t *testing.T) {
 		GatewayNamespace: "gateway-ns",
 	}
 
-	err := r.reconcileHTTPRoute(ctx, md, gwConfig)
+	err := r.reconcileHTTPRoute(ctx, md, gwConfig, "meta-llama/Llama-3-8B")
 	if err != nil {
 		t.Fatalf("reconcileHTTPRoute failed: %v", err)
 	}

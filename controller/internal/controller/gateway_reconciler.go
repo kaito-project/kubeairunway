@@ -96,18 +96,20 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		return fmt.Errorf("reconciling EPP: %w", err)
 	}
 
+	// Resolve model name early (needed for HTTPRoute header match and status)
+	modelName := r.resolveModelName(ctx, md)
+
 	// Create or update HTTPRoute (skip if user provides their own)
 	if md.Spec.Gateway != nil && md.Spec.Gateway.HTTPRouteRef != "" {
 		logger.V(1).Info("Using user-provided HTTPRoute", "httpRouteRef", md.Spec.Gateway.HTTPRouteRef)
 	} else {
-		if err := r.reconcileHTTPRoute(ctx, md, gwConfig); err != nil {
+		if err := r.reconcileHTTPRoute(ctx, md, gwConfig, modelName); err != nil {
 			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "HTTPRouteFailed", err.Error())
 			return fmt.Errorf("reconciling HTTPRoute: %w", err)
 		}
 	}
 
 	// Update gateway status
-	modelName := r.resolveModelName(ctx, md)
 	endpoint := r.resolveGatewayEndpoint(ctx, gwConfig)
 	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
 		Endpoint:  endpoint,
@@ -415,7 +417,7 @@ func int64Ptr(i int64) *int64 { return &i }
 func strPtr(s string) *string { return &s }
 
 // reconcileHTTPRoute creates or updates the HTTPRoute for a ModelDeployment.
-func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig) error {
+func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig, modelName string) error {
 	route := &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      md.Name,
@@ -429,6 +431,7 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, route, func() error {
 		pathPrefix := gatewayv1.PathMatchPathPrefix
+		headerExact := gatewayv1.HeaderMatchExact
 		timeout := gatewayv1.Duration("300s")
 		route.Spec = gatewayv1.HTTPRouteSpec{
 			CommonRouteSpec: gatewayv1.CommonRouteSpec{
@@ -446,6 +449,13 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 							Path: &gatewayv1.HTTPPathMatch{
 								Type:  &pathPrefix,
 								Value: strPtr("/"),
+							},
+							Headers: []gatewayv1.HTTPHeaderMatch{
+								{
+									Type:  &headerExact,
+									Name:  "X-Gateway-Base-Model-Name",
+									Value: modelName,
+								},
 							},
 						},
 					},
