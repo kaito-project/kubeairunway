@@ -423,6 +423,8 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 	ns := gatewayv1.Namespace(gwConfig.GatewayNamespace)
 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, route, func() error {
+		pathPrefix := gatewayv1.PathMatchPathPrefix
+		timeout := gatewayv1.Duration("300s")
 		route.Spec = gatewayv1.HTTPRouteSpec{
 			CommonRouteSpec: gatewayv1.CommonRouteSpec{
 				ParentRefs: []gatewayv1.ParentReference{
@@ -434,6 +436,14 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 			},
 			Rules: []gatewayv1.HTTPRouteRule{
 				{
+					Matches: []gatewayv1.HTTPRouteMatch{
+						{
+							Path: &gatewayv1.HTTPPathMatch{
+								Type:  &pathPrefix,
+								Value: strPtr("/"),
+							},
+						},
+					},
 					BackendRefs: []gatewayv1.HTTPBackendRef{
 						{
 							BackendRef: gatewayv1.BackendRef{
@@ -444,6 +454,9 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 								},
 							},
 						},
+					},
+					Timeouts: &gatewayv1.HTTPRouteTimeouts{
+						Request: &timeout,
 					},
 				},
 			},
