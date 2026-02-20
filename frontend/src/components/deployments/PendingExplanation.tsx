@@ -14,7 +14,7 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Checking pod status...</CardTitle>
+          <CardTitle>Checking deployment status...</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -66,10 +66,10 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
                   <Loader2 className="h-4 w-4 animate-spin flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium">
-                      {autoscaler.type === 'aks-managed' ? 'AKS managed autoscaler' : 'Cluster autoscaler'} is scaling up
+                      {autoscaler.type === 'aks-managed' ? 'AKS managed autoscaler' : 'Autoscaler'} is scaling up
                     </p>
                     <p className="text-xs mt-1">
-                      The cluster will automatically add GPU nodes. This typically takes 5-10 minutes.
+                      The system will automatically add GPU compute resources. This typically takes 5-10 minutes.
                       {autoscaler.lastActivity && ` Last activity: ${new Date(autoscaler.lastActivity).toLocaleTimeString()}`}
                     </p>
                   </div>
@@ -80,7 +80,7 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
                 <div className="mt-3 text-sm">
                   <p className="font-medium">Action required</p>
                   <p className="text-xs mt-1">
-                    Enable cluster autoscaling to automatically add GPU nodes when needed.
+                    Enable autoscaling to automatically add GPU compute resources when needed.
                   </p>
                   <a
                     href="https://learn.microsoft.com/en-us/azure/aks/cluster-autoscaler"
@@ -107,7 +107,7 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
               </p>
               {autoscaler?.detected && (
                 <p className="text-xs mt-2">
-                  Cluster autoscaler will attempt to add more nodes.
+                  Autoscaler will attempt to add more compute resources.
                 </p>
               )}
             </AlertDescription>
@@ -119,9 +119,9 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              <p className="font-medium">Pod cannot tolerate node taints</p>
+              <p className="font-medium">Deployment has scheduling constraints</p>
               <p className="text-sm mt-1">
-                GPU nodes have taints that prevent pods from scheduling. You may need to add tolerations to your deployment.
+                GPU compute resources have constraints that prevent scheduling. You may need to add tolerations to your deployment.
               </p>
               <details className="mt-2 text-xs">
                 <summary className="cursor-pointer hover:underline">View event details</summary>
@@ -138,9 +138,9 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              <p className="font-medium">No nodes match the pod's node selector</p>
+              <p className="font-medium">No available compute resources match the deployment requirements</p>
               <p className="text-sm mt-1">
-                Check that your node selector labels match nodes in the cluster.
+                Check that deployment requirements match available compute resources.
               </p>
             </AlertDescription>
           </Alert>
@@ -162,7 +162,7 @@ export function PendingExplanation({ reasons, autoscaler, isLoading }: PendingEx
           <div className="text-xs text-muted-foreground pt-2 border-t space-y-1">
             <p>
               Autoscaler: {autoscaler.detected
-                ? `${autoscaler.type === 'aks-managed' ? 'AKS Managed' : 'Cluster Autoscaler'} (${autoscaler.healthy ? 'Healthy' : 'Unhealthy'})`
+                ? `${autoscaler.type === 'aks-managed' ? 'AKS Managed' : 'Autoscaler'} (${autoscaler.healthy ? 'Healthy' : 'Unhealthy'})`
                 : 'Not detected'}
             </p>
             {!autoscaler.detected && (

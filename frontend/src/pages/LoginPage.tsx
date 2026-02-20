@@ -97,7 +97,7 @@ export function LoginPage() {
               <code>kubeairunway login</code>
             </div>
             <p className="text-xs text-muted-foreground">
-              This will extract your credentials from kubeconfig and open this page automatically.
+              This will extract your credentials and open this page automatically.
             </p>
           </div>
 

@@ -148,6 +148,11 @@ import type {
   PodFailureReason,
   RuntimesStatusResponse,
   PodLogsResponse,
+  PremadeModel,
+  AikitBuildRequest,
+  AikitBuildResult,
+  AikitPreviewResult,
+  AikitInfrastructureStatus,
 } from '@kubeairunway/shared';
 
 // ============================================================================

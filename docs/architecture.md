@@ -2,9 +2,13 @@
 
 ## System Overview
 
-KubeAIRunway is a **fully decoupled** platform. The core value lives in the Kubernetes controller and CRDs — the UI is an optional, swappable layer that communicates exclusively through a REST API. Any frontend (Headlamp, a custom CLI, or the bundled React UI) can drive the same backend.
+KubeAIRunway is a **fully decoupled** platform. The core value lives in the Kubernetes controller and CRDs. The UI is an optional, swappable layer that communicates exclusively through a REST API. Any frontend (Headlamp, a custom CLI, or the bundled React UI) can drive the same backend.
+
+![KubeAIRunway Architecture](architecture.png)
 
 ### Components at a Glance
+
+Note: The UI layer shown above includes the Frontend layer and the Backend layer.
 
 | Component                | Language              | Role                                                        | Required?        |
 | ------------------------ | --------------------- | ----------------------------------------------------------- | ---------------- |

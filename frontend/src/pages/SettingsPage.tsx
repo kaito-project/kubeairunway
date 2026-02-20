@@ -227,7 +227,7 @@ export function SettingsPage() {
                 Cluster Status
               </CardTitle>
               <CardDescription>
-                Current Kubernetes cluster connection status
+                Current connection status
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -282,7 +282,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Kubernetes Cluster</span>
+                <span className="text-sm font-medium">Environment</span>
                 <div className="flex items-center gap-2">
                   {clusterStatus?.connected ? (
                     <>
@@ -349,7 +349,7 @@ export function SettingsPage() {
                 )}
               </CardTitle>
               <CardDescription>
-                Automatically provision GPU nodes when deployments require more resources
+                Automatically provision GPU compute resources when deployments require more resources
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -436,7 +436,7 @@ export function SettingsPage() {
                     </CardTitle>
                     <CardDescription>
                       {runtime.id === 'kaito'
-                        ? 'Kubernetes AI Toolchain Operator for simplified model deployment'
+                        ? 'KAITO for simplified model deployment'
                         : runtime.id === 'dynamo'
                           ? 'NVIDIA Dynamo for high-performance GPU inference'
                           : 'Ray Serve via KubeRay for distributed Ray-based model serving with vLLM'}
@@ -628,7 +628,7 @@ export function SettingsPage() {
                 NVIDIA GPU Operator
               </CardTitle>
               <CardDescription>
-                Install the NVIDIA GPU Operator to enable GPU support in your cluster
+                Install the NVIDIA GPU Operator to enable GPU support
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -641,7 +641,7 @@ export function SettingsPage() {
                   </div>
                   <ul className="list-disc list-inside space-y-1 ml-2">
                     {!clusterStatus?.connected && (
-                      <li>Kubernetes cluster not connected</li>
+                      <li>Not connected</li>
                     )}
                     {!helmStatus?.available && (
                       <li>Helm CLI not available</li>
@@ -831,7 +831,7 @@ export function SettingsPage() {
                   <div className="rounded-lg bg-green-50 dark:bg-green-950 p-3 text-sm text-green-800 dark:text-green-200">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4" />
-                      <span>Token saved in {hfStatus.namespaces.filter(n => n.exists).length} namespace(s)</span>
+                      <span>Token saved successfully</span>
                     </div>
                   </div>
 
@@ -871,7 +871,7 @@ export function SettingsPage() {
                 <div className="space-y-4">
                   <div className="text-sm text-muted-foreground">
                     Sign in with HuggingFace to automatically configure your token for accessing gated models.
-                    The token will be securely stored as a Kubernetes secret.
+                    The token will be securely stored.
                   </div>
 
                   <Button
@@ -933,7 +933,7 @@ export function SettingsPage() {
             <DialogTitle>Uninstall Runtime</DialogTitle>
             <DialogDescription>
               Are you sure you want to uninstall {runtimes.find(r => r.id === effectiveRuntime)?.name || 'this runtime'}?
-              This will remove the operator and all associated resources from your cluster.
+              This will remove the operator and all associated resources.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

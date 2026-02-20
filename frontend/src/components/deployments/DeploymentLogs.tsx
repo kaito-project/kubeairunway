@@ -97,7 +97,7 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            No pods available. Logs will appear once pods are running.
+            No instances available. Logs will appear once instances are running.
           </p>
         </CardContent>
       </Card>
@@ -113,11 +113,11 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
             <CardTitle>Logs</CardTitle>
           </div>
           <div className="flex items-center gap-2">
-            {/* Pod Selector */}
+            {/* Instance Selector */}
             {pods.length > 1 && (
               <Select value={selectedPod} onValueChange={setSelectedPod}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select pod" />
+                  <SelectValue placeholder="Select instance" />
                 </SelectTrigger>
                 <SelectContent>
                   {pods.map((pod) => (
@@ -222,10 +222,10 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
           )}
         </div>
 
-        {/* Pod info */}
+        {/* Instance info */}
         {logsData?.podName && (
           <p className="text-xs text-muted-foreground mt-2">
-            Showing logs from pod: <span className="font-mono">{logsData.podName}</span>
+            Showing logs from instance: <span className="font-mono">{logsData.podName}</span>
             {logsData.container && <> (container: <span className="font-mono">{logsData.container}</span>)</>}
           </p>
         )}

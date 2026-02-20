@@ -34,11 +34,11 @@ export function MetricsUnavailable({ error, isLoading, runningOffCluster, classN
           <Server className="h-8 w-8 text-blue-500 mb-4" />
           <h3 className="font-semibold mb-1">Running in Local Mode</h3>
           <p className="text-sm text-muted-foreground max-w-md">
-            KubeAIRunway is running outside the Kubernetes cluster.
+            KubeAIRunway is running in local mode.
           </p>
           <p className="text-xs text-muted-foreground mt-4 max-w-md bg-muted p-3 rounded-md">
-            💡 <strong>To enable metrics:</strong> Deploy KubeAIRunway inside your Kubernetes cluster using the provided manifests. 
-            Metrics require in-cluster access to service DNS for communicating with inference deployments.
+            💡 <strong>To enable metrics:</strong> Deploy KubeAIRunway in production to enable metrics. 
+            Metrics are available when running in production mode.
           </p>
         </CardContent>
       </Card>

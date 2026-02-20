@@ -144,7 +144,7 @@ export function HuggingFaceCallbackPage() {
           {status === 'success' && (
             <div className="flex flex-col items-center gap-4">
               <div className="text-sm text-green-600 dark:text-green-400 text-center">
-                Your HuggingFace token has been securely saved to your Kubernetes cluster.
+                Your HuggingFace token has been securely saved.
                 You can now deploy models that require HuggingFace authentication.
               </div>
             </div>

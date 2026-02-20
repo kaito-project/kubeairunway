@@ -114,7 +114,7 @@ export function DeploymentDetailsPage() {
           <div>
             <h1 className="text-3xl font-bold">{deployment.name}</h1>
             <p className="text-muted-foreground">
-              {deployment.namespace} • Created {formatRelativeTime(deployment.createdAt)}
+              Created {formatRelativeTime(deployment.createdAt)}
             </p>
           </div>
         </div>
