@@ -71,7 +71,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/
 ### Step 2: Install Gateway API Inference Extension CRDs
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml
 ```
 
 ### Step 3: Install a Gateway Implementation

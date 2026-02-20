@@ -42,7 +42,7 @@ jobs:
 
       - name: Install Gateway API Inference Extension CRDs
         run: |
-          kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
+          kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml
 
       - name: Install Istio with Inference Extension support
         run: |
