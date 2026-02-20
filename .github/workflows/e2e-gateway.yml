@@ -354,6 +354,17 @@ jobs:
           kubectl logs -n istio-system -l app=istiod --tail=100
           echo "=== EPP Logs ==="
           kubectl logs -n default -l app.kubernetes.io/name=kubeairunway-epp --tail=100 2>/dev/null || echo "No EPP logs"
+          echo "=== Shadow Services (Istio-created for InferencePool) ==="
+          kubectl get svc -n default -l istio.io/inferencepool-name -o yaml 2>/dev/null || echo "No shadow services"
+          echo "=== All Services ==="
+          kubectl get svc -n default -o wide
+          echo "=== Endpoints for EPP ==="
+          kubectl get endpoints kubeairunway-epp -n default -o yaml 2>/dev/null || echo "No EPP endpoints"
+          echo "=== Gateway Proxy Config ==="
+          GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$GW_POD" ]; then
+            kubectl exec "$GW_POD" -n default -- curl -s localhost:15000/config_dump 2>/dev/null | grep -i "ext_proc\|inference" | head -10 || echo "Could not get proxy config"
+          fi
           echo "=== Gateway Proxy Logs ==="
           GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
           if [ -n "$GW_POD" ]; then
