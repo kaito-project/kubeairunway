@@ -14,7 +14,7 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
                      │                                               │
  ┌────────┐         │  ┌─────────┐       ┌───────────┐              │
  │ Client  │────────▶│  │ Gateway │──────▶│ HTTPRoute │              │
- │ (curl/  │         │  │         │  BBR  │           │              │
+ │ (curl/  │         │  │  + BBR  │       │           │              │
  │ openai) │         │  └─────────┘       └─────┬─────┘              │
  └────────┘         │                          │                     │
                      │                          ▼                     │
@@ -32,11 +32,12 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
                      └───────────────────────────────────────────────┘
 ```
 
-**Request flow:** Client → Gateway → Body-Based Routing (BBR) → HTTPRoute → InferencePool → Endpoint Picker (EPP) → Model Server Pod
+**Request flow:** Client → Gateway (+BBR) → HTTPRoute → InferencePool → Endpoint Picker (EPP) → Model Server Pod
 
 **What KubeAIRunway creates automatically:**
 - `InferencePool` — selects pods labeled with `kubeairunway.ai/model-deployment: <name>` on the model's serving port
-- `HTTPRoute` — routes from the Gateway to the InferencePool
+- `HTTPRoute` — routes from the Gateway to the InferencePool (unless `httpRouteRef` is set)
+- `EPP` — Endpoint Picker Proxy for intelligent endpoint selection
 
 **What you provide:**
 - A Gateway resource (with any compatible implementation)
@@ -158,6 +159,26 @@ The controller automatically deploys an EPP (Endpoint Picker Proxy) per ModelDep
 --epp-service-port=9002               # EPP Service port (default: 9002)
 --epp-image=<image>                   # EPP container image (default: upstream GAIE image)
 ```
+
+### Body-Based Routing (BBR)
+
+When serving **multiple models** through a single Gateway, a Body-Based Router (BBR) is needed to extract the `model` field from the request body and route to the correct InferencePool. BBR is a separate component deployed via the upstream GAIE helm chart.
+
+> [!NOTE]
+> BBR is only needed for multi-model setups. A single model behind a Gateway works without BBR.
+
+Install BBR using the upstream helm chart (version should match your GAIE CRD version):
+
+```bash
+helm install body-based-router \
+  --set provider.name=istio \
+  --version v1.3.1 \
+  oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/body-based-routing
+```
+
+Replace `provider.name` with your gateway implementation (`istio`, `gke`, or omit for others). The chart deploys the BBR container and any provider-specific resources (e.g. EnvoyFilter for Istio).
+
+See the [upstream multi-model guide](https://gateway-api-inference-extension.sigs.k8s.io/guides/serving-multiple-inference-pools-latest/) for full details.
 
 ### Auto-detection with Multiple Gateways
 
