@@ -37,17 +37,16 @@ jobs:
         run: |
           kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
 
-      - name: Install Istio with Inference Extension support
+      - name: Install Envoy Gateway
         run: |
-          curl -L https://istio.io/downloadIstio | sh -
-          cd istio-*/bin
-          ./istioctl install --set profile=minimal \
-            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true -y
-          kubectl wait --for=condition=Available deployment/istiod -n istio-system --timeout=120s
-          # Verify inference extension is enabled
-          kubectl get deploy istiod -n istio-system -o jsonpath='{.spec.template.spec.containers[0].env}' | grep -o 'ENABLE_GATEWAY_API_INFERENCE_EXTENSION[^}]*' || echo "WARNING: env var not found on istiod"
-          # Enable sidecar injection for EPP to get mTLS with gateway
-          kubectl label namespace default istio-injection=enabled --overwrite
+          helm install eg oci://docker.io/envoyproxy/gateway-helm \
+            --version v1.4.0 \
+            -n envoy-gateway-system --create-namespace --wait --timeout 120s
+          kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
+          # Enable InferencePool support
+          kubectl apply -f https://raw.githubusercontent.com/envoyproxy/ai-gateway/main/examples/inference-pool/config.yaml 2>/dev/null || true
+          kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
+          kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
 
       - name: Install KAITO operator
         run: |
@@ -244,22 +243,20 @@ jobs:
             -o jsonpath='{.status.gateway.modelName}')
           echo "Model name: $MODEL_NAME"
 
-          # Get the NodePort for the gateway service
-          NODE_PORT=$(kubectl get svc inference-gateway-istio -n default \
-            -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || \
-            kubectl get svc inference-gateway-istio -n default \
-            -o jsonpath='{.spec.ports[?(@.port==80)].nodePort}')
-          echo "NodePort: $NODE_PORT"
+          # Find the gateway service (works for both Envoy Gateway and Istio)
+          GW_SVC=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || \
+                   kubectl get svc -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          GW_NS=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "default")
+          echo "Gateway service: $GW_SVC in $GW_NS"
 
-          # Get the node IP (Kind control plane)
-          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-          echo "Node IP: $NODE_IP"
+          kubectl port-forward "svc/$GW_SVC" 8080:80 -n "$GW_NS" &
+          sleep 5
 
-          # Send inference request through the gateway NodePort
-          echo "Sending inference request through gateway at http://${NODE_IP}:${NODE_PORT}..."
+          # Send inference request through the gateway
+          echo "Sending inference request through gateway..."
           for i in $(seq 1 12); do
             HTTP_CODE=$(curl -s -o /tmp/response.json -w '%{http_code}' --max-time 30 \
-              http://${NODE_IP}:${NODE_PORT}/v1/chat/completions \
+              http://localhost:8080/v1/chat/completions \
               -H "Content-Type: application/json" \
               -d "{
                 \"model\": \"$MODEL_NAME\",
@@ -328,8 +325,9 @@ jobs:
           kubectl logs -n kubeairunway-system -l control-plane=controller-manager --tail=200
           echo "=== KAITO Provider Logs ==="
           kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
-          echo "=== Istio Logs ==="
-          kubectl logs -n istio-system -l app=istiod --tail=100
+          echo "=== Istio/Envoy Gateway Logs ==="
+          kubectl logs -n envoy-gateway-system -l control-plane=envoy-gateway --tail=100 2>/dev/null || \
+            kubectl logs -n istio-system -l app=istiod --tail=100 2>/dev/null || echo "No gateway controller logs"
           echo "=== EPP Logs ==="
           kubectl logs -n default -l app.kubernetes.io/name=kubeairunway-epp --tail=100 2>/dev/null || echo "No EPP logs"
           echo "=== Shadow Services (Istio-created for InferencePool) ==="
