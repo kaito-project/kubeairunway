@@ -16,6 +16,7 @@ KubeAIRunway gives you a web UI and a unified Kubernetes CRD (`ModelDeployment`)
 - 🔧 **Multiple Engines** — [vLLM](https://github.com/vllm-project/vllm), [SGLang](https://github.com/sgl-project/sglang), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), [llama.cpp](https://github.com/ggml-org/llama.cpp)
 - 📈 **Live Monitoring** — Real-time status, logs, and Prometheus metrics
 - 💰 **Cost Estimation** — GPU pricing and capacity guidance
+- 🌐 **Gateway API Integration** — Unified inference endpoint via [Gateway API Inference Extension](https://gateway-api.sigs.k8s.io/geps/gep-3567/) with auto-detected setup
 - 🔌 **Headlamp Plugin** — Full-featured [Headlamp](https://headlamp.dev/) dashboard plugin
 
 ## Supported Providers
@@ -97,6 +98,7 @@ The controller automatically selects the best engine and provider, creates provi
 | Observability | [docs/observability.md](docs/observability.md) |
 | Development | [docs/development.md](docs/development.md) |
 | Kubernetes Deployment | [deploy/kubernetes/README.md](deploy/kubernetes/README.md) |
+| Gateway Integration | [docs/gateway.md](docs/gateway.md) |
 | Headlamp Plugin | [docs/headlamp-plugin.md](docs/headlamp-plugin.md) |
 
 ## Contributing

@@ -98,6 +98,12 @@ Note: The UI layer shown above includes the Frontend layer and the Backend layer
 4. **Swappable frontends** — The bundled React UI, the Headlamp plugin, or any custom UI can all drive the same backend API simultaneously. No code changes needed.
 5. **Auth is delegated** — Authentication uses Kubernetes `TokenReview`; the frontend simply passes a bearer token. Any UI that can obtain a K8s token works.
 
+## Gateway API Integration
+
+KubeAIRunway optionally integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8s.io/geps/gep-3567/) to provide a unified inference gateway. When Gateway API CRDs are detected in the cluster, the controller automatically creates an **InferencePool** and **HTTPRoute** for each `ModelDeployment`, allowing all models to be called through a single Gateway endpoint using body-based routing on the `model` field.
+
+The feature is auto-detected at startup and silently disabled if the required CRDs are not present. See [Gateway Integration](gateway.md) for full details.
+
 ## Documentation
 
 For detailed documentation on specific topics, see:
@@ -111,6 +117,7 @@ For detailed documentation on specific topics, see:
 | [Headlamp Plugin](headlamp-plugin.md) | Headlamp dashboard plugin architecture and design |
 | [Observability](observability.md) | Prometheus metrics and Kubernetes events |
 | [Versioning & Upgrades](versioning-upgrades.md) | API versioning strategy, controller upgrades, compatibility matrix |
+| [Gateway Integration](gateway.md) | Gateway API Inference Extension setup and usage |
 | [Design Decisions](design-decisions.md) | Alternatives considered, testing strategy, known limitations, out of scope |
 | [API Reference](api.md) | REST API endpoint documentation |
 | [Development Guide](development.md) | Setup, build, and testing instructions |

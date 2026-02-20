@@ -190,6 +190,11 @@ func (t *Transformer) buildHeadGroupSpec(md *kubeairunwayv1alpha1.ModelDeploymen
 			"dashboard-host": "0.0.0.0",
 		},
 		"template": map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"labels": map[string]interface{}{
+					"kubeairunway.ai/model-deployment": md.Name,
+				},
+			},
 			"spec": map[string]interface{}{
 				"containers": []interface{}{
 					map[string]interface{}{
@@ -243,6 +248,11 @@ func (t *Transformer) buildAggregatedWorkerGroup(md *kubeairunwayv1alpha1.ModelD
 		"groupName":   "gpu-workers",
 		"rayStartParams": map[string]interface{}{},
 		"template": map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"labels": map[string]interface{}{
+					"kubeairunway.ai/model-deployment": md.Name,
+				},
+			},
 			"spec": map[string]interface{}{
 				"containers": []interface{}{
 					map[string]interface{}{
@@ -289,6 +299,11 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 			"groupName":   "prefill-workers",
 			"rayStartParams": map[string]interface{}{},
 			"template": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"kubeairunway.ai/model-deployment": md.Name,
+					},
+				},
 				"spec": map[string]interface{}{
 					"containers": []interface{}{
 						map[string]interface{}{
@@ -329,6 +344,11 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 			"groupName":   "decode-workers",
 			"rayStartParams": map[string]interface{}{},
 			"template": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"kubeairunway.ai/model-deployment": md.Name,
+					},
+				},
 				"spec": map[string]interface{}{
 					"containers": []interface{}{
 						map[string]interface{}{

@@ -151,6 +151,24 @@ export interface Condition {
   lastTransitionTime?: string;
 }
 
+export interface GatewayStatus {
+  endpoint?: string;
+  modelName?: string;
+}
+
+export interface GatewayInfo {
+  available: boolean;
+  endpoint?: string;
+  models?: GatewayModelInfo[];
+}
+
+export interface GatewayModelInfo {
+  name: string;
+  deploymentName: string;
+  provider?: string;
+  ready: boolean;
+}
+
 export interface ModelDeploymentStatus {
   phase?: DeploymentPhase;
   message?: string;
@@ -165,6 +183,7 @@ export interface ModelDeploymentStatus {
     ready: number;
   };
   endpoint?: string;
+  gateway?: GatewayStatus;
   conditions?: Condition[];
   observedGeneration?: number;
 }
@@ -219,6 +238,7 @@ export interface DeploymentStatus {
     desired: number;
     ready: number;
   };
+  gateway?: GatewayStatus;
 }
 
 // ==================== Conversion Functions ====================
@@ -300,6 +320,7 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
     frontendService: md.metadata.name,
     prefillReplicas: status.prefillReplicas,
     decodeReplicas: status.decodeReplicas,
+    gateway: status.gateway,
   };
 }
 

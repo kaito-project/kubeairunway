@@ -1,0 +1,373 @@
+name: E2E Gateway Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e-gateway:
+    runs-on: ubuntu-latest-16-cores
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: controller/go.sum
+
+      - name: Setup Kind
+        run: |
+          go install sigs.k8s.io/kind@latest
+          kind create cluster --name kubeairunway-gw-e2e --wait 120s
+          # Allow workloads on control plane node for LoadBalancer access
+          kubectl label node kubeairunway-gw-e2e-control-plane node.kubernetes.io/exclude-from-external-load-balancers- 2>/dev/null || true
+
+      - name: Install cloud-provider-kind
+        run: |
+          go install sigs.k8s.io/cloud-provider-kind@latest
+          cloud-provider-kind &
+          sleep 5
+          echo "✅ cloud-provider-kind running"
+
+      - name: Install Gateway API CRDs
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml
+
+      - name: Install Gateway API Inference Extension CRDs
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml
+
+      - name: Install Istio with Inference Extension support
+        run: |
+          curl -L https://istio.io/downloadIstio | sh -
+          cd istio-*/bin
+          ./istioctl install --set profile=minimal \
+            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true -y
+          kubectl wait --for=condition=Available deployment/istiod -n istio-system --timeout=120s
+          echo "✅ Istio installed"
+
+      - name: Install KAITO operator
+        run: |
+          helm repo add kaito https://kaito-project.github.io/kaito/charts/kaito
+          helm install kaito-workspace kaito/workspace \
+            --namespace kaito-workspace \
+            --create-namespace \
+            --set featureGates.disableNodeAutoProvisioning=true
+          kubectl wait --for=condition=Available deployment -n kaito-workspace -l app.kubernetes.io/name=workspace --timeout=120s
+
+      - name: Build and deploy controller
+        run: |
+          make controller-docker-build CONTROLLER_IMG=kubeairunway-controller:e2e
+          kind load docker-image kubeairunway-controller:e2e --name kubeairunway-gw-e2e
+          make controller-deploy CONTROLLER_IMG=kubeairunway-controller:e2e
+          kubectl wait --for=condition=Available deployment -n kubeairunway-system -l control-plane=controller-manager --timeout=120s
+
+      - name: Build and deploy KAITO provider
+        run: |
+          make kaito-provider-docker-build KAITO_PROVIDER_IMG=kaito-provider:e2e
+          kind load docker-image kaito-provider:e2e --name kubeairunway-gw-e2e
+          make kaito-provider-deploy KAITO_PROVIDER_IMG=kaito-provider:e2e
+          kubectl wait --for=condition=Available deployment -n kubeairunway-system -l control-plane=kaito-provider --timeout=120s
+
+      - name: Wait for provider registration
+        run: |
+          kubectl wait --for=jsonpath='{.status.ready}'=true inferenceproviderconfig/kaito --timeout=120s
+
+      - name: Create Gateway resource
+        run: |
+          kubectl apply -f controller/test/e2e/testdata/gateway.yaml
+          echo "Waiting for Gateway to be programmed..."
+          for i in $(seq 1 30); do
+            PROGRAMMED=$(kubectl get gateway inference-gateway -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "")
+            if [ "$PROGRAMMED" = "True" ]; then
+              echo "✅ Gateway is programmed"
+              break
+            fi
+            echo "Attempt $i/30: programmed=$PROGRAMMED"
+            if [ "$i" = "30" ]; then
+              echo "⚠️ Gateway not programmed after 30 attempts, continuing anyway (Kind may not support LoadBalancer)"
+            fi
+            sleep 5
+          done
+
+      - name: Create ModelDeployment with gateway enabled
+        run: |
+          kubectl apply -f controller/test/e2e/testdata/gateway-modeldeployment.yaml
+
+      - name: Wait for ModelDeployment to reach Running phase
+        run: |
+          kubectl wait --for=condition=WorkspaceSucceeded workspace/llama-gw-e2e -n default --timeout=600s 2>/dev/null || true
+
+          echo "Waiting for ModelDeployment to reach Running phase..."
+          for i in $(seq 1 60); do
+            PHASE=$(kubectl get modeldeployment llama-gw-e2e -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "Attempt $i/60: phase=$PHASE"
+            if [ "$PHASE" = "Running" ]; then
+              echo "✅ ModelDeployment is Running"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ Timed out waiting for ModelDeployment to reach Running phase"
+          exit 1
+
+      - name: Verify InferencePool created
+        run: |
+          echo "Waiting for InferencePool..."
+          for i in $(seq 1 30); do
+            if kubectl get inferencepool llama-gw-e2e -n default > /dev/null 2>&1; then
+              echo "✅ InferencePool found"
+              break
+            fi
+            echo "Attempt $i/30: InferencePool not found yet"
+            if [ "$i" = "30" ]; then
+              echo "❌ Timed out waiting for InferencePool"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          # Verify selector label
+          SELECTOR=$(kubectl get inferencepool llama-gw-e2e -n default \
+            -o jsonpath='{.spec.selector.matchLabels.kubeairunway\.ai/model-deployment}')
+          if [ "$SELECTOR" != "llama-gw-e2e" ]; then
+            echo "❌ InferencePool selector mismatch: expected 'llama-gw-e2e', got '$SELECTOR'"
+            exit 1
+          fi
+          echo "✅ InferencePool selector correct"
+
+          # Verify endpointPickerRef
+          EPP_NAME=$(kubectl get inferencepool llama-gw-e2e -n default \
+            -o jsonpath='{.spec.endpointPickerRef.name}')
+          if [ -z "$EPP_NAME" ]; then
+            echo "❌ InferencePool missing endpointPickerRef"
+            exit 1
+          fi
+          echo "✅ InferencePool endpointPickerRef set: $EPP_NAME"
+
+      - name: Verify HTTPRoute created
+        run: |
+          echo "Waiting for HTTPRoute..."
+          for i in $(seq 1 30); do
+            if kubectl get httproute llama-gw-e2e -n default > /dev/null 2>&1; then
+              echo "✅ HTTPRoute found"
+              break
+            fi
+            echo "Attempt $i/30: HTTPRoute not found yet"
+            if [ "$i" = "30" ]; then
+              echo "❌ Timed out waiting for HTTPRoute"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          # Verify parent ref points to gateway
+          PARENT=$(kubectl get httproute llama-gw-e2e -n default \
+            -o jsonpath='{.spec.parentRefs[0].name}')
+          if [ "$PARENT" != "inference-gateway" ]; then
+            echo "❌ HTTPRoute parent mismatch: expected 'inference-gateway', got '$PARENT'"
+            exit 1
+          fi
+          echo "✅ HTTPRoute parent ref correct"
+
+          # Verify backend ref points to InferencePool
+          BACKEND_GROUP=$(kubectl get httproute llama-gw-e2e -n default \
+            -o jsonpath='{.spec.rules[0].backendRefs[0].group}')
+          BACKEND_KIND=$(kubectl get httproute llama-gw-e2e -n default \
+            -o jsonpath='{.spec.rules[0].backendRefs[0].kind}')
+          if [ "$BACKEND_GROUP" != "inference.networking.k8s.io" ] || [ "$BACKEND_KIND" != "InferencePool" ]; then
+            echo "❌ HTTPRoute backend ref mismatch: group=$BACKEND_GROUP kind=$BACKEND_KIND"
+            exit 1
+          fi
+          echo "✅ HTTPRoute backend ref correct"
+
+      - name: Verify gateway status and model name auto-discovery
+        run: |
+          echo "Waiting for GatewayReady condition..."
+          for i in $(seq 1 30); do
+            GW_READY=$(kubectl get modeldeployment llama-gw-e2e -n default \
+              -o jsonpath='{.status.conditions[?(@.type=="GatewayReady")].status}' 2>/dev/null || echo "")
+            if [ "$GW_READY" = "True" ]; then
+              echo "✅ GatewayReady condition is True"
+              break
+            fi
+            echo "Attempt $i/30: GatewayReady=$GW_READY"
+            if [ "$i" = "30" ]; then
+              echo "❌ Timed out waiting for GatewayReady condition"
+              exit 1
+            fi
+            sleep 5
+          done
+
+          # Check auto-discovered model name
+          MODEL_NAME=$(kubectl get modeldeployment llama-gw-e2e -n default \
+            -o jsonpath='{.status.gateway.modelName}')
+          if [ -z "$MODEL_NAME" ]; then
+            echo "❌ Gateway model name is empty"
+            exit 1
+          fi
+          echo "✅ Gateway model name auto-discovered: $MODEL_NAME"
+
+      - name: Wait for EPP to be ready
+        run: |
+          echo "Waiting for EPP deployment..."
+          for i in $(seq 1 30); do
+            READY=$(kubectl get deployment llama-gw-e2e-epp -n default -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            if [ "$READY" = "1" ]; then
+              echo "✅ EPP is ready"
+              break
+            fi
+            echo "Attempt $i/30: EPP readyReplicas=$READY"
+            if [ "$i" = "30" ]; then
+              echo "❌ EPP not ready"
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Configure Istio DestinationRule for EPP
+        run: |
+          kubectl apply -f - <<'DREOF'
+          apiVersion: networking.istio.io/v1beta1
+          kind: DestinationRule
+          metadata:
+            name: llama-gw-e2e-epp
+            namespace: default
+          spec:
+            host: llama-gw-e2e-epp.default.svc.cluster.local
+            trafficPolicy:
+              tls:
+                mode: SIMPLE
+                insecureSkipVerify: true
+          DREOF
+          echo "✅ Istio DestinationRule created for EPP"
+
+      - name: Install Body-Based Router (BBR)
+        run: |
+          helm install body-based-router \
+            --set provider.name=istio \
+            --version v1.3.1 \
+            oci://registry.k8s.io/gateway-api-inference-extension/charts/body-based-routing \
+            --wait --timeout 120s
+          echo "✅ BBR installed"
+
+      - name: Test inference through gateway
+        run: |
+          MODEL_NAME=$(kubectl get modeldeployment llama-gw-e2e -n default \
+            -o jsonpath='{.status.gateway.modelName}')
+          echo "Model name: $MODEL_NAME"
+
+          # Get the Gateway LoadBalancer IP (provided by cloud-provider-kind)
+          GW_IP=""
+          for i in $(seq 1 30); do
+            GW_IP=$(kubectl get gateway inference-gateway -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || echo "")
+            if [ -n "$GW_IP" ]; then
+              echo "Gateway IP: $GW_IP"
+              break
+            fi
+            echo "Waiting for Gateway IP... attempt $i/30"
+            sleep 5
+          done
+
+          if [ -z "$GW_IP" ]; then
+            echo "❌ Gateway IP not assigned"
+            exit 1
+          fi
+
+          echo "Sending inference request through gateway at http://${GW_IP}..."
+          for i in $(seq 1 18); do
+            HTTP_CODE=$(curl -s -o /tmp/response.json -w '%{http_code}' --max-time 30 \
+              http://${GW_IP}/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"model\": \"$MODEL_NAME\",
+                \"messages\": [{\"role\": \"user\", \"content\": \"Say hello in one word.\"}],
+                \"max_tokens\": 10
+              }" 2>&1 || true)
+            RESPONSE=$(cat /tmp/response.json 2>/dev/null || echo "")
+
+            if [ "$HTTP_CODE" = "200" ] && echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
+              echo "Response: $RESPONSE"
+              echo "✅ Inference through gateway succeeded"
+              exit 0
+            fi
+            echo "Attempt $i/18: HTTP=$HTTP_CODE body=$(echo $RESPONSE | head -c 200)"
+            sleep 10
+          done
+          echo "❌ Inference through gateway failed"
+          exit 1
+
+      - name: Test gateway disable and cleanup
+        run: |
+          # Disable gateway
+          kubectl patch modeldeployment llama-gw-e2e -n default \
+            --type=merge -p '{"spec":{"gateway":{"enabled":false}}}'
+
+          echo "Waiting for gateway resources to be cleaned up..."
+          sleep 15
+
+          # Verify InferencePool deleted
+          if kubectl get inferencepool llama-gw-e2e -n default 2>/dev/null; then
+            echo "❌ InferencePool should have been deleted"
+            exit 1
+          fi
+          echo "✅ InferencePool cleaned up"
+
+          # Verify HTTPRoute deleted
+          if kubectl get httproute llama-gw-e2e -n default 2>/dev/null; then
+            echo "❌ HTTPRoute should have been deleted"
+            exit 1
+          fi
+          echo "✅ HTTPRoute cleaned up"
+
+          # Verify GatewayReady condition is False
+          GW_READY=$(kubectl get modeldeployment llama-gw-e2e -n default \
+            -o jsonpath='{.status.conditions[?(@.type=="GatewayReady")].status}')
+          if [ "$GW_READY" != "False" ]; then
+            echo "❌ GatewayReady condition should be False after disable: $GW_READY"
+            exit 1
+          fi
+          echo "✅ GatewayReady condition is False after disable"
+
+      - name: Collect debug info
+        if: failure()
+        run: |
+          echo "=== ModelDeployments ==="
+          kubectl get modeldeployments -A -o yaml
+          echo "=== InferencePools ==="
+          kubectl get inferencepools -A -o yaml 2>/dev/null || echo "No InferencePools"
+          echo "=== HTTPRoutes ==="
+          kubectl get httproutes -A -o yaml 2>/dev/null || echo "No HTTPRoutes"
+          echo "=== Gateways ==="
+          kubectl get gateways -A -o yaml 2>/dev/null || echo "No Gateways"
+          echo "=== Workspaces ==="
+          kubectl get workspaces -A -o yaml
+          echo "=== Controller Logs ==="
+          kubectl logs -n kubeairunway-system -l control-plane=controller-manager --tail=200
+          echo "=== KAITO Provider Logs ==="
+          kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
+          echo "=== EPP Logs ==="
+          kubectl logs -n default -l app.kubernetes.io/name=llama-gw-e2e-epp --tail=100 2>/dev/null || echo "No EPP logs"
+          echo "=== Istio Logs ==="
+          kubectl logs -n istio-system -l app=istiod --tail=100 2>/dev/null || echo "No Istio logs"
+          echo "=== Gateway Proxy Logs ==="
+          GW_POD=$(kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          [ -n "$GW_POD" ] && kubectl logs "$GW_POD" -n default --tail=50 2>/dev/null || echo "No gateway proxy logs"
+          echo "=== Gateway Pods ==="
+          kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o yaml
+          echo "=== Events ==="
+          kubectl get events -A --sort-by=.lastTimestamp
+          echo "=== Pods ==="
+          kubectl get pods -A
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kind delete cluster --name kubeairunway-gw-e2e

@@ -27,6 +27,9 @@ spec:
       type: "nvidia.com/gpu"
   scaling:
     replicas: 1
+  gateway:
+    enabled: true                # Optional: defaults to true when Gateway detected
+    modelName: ""                # Optional: override model name for routing
 ```
 
 ## InferenceProviderConfig
