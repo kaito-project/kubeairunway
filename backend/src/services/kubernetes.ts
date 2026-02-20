@@ -1465,7 +1465,9 @@ class KubernetesService {
             name: gw.modelName,
             deploymentName: md.metadata.name,
             provider: md.status?.provider?.name || md.spec.provider?.name,
-            ready: gw.ready ?? false,
+            ready: md.status?.conditions?.some(
+              (c: { type: string; status: string }) => c.type === 'GatewayReady' && c.status === 'True'
+            ) ?? false,
           });
         }
       }
