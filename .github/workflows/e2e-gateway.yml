@@ -49,8 +49,7 @@ jobs:
           curl -L https://istio.io/downloadIstio | sh -
           cd istio-*/bin
           ./istioctl install --set profile=minimal \
-            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true \
-            --set meshConfig.enableAutoMtls=false -y
+            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true -y
           kubectl wait --for=condition=Available deployment/istiod -n istio-system --timeout=120s
           echo "✅ Istio installed"
 
@@ -241,6 +240,23 @@ jobs:
             fi
             sleep 10
           done
+
+      - name: Configure Istio DestinationRule for EPP
+        run: |
+          kubectl apply -f - <<'DREOF'
+          apiVersion: networking.istio.io/v1beta1
+          kind: DestinationRule
+          metadata:
+            name: llama-gw-e2e-epp
+            namespace: default
+          spec:
+            host: llama-gw-e2e-epp.default.svc.cluster.local
+            trafficPolicy:
+              tls:
+                mode: SIMPLE
+                insecureSkipVerify: true
+          DREOF
+          echo "✅ Istio DestinationRule created for EPP"
 
       - name: Test inference through gateway
         run: |
