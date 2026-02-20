@@ -173,7 +173,7 @@ Install BBR using the upstream helm chart (version should match your GAIE CRD ve
 helm install body-based-router \
   --set provider.name=istio \
   --version v1.3.1 \
-  oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/body-based-routing
+  oci://registry.k8s.io/gateway-api-inference-extension/charts/body-based-routing
 ```
 
 Replace `provider.name` with your gateway implementation (`istio`, `gke`, or omit for others). The chart deploys the BBR container and any provider-specific resources (e.g. EnvoyFilter for Istio).
