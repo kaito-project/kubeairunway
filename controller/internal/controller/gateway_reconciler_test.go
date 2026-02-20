@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -615,5 +616,27 @@ func TestGateway_CleanupNonExistentResourcesNoError(t *testing.T) {
 	}
 	if md.Status.Gateway != nil {
 		t.Error("expected gateway status to be cleared")
+	}
+}
+
+func TestIsNoMatchError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"nil error", nil, false},
+		{"generic error", fmt.Errorf("something failed"), false},
+		{"no matches for kind", fmt.Errorf("no matches for kind \"InferencePool\" in version \"inference.networking.k8s.io/v1\""), true},
+		{"server not found", fmt.Errorf("the server could not find the requested resource"), true},
+		{"no kind registered", fmt.Errorf("no kind is registered for the type \"InferencePool\""), true},
+		{"wrapped error", fmt.Errorf("reconciling InferencePool: %w", fmt.Errorf("no matches for kind \"InferencePool\"")), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isNoMatchError(tt.err); got != tt.expected {
+				t.Errorf("isNoMatchError(%v) = %v, want %v", tt.err, got, tt.expected)
+			}
+		})
 	}
 }
