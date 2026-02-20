@@ -254,6 +254,10 @@ jobs:
                   h2UpgradePolicy: UPGRADE
           EOF
           echo "✅ Istio DestinationRule created"
+          # Restart gateway proxy to pick up new configuration
+          kubectl rollout restart deployment inference-gateway-istio -n default
+          kubectl rollout status deployment inference-gateway-istio -n default --timeout=60s
+          sleep 10
 
       - name: Test inference through gateway
         run: |
