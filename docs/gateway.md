@@ -169,6 +169,26 @@ kubeairunway.ai/inference-gateway: "true"
 
 If no labeled Gateway is found, the controller skips gateway reconciliation and sets the `GatewayReady` condition to `False`.
 
+### Cross-namespace Gateway
+
+When the Gateway is in a different namespace than the ModelDeployment, a [ReferenceGrant](https://gateway-api.sigs.k8s.io/api-types/referencegrant/) must exist in the Gateway's namespace to allow cross-namespace HTTPRoute attachment:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-model-routes
+  namespace: gateway-system  # Gateway's namespace
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: default  # ModelDeployment's namespace
+  to:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+```
+
 ### Per-deployment Configuration
 
 Each `ModelDeployment` can override gateway behavior:
