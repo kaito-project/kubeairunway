@@ -4,6 +4,9 @@
 
 Deploy and manage large language models on Kubernetes — no YAML required.
 
+> [!NOTE]
+> KubeAIRunway is still under heavy development and the APIs are not currently considered stable. Feedback is welcome! ❤️
+
 KubeAIRunway gives you a web UI and a unified Kubernetes CRD (`ModelDeployment`) to deploy models across multiple inference providers. Browse [HuggingFace](https://huggingface.co/), pick a model, click deploy.
 
 ## Highlights
