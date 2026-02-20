@@ -37,10 +37,13 @@ jobs:
         run: |
           kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/latest/download/manifests.yaml
 
-      - name: Install Envoy Gateway
+      - name: Install Envoy Gateway with InferencePool support
         run: |
           helm install eg oci://docker.io/envoyproxy/gateway-helm \
             --version v1.4.0 \
+            --set config.envoyGateway.extensionManager.backendResources[0].group=inference.networking.k8s.io \
+            --set config.envoyGateway.extensionManager.backendResources[0].kind=InferencePool \
+            --set config.envoyGateway.extensionManager.backendResources[0].version=v1 \
             -n envoy-gateway-system --create-namespace --wait --timeout 120s
           kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
 
@@ -226,10 +229,56 @@ jobs:
             fi
             echo "Attempt $i/30: EPP readyReplicas=$READY"
             if [ "$i" = "30" ]; then
-              echo "⚠️ EPP not ready (may be expected without a gateway implementation)"
+              echo "⚠️ EPP not ready after 5 min"
             fi
             sleep 10
           done
+
+      - name: Test inference through gateway
+        run: |
+          MODEL_NAME=$(kubectl get modeldeployment llama-gw-e2e -n default \
+            -o jsonpath='{.status.gateway.modelName}')
+          echo "Model name: $MODEL_NAME"
+
+          # Port-forward to the Envoy Gateway proxy service
+          GW_SVC=$(kubectl get svc -n envoy-gateway-system -o jsonpath='{.items[?(@.metadata.labels.gateway\.envoyproxy\.io/owning-gateway-name=="inference-gateway")].metadata.name}' 2>/dev/null || echo "")
+          if [ -z "$GW_SVC" ]; then
+            # Fallback: find by label
+            GW_SVC=$(kubectl get svc -A -l gateway.envoyproxy.io/owning-gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          fi
+          GW_NS=$(kubectl get svc -A -l gateway.envoyproxy.io/owning-gateway-name=inference-gateway -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "envoy-gateway-system")
+          echo "Gateway service: $GW_SVC in $GW_NS"
+
+          if [ -z "$GW_SVC" ]; then
+            echo "⚠️ Gateway service not found, skipping traffic test"
+            exit 0
+          fi
+
+          kubectl port-forward "svc/$GW_SVC" 8080:80 -n "$GW_NS" &
+          sleep 5
+
+          echo "Sending inference request through gateway..."
+          for i in $(seq 1 18); do
+            HTTP_CODE=$(curl -s -o /tmp/response.json -w '%{http_code}' --max-time 30 \
+              http://localhost:8080/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"model\": \"$MODEL_NAME\",
+                \"messages\": [{\"role\": \"user\", \"content\": \"Say hello in one word.\"}],
+                \"max_tokens\": 10
+              }" 2>&1 || true)
+            RESPONSE=$(cat /tmp/response.json 2>/dev/null || echo "")
+
+            if [ "$HTTP_CODE" = "200" ] && echo "$RESPONSE" | jq -e '.choices[0].message.content' > /dev/null 2>&1; then
+              echo "Response: $RESPONSE"
+              echo "✅ Inference through gateway succeeded"
+              exit 0
+            fi
+            echo "Attempt $i/18: HTTP=$HTTP_CODE body=$(echo $RESPONSE | head -c 200)"
+            sleep 10
+          done
+          echo "❌ Inference through gateway failed"
+          exit 1
 
       - name: Test gateway disable and cleanup
         run: |
@@ -282,6 +331,12 @@ jobs:
           kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
           echo "=== EPP Logs ==="
           kubectl logs -n default -l app.kubernetes.io/name=llama-gw-e2e-epp --tail=100 2>/dev/null || echo "No EPP logs"
+          echo "=== Envoy Gateway Logs ==="
+          kubectl logs -n envoy-gateway-system -l control-plane=envoy-gateway --tail=100 2>/dev/null || echo "No EG logs"
+          echo "=== All Services (all namespaces) ==="
+          kubectl get svc -A -o wide
+          echo "=== All Pods ==="
+          kubectl get pods -A
           echo "=== Gateway Pods ==="
           kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o yaml
           echo "=== Events ==="
