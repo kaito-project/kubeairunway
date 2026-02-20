@@ -42,7 +42,8 @@ jobs:
           curl -L https://istio.io/downloadIstio | sh -
           cd istio-*/bin
           ./istioctl install --set profile=minimal \
-            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true -y
+            --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true \
+            --set meshConfig.enableAutoMtls=false -y
           kubectl wait --for=condition=Available deployment/istiod -n istio-system --timeout=120s
           # Verify inference extension is enabled
           kubectl get deploy istiod -n istio-system -o jsonpath='{.spec.template.spec.containers[0].env}' | grep -o 'ENABLE_GATEWAY_API_INFERENCE_EXTENSION[^}]*' || echo "WARNING: env var not found on istiod"
