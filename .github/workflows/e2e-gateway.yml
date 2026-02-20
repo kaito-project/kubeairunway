@@ -254,10 +254,22 @@ jobs:
                   h2UpgradePolicy: UPGRADE
           EOF
           echo "✅ Istio DestinationRule created"
-          # Restart gateway proxy to pick up new configuration
-          kubectl rollout restart deployment inference-gateway-istio -n default
-          kubectl rollout status deployment inference-gateway-istio -n default --timeout=60s
-          sleep 10
+
+          # Disable mTLS for EPP since it doesn't have an Istio sidecar
+          cat <<EOF | kubectl apply -f -
+          apiVersion: security.istio.io/v1
+          kind: PeerAuthentication
+          metadata:
+            name: kubeairunway-epp
+            namespace: default
+          spec:
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: kubeairunway-epp
+            mtls:
+              mode: DISABLE
+          EOF
+          echo "✅ PeerAuthentication created (mTLS disabled for EPP)"
 
       - name: Test inference through gateway
         run: |
