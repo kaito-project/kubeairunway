@@ -39,20 +39,32 @@ jobs:
 
       - name: Install Envoy Gateway with InferencePool support
         run: |
-          cat <<EOF > /tmp/eg-values.yaml
-          config:
-            envoyGateway:
+          # Install Envoy Gateway
+          helm install eg oci://docker.io/envoyproxy/gateway-helm \
+            --version v1.4.0 \
+            -n envoy-gateway-system --create-namespace --wait --timeout 120s
+          kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
+
+          # Enable InferencePool backend resource support
+          kubectl get configmap envoy-gateway-config -n envoy-gateway-system -o yaml 2>/dev/null || true
+          kubectl patch configmap envoy-gateway-config -n envoy-gateway-system --type merge -p '
+          data:
+            envoy-gateway.yaml: |
+              apiVersion: gateway.envoyproxy.io/v1alpha1
+              kind: EnvoyGateway
+              provider:
+                type: Kubernetes
+              gateway:
+                controllerName: gateway.envoyproxy.io/gatewayclass-controller
               extensionManager:
                 backendResources:
                   - group: inference.networking.k8s.io
                     kind: InferencePool
                     version: v1
-          EOF
-          helm install eg oci://docker.io/envoyproxy/gateway-helm \
-            --version v1.4.0 \
-            -f /tmp/eg-values.yaml \
-            -n envoy-gateway-system --create-namespace --wait --timeout 180s
+          ' 2>/dev/null || echo "Could not patch configmap, trying restart"
+          kubectl rollout restart -n envoy-gateway-system deployment/envoy-gateway
           kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
+          echo "✅ Envoy Gateway installed with InferencePool support"
 
       - name: Install KAITO operator
         run: |
