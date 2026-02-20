@@ -167,7 +167,7 @@ When serving **multiple models** through a single Gateway, a Body-Based Router (
 > [!NOTE]
 > BBR is only needed for multi-model setups. A single model behind a Gateway works without BBR.
 
-Install BBR using the upstream helm chart (version should match your GAIE CRD version):
+Install BBR using the upstream helm chart:
 
 ```bash
 helm install body-based-router \
@@ -175,6 +175,9 @@ helm install body-based-router \
   --version v1.3.1 \
   oci://registry.k8s.io/gateway-api-inference-extension/charts/body-based-routing
 ```
+
+> [!NOTE]
+> The BBR chart version should match the GAIE version used by KubeAIRunway (currently v1.3.1). Check the [go.mod](https://github.com/kaito-project/kubeairunway/blob/main/controller/go.mod) for the `sigs.k8s.io/gateway-api-inference-extension` dependency version.
 
 Replace `provider.name` with your gateway implementation (`istio`, `gke`, or omit for others). The chart deploys the BBR container and any provider-specific resources (e.g. EnvoyFilter for Istio).
 
