@@ -86,12 +86,9 @@ Follow the installation guide for your chosen implementation:
 > [!NOTE]
 > **Istio:** Inference Extension support must be explicitly enabled by setting `ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true` on the `istiod` deployment (or passing `--set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true` during `istioctl install`). Without this, Istio ignores InferencePool backend refs in HTTPRoutes. The `minimal` profile is sufficient — Istio auto-creates a gateway deployment and LoadBalancer Service when you create a Gateway resource. See the [Istio Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api-inference-extension/) for full details.
 
-> [!NOTE]
-> **Envoy Gateway:** InferencePool support may need to be explicitly enabled depending on the version. Refer to the [Envoy AI Gateway InferencePool guide](https://aigateway.envoyproxy.io/docs/capabilities/inference/inferencepool-support/) for setup details. No mTLS configuration or sidecars are needed — Envoy Gateway connects to the EPP directly over plaintext gRPC.
-
 ### Step 4: Create a Gateway Resource
 
-```yaml
+```yamlin e2e
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -155,14 +152,12 @@ When set, the controller always uses the specified Gateway as the HTTPRoute pare
 
 ### Endpoint Picker (EPP) Configuration
 
-The InferencePool requires a reference to an Endpoint Picker extension service. By default the controller uses:
+The controller automatically deploys an EPP (Endpoint Picker Proxy) per ModelDeployment, named `<deployment-name>-epp`. The EPP handles intelligent request routing to model server pods.
 
 ```
---epp-service-name=kubeairunway-epp   # EPP Service name
---epp-service-port=9002               # EPP Service port
+--epp-service-port=9002               # EPP Service port (default: 9002)
+--epp-image=<image>                   # EPP container image (default: upstream GAIE image)
 ```
-
-Override these if your EPP service has a different name or port.
 
 ### Auto-detection with Multiple Gateways
 

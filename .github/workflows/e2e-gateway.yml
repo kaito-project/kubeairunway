@@ -219,7 +219,7 @@ jobs:
         run: |
           echo "Waiting for EPP deployment..."
           for i in $(seq 1 30); do
-            READY=$(kubectl get deployment kubeairunway-epp -n default -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            READY=$(kubectl get deployment llama-gw-e2e-epp -n default -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
             if [ "$READY" = "1" ]; then
               echo "✅ EPP is ready"
               break
@@ -281,7 +281,7 @@ jobs:
           echo "=== KAITO Provider Logs ==="
           kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
           echo "=== EPP Logs ==="
-          kubectl logs -n default -l app.kubernetes.io/name=kubeairunway-epp --tail=100 2>/dev/null || echo "No EPP logs"
+          kubectl logs -n default -l app.kubernetes.io/name=llama-gw-e2e-epp --tail=100 2>/dev/null || echo "No EPP logs"
           echo "=== Gateway Pods ==="
           kubectl get pods -n default -l gateway.networking.k8s.io/gateway-name=inference-gateway -o yaml
           echo "=== Events ==="

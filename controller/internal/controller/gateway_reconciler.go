@@ -162,10 +162,7 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 		},
 	}
 
-	eppName := r.GatewayDetector.EPPServiceName
-	if eppName == "" {
-		eppName = "kubeairunway-epp"
-	}
+	eppName := md.Name + "-epp"
 	eppPort := r.GatewayDetector.EPPServicePort
 	if eppPort == 0 {
 		eppPort = 9002
@@ -197,10 +194,7 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 // reconcileEPP creates or updates the Endpoint Picker Proxy deployment and service
 // for a ModelDeployment's InferencePool.
 func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
-	eppName := r.GatewayDetector.EPPServiceName
-	if eppName == "" {
-		eppName = "kubeairunway-epp"
-	}
+	eppName := md.Name + "-epp"
 	eppPort := r.GatewayDetector.EPPServicePort
 	if eppPort == 0 {
 		eppPort = 9002
@@ -211,7 +205,7 @@ func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *kubeai
 	}
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":       "kubeairunway-epp",
+		"app.kubernetes.io/name":       eppName,
 		"app.kubernetes.io/instance":   md.Name,
 		"app.kubernetes.io/managed-by": "kubeairunway",
 	}
@@ -648,6 +642,7 @@ func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, servi
 // the deployment is no longer running. Also sets GatewayReady=False.
 func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
+	eppName := md.Name + "-epp"
 
 	// Delete InferencePool if it exists
 	pool := &inferencev1.InferencePool{
@@ -669,6 +664,21 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 	}
 	if err := r.Delete(ctx, route); client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("failed to delete HTTPRoute: %w", err)
+	}
+
+	// Delete EPP resources
+	eppResources := []client.Object{
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+		&rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+	}
+	for _, obj := range eppResources {
+		if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
+			logger.V(1).Info("Could not delete EPP resource", "resource", obj.GetObjectKind(), "error", err)
+		}
 	}
 
 	md.Status.Gateway = nil

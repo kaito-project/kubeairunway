@@ -152,7 +152,6 @@ func main() {
 	var certServiceName string
 	var gatewayName string
 	var gatewayNamespace string
-	var eppServiceName string
 	var eppServicePort int
 	var eppImage string
 	var tlsOpts []func(*tls.Config)
@@ -180,8 +179,6 @@ func main() {
 		"Explicit Gateway resource name for HTTPRoute parent. If empty, auto-detects from cluster.")
 	flag.StringVar(&gatewayNamespace, "gateway-namespace", "",
 		"Namespace of the Gateway resource. Required when --gateway-name is set.")
-	flag.StringVar(&eppServiceName, "epp-service-name", "kubeairunway-epp",
-		"Name of the Endpoint Picker Proxy (EPP) Service for InferencePool.")
 	flag.IntVar(&eppServicePort, "epp-service-port", 9002,
 		"Port of the Endpoint Picker Proxy (EPP) Service.")
 	flag.StringVar(&eppImage, "epp-image",
@@ -359,7 +356,6 @@ func main() {
 	gatewayDetector := gateway.NewDetector(dc)
 	gatewayDetector.ExplicitGatewayName = gatewayName
 	gatewayDetector.ExplicitGatewayNamespace = gatewayNamespace
-	gatewayDetector.EPPServiceName = eppServiceName
 	gatewayDetector.EPPServicePort = int32(eppServicePort)
 	gatewayDetector.EPPImage = eppImage
 

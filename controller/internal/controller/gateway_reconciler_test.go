@@ -145,8 +145,8 @@ func TestGateway_InferencePoolCreation(t *testing.T) {
 	}
 
 	// Check EndpointPickerRef
-	if string(pool.Spec.EndpointPickerRef.Name) != "kubeairunway-epp" {
-		t.Errorf("expected EndpointPickerRef name %q, got %q", "kubeairunway-epp", pool.Spec.EndpointPickerRef.Name)
+	if string(pool.Spec.EndpointPickerRef.Name) != "test-model-epp" {
+		t.Errorf("expected EndpointPickerRef name %q, got %q", "test-model-epp", pool.Spec.EndpointPickerRef.Name)
 	}
 	if pool.Spec.EndpointPickerRef.Port == nil || pool.Spec.EndpointPickerRef.Port.Number != 9002 {
 		t.Errorf("expected EndpointPickerRef port 9002, got %v", pool.Spec.EndpointPickerRef.Port)

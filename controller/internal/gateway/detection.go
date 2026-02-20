@@ -56,7 +56,6 @@ type Detector struct {
 	ExplicitGatewayNamespace string
 
 	// EPP (Endpoint Picker Proxy) configuration
-	EPPServiceName string
 	EPPServicePort int32
 	EPPImage       string
 }

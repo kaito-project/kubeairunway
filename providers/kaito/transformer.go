@@ -173,8 +173,11 @@ func (t *Transformer) buildLlamaCppTemplate(md *kubeairunwayv1alpha1.ModelDeploy
 
 	// Build container args
 	args := []interface{}{
-		fmt.Sprintf("huggingface://%s", md.Spec.Model.ID),
 		"--address=:5000",
+	}
+	// Only add HuggingFace model URI for non-custom sources
+	if md.Spec.Model.Source != kubeairunwayv1alpha1.ModelSourceCustom && md.Spec.Model.ID != "" {
+		args = append([]interface{}{fmt.Sprintf("huggingface://%s", md.Spec.Model.ID)}, args...)
 	}
 	if md.Spec.Model.ServedName != "" {
 		args = append(args, fmt.Sprintf("--served-model-name=%s", md.Spec.Model.ServedName))
