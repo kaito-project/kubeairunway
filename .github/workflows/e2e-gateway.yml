@@ -39,12 +39,19 @@ jobs:
 
       - name: Install Envoy Gateway with InferencePool support
         run: |
+          cat <<EOF > /tmp/eg-values.yaml
+          config:
+            envoyGateway:
+              extensionManager:
+                backendResources:
+                  - group: inference.networking.k8s.io
+                    kind: InferencePool
+                    version: v1
+          EOF
           helm install eg oci://docker.io/envoyproxy/gateway-helm \
             --version v1.4.0 \
-            --set config.envoyGateway.extensionManager.backendResources[0].group=inference.networking.k8s.io \
-            --set config.envoyGateway.extensionManager.backendResources[0].kind=InferencePool \
-            --set config.envoyGateway.extensionManager.backendResources[0].version=v1 \
-            -n envoy-gateway-system --create-namespace --wait --timeout 120s
+            -f /tmp/eg-values.yaml \
+            -n envoy-gateway-system --create-namespace --wait --timeout 180s
           kubectl wait --for=condition=Available deployment/envoy-gateway -n envoy-gateway-system --timeout=120s
 
       - name: Install KAITO operator
