@@ -43,7 +43,7 @@ jobs:
           printf 'config:\n  envoyGateway:\n    extensionManager:\n      backendResources:\n        - group: inference.networking.k8s.io\n          kind: InferencePool\n          version: v1\n' > /tmp/eg-values.yaml
           cat /tmp/eg-values.yaml
           helm install eg oci://docker.io/envoyproxy/gateway-helm \
-            --version v1.4.0 \
+            --version v1.7.0 \
             -f /tmp/eg-values.yaml \
             -n envoy-gateway-system --create-namespace --timeout 300s
           echo "Waiting for Envoy Gateway..."
