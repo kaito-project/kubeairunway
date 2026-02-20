@@ -51,6 +51,8 @@ jobs:
           ./istioctl install --set profile=minimal \
             --set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true -y
           kubectl wait --for=condition=Available deployment/istiod -n istio-system --timeout=120s
+          # Enable sidecar injection in default namespace for EPP mTLS
+          kubectl label namespace default istio-injection=enabled --overwrite
           echo "✅ Istio installed"
 
       - name: Install KAITO operator
