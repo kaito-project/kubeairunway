@@ -164,9 +164,6 @@ The controller automatically deploys an EPP (Endpoint Picker Proxy) per ModelDep
 
 When serving **multiple models** through a single Gateway, a Body-Based Router (BBR) is needed to extract the `model` field from the request body and route to the correct InferencePool. BBR is a separate component deployed via the upstream GAIE helm chart.
 
-> [!NOTE]
-> BBR is only needed for multi-model setups. A single model behind a Gateway works without BBR.
-
 Install BBR using the upstream helm chart:
 
 ```bash
@@ -177,7 +174,7 @@ helm install body-based-router \
 ```
 
 > [!NOTE]
-> The BBR chart version should match the GAIE version used by KubeAIRunway (currently v1.3.1). Check the [go.mod](https://github.com/kaito-project/kubeairunway/blob/main/controller/go.mod) for the `sigs.k8s.io/gateway-api-inference-extension` dependency version.
+> It is recommended that BBR chart version to match the GAIE version used by KubeAIRunway (currently v1.3.1). Check the [go.mod](https://github.com/kaito-project/kubeairunway/blob/main/controller/go.mod) for the `sigs.k8s.io/gateway-api-inference-extension` dependency version.
 
 Replace `provider.name` with your gateway implementation (`istio`, `gke`, or omit for others). The chart deploys the BBR container and any provider-specific resources (e.g. EnvoyFilter for Istio).
 

@@ -249,6 +249,15 @@ jobs:
           DREOF
           echo "✅ Istio DestinationRule created for EPP"
 
+      - name: Install Body-Based Router (BBR)
+        run: |
+          helm install body-based-router \
+            --set provider.name=istio \
+            --version v1.3.1 \
+            oci://registry.k8s.io/gateway-api-inference-extension/charts/body-based-routing \
+            --wait --timeout 120s
+          echo "✅ BBR installed"
+
       - name: Test inference through gateway
         run: |
           MODEL_NAME=$(kubectl get modeldeployment llama-gw-e2e -n default \
