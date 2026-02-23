@@ -25,8 +25,14 @@ spec:
     gpu:
       count: 1
       type: "nvidia.com/gpu"
+  adapters:                       # Optional: LoRA adapters
+    - name: sql                  # Optional: custom short name (derived from source if omitted)
+      source: "hf://user/sql-lora-adapter"  # Required: hf:// URI to adapter repo
   scaling:
     replicas: 1
+  gateway:
+    enabled: true                # Optional: defaults to true when Gateway detected
+    modelName: ""                # Optional: override model name for routing
 ```
 
 ## InferenceProviderConfig
@@ -43,6 +49,7 @@ spec:
     servingModes: [aggregated, disaggregated]
     gpuSupport: true
     cpuSupport: false
+    loraSupport: true            # Whether this provider supports LoRA adapters
   selectionRules:
     - condition: "spec.serving.mode == 'disaggregated'"
       priority: 100
@@ -75,3 +82,4 @@ status:
 
 - [Architecture Overview](architecture.md)
 - [Controller Architecture](controller-architecture.md)
+- [LoRA Adapter Support](lora-adapters.md)

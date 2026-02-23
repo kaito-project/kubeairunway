@@ -141,6 +141,8 @@ Multiple controllers write to `ModelDeployment.status` using server-side apply w
 | `conditions[ProviderCompatible]` | Provider controller | Engine/mode compatibility check   |
 | `conditions[ResourceCreated]`    | Provider controller | Upstream resource creation status |
 | `conditions[Ready]`              | Provider controller | Overall readiness                 |
+| `status.gateway.*`               | Core controller     | Gateway endpoint, model name, readiness |
+| `conditions[GatewayReady]`       | Core controller     | Gateway route active              |
 
 ## Drift Detection
 

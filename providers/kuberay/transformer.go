@@ -18,6 +18,7 @@ package kuberay
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -190,6 +191,11 @@ func (t *Transformer) buildHeadGroupSpec(md *kubeairunwayv1alpha1.ModelDeploymen
 			"dashboard-host": "0.0.0.0",
 		},
 		"template": map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"labels": map[string]interface{}{
+					"kubeairunway.ai/model-deployment": md.Name,
+				},
+			},
 			"spec": map[string]interface{}{
 				"containers": []interface{}{
 					map[string]interface{}{
@@ -243,6 +249,11 @@ func (t *Transformer) buildAggregatedWorkerGroup(md *kubeairunwayv1alpha1.ModelD
 		"groupName":   "gpu-workers",
 		"rayStartParams": map[string]interface{}{},
 		"template": map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"labels": map[string]interface{}{
+					"kubeairunway.ai/model-deployment": md.Name,
+				},
+			},
 			"spec": map[string]interface{}{
 				"containers": []interface{}{
 					map[string]interface{}{
@@ -289,6 +300,11 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 			"groupName":   "prefill-workers",
 			"rayStartParams": map[string]interface{}{},
 			"template": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"kubeairunway.ai/model-deployment": md.Name,
+					},
+				},
 				"spec": map[string]interface{}{
 					"containers": []interface{}{
 						map[string]interface{}{
@@ -329,6 +345,11 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 			"groupName":   "decode-workers",
 			"rayStartParams": map[string]interface{}{},
 			"template": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"kubeairunway.ai/model-deployment": md.Name,
+					},
+				},
 				"spec": map[string]interface{}{
 					"containers": []interface{}{
 						map[string]interface{}{
@@ -367,6 +388,29 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 	// Add trust remote code
 	if md.Spec.Engine.TrustRemoteCode {
 		args = append(args, "--trust-remote-code")
+	}
+
+	// Add LoRA args when adapters are specified
+	if len(md.Spec.Adapters) > 0 {
+		args = append(args, "--enable-lora")
+
+		// Build --lora-modules JSON
+		type loraModule struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		}
+		modules := make([]loraModule, 0, len(md.Spec.Adapters))
+		for _, a := range md.Spec.Adapters {
+			name := kubeairunwayv1alpha1.ResolvedAdapterName(a)
+			// Strip hf:// prefix - vLLM auto-downloads from HuggingFace
+			path := a.Source
+			if strings.HasPrefix(path, "hf://") {
+				path = path[5:]
+			}
+			modules = append(modules, loraModule{Name: name, Path: path})
+		}
+		modulesJSON, _ := json.Marshal(modules)
+		args = append(args, "--lora-modules", string(modulesJSON))
 	}
 
 	// Add custom engine args (sorted for deterministic output)

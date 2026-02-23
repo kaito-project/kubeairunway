@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -221,6 +223,52 @@ type SecretsSpec struct {
 	HuggingFaceToken string `json:"huggingFaceToken,omitempty"`
 }
 
+// GatewaySpec defines the Gateway API integration configuration
+type GatewaySpec struct {
+	// enabled controls whether an InferencePool + HTTPRoute are created for this model.
+	// Defaults to true when a Gateway is detected in the cluster.
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+	// modelName overrides the model name used in HTTPRoute routing.
+	// Defaults to spec.model.servedName or spec.model.id
+	// +optional
+	ModelName string `json:"modelName,omitempty"`
+	// httpRouteRef references an existing HTTPRoute by name instead of auto-creating one.
+	// When set, the controller skips HTTPRoute creation and uses the referenced route.
+	// The HTTPRoute must be in the same namespace as the ModelDeployment.
+	// +optional
+	HTTPRouteRef string `json:"httpRouteRef,omitempty"`
+}
+
+// LoRAAdapterSpec defines a LoRA adapter to load with the base model
+type LoRAAdapterSpec struct {
+	// name is the adapter identifier used in API requests.
+	// For vLLM/SGLang, this becomes the model name clients use in requests.
+	// If omitted, defaults to the ID extracted from the source URI.
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// source is a URI pointing to the adapter weights.
+	// Supported schemes:
+	//   hf://  — HuggingFace adapter repo (e.g., "hf://user/my-lora-adapter")
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^(hf)://`
+	Source string `json:"source"`
+}
+
+// AdapterStatus reports the status of a loaded LoRA adapter
+type AdapterStatus struct {
+	// name is the adapter identifier
+	Name string `json:"name"`
+
+	// loaded indicates whether the adapter is currently loaded
+	Loaded bool `json:"loaded"`
+
+	// message provides additional information
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
 // ModelDeploymentSpec defines the desired state of ModelDeployment
 type ModelDeploymentSpec struct {
 	// model defines the model specification
@@ -264,6 +312,10 @@ type ModelDeploymentSpec struct {
 	// +optional
 	Secrets *SecretsSpec `json:"secrets,omitempty"`
 
+	// gateway defines the Gateway API integration configuration
+	// +optional
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
+
 	// nodeSelector constrains scheduling to nodes with specific labels
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
@@ -271,6 +323,14 @@ type ModelDeploymentSpec struct {
 	// tolerations are tolerations for the pods
 	// +optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// adapters defines LoRA adapters to load alongside the base model.
+	// When set, the engine is automatically configured for LoRA serving.
+	// Each adapter becomes available for per-request selection via the model name.
+	// Engine-specific tuning (max-lora-rank, max-loras, etc.) can be set via spec.engine.args.
+	// +optional
+	// +kubebuilder:validation:MaxItems=64
+	Adapters []LoRAAdapterSpec `json:"adapters,omitempty"`
 }
 
 // ProviderStatus contains information about the selected provider
@@ -329,6 +389,16 @@ type EngineStatus struct {
 	SelectedReason string `json:"selectedReason,omitempty"`
 }
 
+// GatewayStatus contains information about the gateway integration
+type GatewayStatus struct {
+	// endpoint is the unified gateway endpoint URL
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+	// modelName is the model name to use in API requests
+	// +optional
+	ModelName string `json:"modelName,omitempty"`
+}
+
 // ModelDeploymentStatus defines the observed state of ModelDeployment.
 type ModelDeploymentStatus struct {
 	// phase is the current phase of the deployment
@@ -347,6 +417,10 @@ type ModelDeploymentStatus struct {
 	// +optional
 	Engine *EngineStatus `json:"engine,omitempty"`
 
+	// gateway contains information about the gateway integration
+	// +optional
+	Gateway *GatewayStatus `json:"gateway,omitempty"`
+
 	// replicas contains replica count information
 	// +optional
 	Replicas *ReplicaStatus `json:"replicas,omitempty"`
@@ -360,6 +434,10 @@ type ModelDeploymentStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// adapters reports the status of loaded LoRA adapters
+	// +optional
+	Adapters []AdapterStatus `json:"adapters,omitempty"`
 
 	// observedGeneration is the generation observed by the controller
 	// +optional
@@ -413,6 +491,21 @@ func (md *ModelDeployment) ResolvedEngineType() EngineType {
 	return ""
 }
 
+// ResolvedAdapterName returns the effective name for a LoRA adapter.
+// If Name is explicitly set, it is returned. Otherwise, the name is
+// extracted from the source URI by stripping the scheme prefix.
+func ResolvedAdapterName(adapter LoRAAdapterSpec) string {
+	if adapter.Name != "" {
+		return adapter.Name
+	}
+	// Strip scheme prefix (e.g., "hf://user/model" → "user/model")
+	source := adapter.Source
+	if idx := strings.Index(source, "://"); idx >= 0 {
+		return source[idx+3:]
+	}
+	return source
+}
+
 // Condition types for ModelDeployment
 const (
 	// ConditionTypeValidated indicates the spec has been validated
@@ -427,4 +520,10 @@ const (
 	ConditionTypeResourceCreated = "ResourceCreated"
 	// ConditionTypeReady indicates the deployment is ready
 	ConditionTypeReady = "Ready"
+	// ConditionTypeGatewayReady indicates the gateway route is active
+	ConditionTypeGatewayReady = "GatewayReady"
+)
+
+const (
+	LabelModelDeployment = "kubeairunway.ai/model-deployment"
 )

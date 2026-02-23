@@ -183,25 +183,25 @@ func TestGetImage(t *testing.T) {
 	// Default vLLM image
 	md.Spec.Image = ""
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
-	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1" {
+	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.9.0" {
 		t.Errorf("expected default vllm image, got %s", img)
 	}
 
 	// Default SGLang image
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
-	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.7.1" {
+	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.9.0" {
 		t.Errorf("expected default sglang image, got %s", img)
 	}
 
 	// Default TRT-LLM image
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeTRTLLM
-	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/trtllm-runtime:0.7.1" {
+	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/trtllm-runtime:0.9.0" {
 		t.Errorf("expected default trtllm image, got %s", img)
 	}
 
 	// Unknown engine → fallback
 	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineType("unknown")
-	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1" {
+	if img := tr.getImage(md); img != "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.9.0" {
 		t.Errorf("expected fallback to vllm image, got %s", img)
 	}
 }
@@ -1105,5 +1105,51 @@ func TestBuildResourceLimitsWithAllFields(t *testing.T) {
 	// Memory and CPU should not be in requests (only gpu goes there)
 	if _, ok := requests["memory"]; ok {
 		t.Error("did not expect memory in requests")
+	}
+}
+
+func TestTransformAggregatedWithAdapters(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Adapters = []kubeairunwayv1alpha1.LoRAAdapterSpec{
+		{Name: "my-adapter", Source: "hf://user/my-lora"},
+		{Source: "hf://org/auto-named"},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+
+	// Check --enable-lora in engine args
+	eps, _ := worker["extraPodSpec"].(map[string]interface{})
+	mainContainer, _ := eps["mainContainer"].(map[string]interface{})
+	args, _ := mainContainer["args"].([]interface{})
+	foundEnableLora := false
+	for _, a := range args {
+		if s, ok := a.(string); ok && s == "--enable-lora" {
+			foundEnableLora = true
+		}
+	}
+	if !foundEnableLora {
+		t.Errorf("expected --enable-lora in worker args, got %v", args)
+	}
+
+	// Check DYN_LORA_ENABLED env var
+	envVars, _ := mainContainer["env"].([]interface{})
+	foundLoraEnabled := false
+	for _, ev := range envVars {
+		e, _ := ev.(map[string]interface{})
+		if e["name"] == "DYN_LORA_ENABLED" && e["value"] == "true" {
+			foundLoraEnabled = true
+		}
+	}
+	if !foundLoraEnabled {
+		t.Errorf("expected DYN_LORA_ENABLED=true in env vars")
 	}
 }

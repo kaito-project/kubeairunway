@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -202,6 +203,44 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.
 				gpuCount,
 				fmt.Sprintf("%s engine requires GPU (set resources.gpu.count > 0)", spec.Engine.Type),
 			))
+		}
+	}
+
+	// Validate LoRA adapters
+	if len(spec.Adapters) > 0 {
+		adaptersPath := specPath.Child("adapters")
+
+		// llamacpp LoRA is deferred — block it
+		if spec.Engine.Type == kubeairunwayv1alpha1.EngineTypeLlamaCpp {
+			allErrs = append(allErrs, field.Invalid(
+				adaptersPath,
+				spec.Engine.Type,
+				"LoRA adapters are not yet supported with llamacpp engine",
+			))
+		}
+
+		// Adapter names must be unique
+		seen := map[string]bool{}
+		for i, a := range spec.Adapters {
+			name := kubeairunwayv1alpha1.ResolvedAdapterName(a)
+			if seen[name] {
+				allErrs = append(allErrs, field.Duplicate(
+					adaptersPath.Index(i).Child("name"),
+					name,
+				))
+			}
+			seen[name] = true
+		}
+
+		// Validate source URI scheme
+		for i, a := range spec.Adapters {
+			if !strings.HasPrefix(a.Source, "hf://") {
+				allErrs = append(allErrs, field.Invalid(
+					adaptersPath.Index(i).Child("source"),
+					a.Source,
+					"adapter source must use hf:// scheme",
+				))
+			}
 		}
 	}
 

@@ -61,26 +61,74 @@ var _ = Describe("ModelDeployment Webhook", func() {
 	})
 
 	Context("When creating or updating ModelDeployment under Validating Webhook", func() {
-		// TODO (user): Add logic for validating webhooks
-		// Example:
-		// It("Should deny creation if a required field is missing", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = ""
-		//     Expect(validator.ValidateCreate(ctx, obj)).Error().To(HaveOccurred())
-		// })
-		//
-		// It("Should admit creation if all required fields are present", func() {
-		//     By("simulating an invalid creation scenario")
-		//     obj.SomeRequiredField = "valid_value"
-		//     Expect(validator.ValidateCreate(ctx, obj)).To(BeNil())
-		// })
-		//
-		// It("Should validate updates correctly", func() {
-		//     By("simulating a valid update scenario")
-		//     oldObj.SomeRequiredField = "updated_value"
-		//     obj.SomeRequiredField = "updated_value"
-		//     Expect(validator.ValidateUpdate(ctx, oldObj, obj)).To(BeNil())
-		// })
+		It("Should reject adapters with llamacpp engine", func() {
+			obj.Spec.Model.ID = "test-model"
+			obj.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
+			obj.Spec.Adapters = []kubeairunwayv1alpha1.LoRAAdapterSpec{
+				{Name: "adapter1", Source: "hf://user/adapter1"},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("llamacpp"))
+		})
+
+		It("Should reject duplicate adapter names", func() {
+			obj.Spec.Model.ID = "test-model"
+			obj.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
+			obj.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
+				GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			}
+			obj.Spec.Adapters = []kubeairunwayv1alpha1.LoRAAdapterSpec{
+				{Name: "same-name", Source: "hf://user/adapter1"},
+				{Name: "same-name", Source: "hf://user/adapter2"},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Duplicate"))
+		})
+
+		It("Should reject adapter source without hf:// prefix", func() {
+			obj.Spec.Model.ID = "test-model"
+			obj.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
+			obj.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
+				GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			}
+			obj.Spec.Adapters = []kubeairunwayv1alpha1.LoRAAdapterSpec{
+				{Name: "adapter1", Source: "s3://bucket/adapter1"},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("hf://"))
+		})
+
+		It("Should accept valid adapters", func() {
+			obj.Spec.Model.ID = "test-model"
+			obj.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
+			obj.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
+				GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			}
+			obj.Spec.Adapters = []kubeairunwayv1alpha1.LoRAAdapterSpec{
+				{Name: "adapter1", Source: "hf://user/adapter1"},
+				{Name: "adapter2", Source: "hf://user/adapter2"},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Should reject auto-derived adapter names that collide", func() {
+			obj.Spec.Model.ID = "test-model"
+			obj.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeVLLM
+			obj.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
+				GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			}
+			obj.Spec.Adapters = []kubeairunwayv1alpha1.LoRAAdapterSpec{
+				{Source: "hf://user/adapter1"},
+				{Source: "hf://user/adapter1"},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Duplicate"))
+		})
 	})
 
 })

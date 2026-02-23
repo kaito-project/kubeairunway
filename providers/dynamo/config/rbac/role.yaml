@@ -61,6 +61,18 @@ rules:
 - apiGroups:
   - nvidia.com
   resources:
+  - dynamomodels
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - nvidia.com
+  resources:
   - dynamographdeployments/status
   verbs:
   - get

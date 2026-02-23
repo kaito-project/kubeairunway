@@ -10,3 +10,4 @@ export { default as runtimes } from './runtimes';
 export { default as aikit } from './aikit';
 export { default as aiconfigurator } from './aiconfigurator';
 export { costsRoutes as costs } from './costs';
+export { default as gateway } from './gateway';

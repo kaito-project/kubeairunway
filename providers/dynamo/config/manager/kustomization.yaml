@@ -3,6 +3,6 @@ resources:
 images:
 - name: IMAGE_PLACEHOLDER
   newName: docker.io/sozercan/dynamo-provider
-  newTag: engine-autoselect
+  newTag: lora
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

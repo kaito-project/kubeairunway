@@ -67,8 +67,9 @@ func GetProviderConfigSpec() kubeairunwayv1alpha1.InferenceProviderConfigSpec {
 			ServingModes: []kubeairunwayv1alpha1.ServingMode{
 				kubeairunwayv1alpha1.ServingModeAggregated,
 			},
-			CPUSupport: true,
-			GPUSupport: true,
+			CPUSupport:  true,
+			GPUSupport:  true,
+			LoRASupport: true,
 		},
 		SelectionRules: []kubeairunwayv1alpha1.SelectionRule{
 			{

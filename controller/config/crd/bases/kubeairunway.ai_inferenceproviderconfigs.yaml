@@ -75,6 +75,12 @@ spec:
                     description: gpuSupport indicates if the provider supports GPU
                       inference
                     type: boolean
+                  loraSupport:
+                    description: |-
+                      loraSupport indicates whether the provider supports LoRA adapter loading.
+                      Used by auto-selection: when adapters are specified, providers without
+                      loraSupport are excluded from candidate list.
+                    type: boolean
                   servingModes:
                     description: servingModes is the list of supported serving modes
                     items:

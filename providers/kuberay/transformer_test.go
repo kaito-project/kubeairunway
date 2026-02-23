@@ -2,6 +2,7 @@ package kuberay
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -555,5 +556,71 @@ func TestBuildDisaggregatedWorkerGroupsWithCustomGPUType(t *testing.T) {
 	pLimits, _ := pRes["limits"].(map[string]interface{})
 	if pLimits["amd.com/gpu"] != "2" {
 		t.Errorf("expected prefill amd.com/gpu=2, got %v", pLimits["amd.com/gpu"])
+	}
+}
+
+func TestTransformWithAdapters(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Adapters = []kubeairunwayv1alpha1.LoRAAdapterSpec{
+		{Name: "my-adapter", Source: "hf://user/my-lora"},
+		{Source: "hf://org/auto-named"},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	rs := resources[0]
+	headGroup, _, _ := unstructured.NestedMap(rs.Object, "spec", "rayClusterConfig", "headGroupSpec")
+	template, _ := headGroup["template"].(map[string]interface{})
+	spec, _ := template["spec"].(map[string]interface{})
+	containers, _ := spec["containers"].([]interface{})
+	container, _ := containers[0].(map[string]interface{})
+	envVars, _ := container["env"].([]interface{})
+
+	var engineArgs string
+	for _, ev := range envVars {
+		e, _ := ev.(map[string]interface{})
+		if e["name"] == "VLLM_ENGINE_ARGS" {
+			engineArgs, _ = e["value"].(string)
+		}
+	}
+
+	if !strings.Contains(engineArgs, "--enable-lora") {
+		t.Errorf("expected --enable-lora in VLLM_ENGINE_ARGS: %s", engineArgs)
+	}
+	if !strings.Contains(engineArgs, "--lora-modules") {
+		t.Errorf("expected --lora-modules in VLLM_ENGINE_ARGS: %s", engineArgs)
+	}
+
+	// Validate --lora-modules JSON structure
+	idx := strings.Index(engineArgs, "--lora-modules ")
+	if idx < 0 {
+		t.Fatal("--lora-modules not found in engine args")
+	}
+	jsonStr := engineArgs[idx+len("--lora-modules "):]
+	// JSON ends at end of args or next flag
+	if nextFlag := strings.Index(jsonStr, " --"); nextFlag >= 0 {
+		jsonStr = jsonStr[:nextFlag]
+	}
+
+	type loraModule struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	}
+	var modules []loraModule
+	if err := json.Unmarshal([]byte(jsonStr), &modules); err != nil {
+		t.Fatalf("failed to parse --lora-modules JSON: %v", err)
+	}
+	if len(modules) != 2 {
+		t.Fatalf("expected 2 lora modules, got %d", len(modules))
+	}
+	if modules[0].Name != "my-adapter" || modules[0].Path != "user/my-lora" {
+		t.Errorf("unexpected first module: %+v", modules[0])
+	}
+	if modules[1].Name != "org/auto-named" || modules[1].Path != "org/auto-named" {
+		t.Errorf("unexpected second module: %+v", modules[1])
 	}
 }

@@ -37,6 +37,12 @@ type ProviderCapabilities struct {
 	// gpuSupport indicates if the provider supports GPU inference
 	// +optional
 	GPUSupport bool `json:"gpuSupport,omitempty"`
+
+	// loraSupport indicates whether the provider supports LoRA adapter loading.
+	// Used by auto-selection: when adapters are specified, providers without
+	// loraSupport are excluded from candidate list.
+	// +optional
+	LoRASupport bool `json:"loraSupport,omitempty"`
 }
 
 // HelmRepo defines a Helm repository needed for installation

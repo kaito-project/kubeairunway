@@ -18,8 +18,10 @@ package dynamo
 
 import (
 	"context"
+	"crypto/sha256"
 	stderrors "errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -82,6 +84,7 @@ func NewDynamoProviderReconciler(client client.Client, scheme *runtime.Scheme) *
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=nvidia.com,resources=dynamographdeployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvidia.com,resources=dynamomodels,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles the reconciliation loop for ModelDeployments assigned to the Dynamo provider
 func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -157,6 +160,14 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "DynamoGraphDeployment created successfully")
+
+	// Create DynamoModel CRDs for LoRA adapters
+	if len(md.Spec.Adapters) > 0 {
+		if err := r.reconcileAdapters(ctx, &md); err != nil {
+			logger.Error(err, "Failed to reconcile LoRA adapters", "name", md.Name)
+			// Non-fatal: DGD is created, adapters can be retried
+		}
+	}
 
 	// Update provider status
 	md.Status.Provider.ResourceName = dynamoGraphDeploymentName(md.Namespace, md.Name)
@@ -388,10 +399,122 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubea
 		return ctrl.Result{}, fmt.Errorf("failed to get upstream resource: %w", err)
 	}
 
-	// Resource is gone, remove finalizer
+	// Resource is gone, clean up DynamoModels and remove finalizer
+	r.cleanupOrphanedDynamoModels(ctx, md, map[string]bool{})
 	logger.Info("Upstream resource deleted, removing finalizer", "name", md.Name)
 	controllerutil.RemoveFinalizer(md, FinalizerName)
 	return ctrl.Result{}, r.Update(ctx, md)
+}
+
+// reconcileAdapters creates or updates DynamoModel CRDs for LoRA adapters
+func (r *DynamoProviderReconciler) reconcileAdapters(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+	logger := log.FromContext(ctx)
+
+	// Track which DynamoModels should exist
+	desiredModels := make(map[string]bool)
+
+	for _, adapter := range md.Spec.Adapters {
+		name := kubeairunwayv1alpha1.ResolvedAdapterName(adapter)
+		modelName := dynamoModelName(md.Namespace, md.Name, name)
+		desiredModels[modelName] = true
+
+		dm := &unstructured.Unstructured{}
+		dm.SetAPIVersion(fmt.Sprintf("%s/%s", DynamoAPIGroup, DynamoAPIVersion))
+		dm.SetKind("DynamoModel")
+		dm.SetName(modelName)
+		dm.SetNamespace(DynamoNamespace)
+		dm.SetLabels(map[string]string{
+			"kubeairunway.ai/managed-by":           "kubeairunway",
+			"kubeairunway.ai/deployment":           md.Name,
+			"kubeairunway.ai/deployment-namespace": md.Namespace,
+			"kubeairunway.ai/adapter-name":         sanitizeLabelValue(name),
+		})
+
+		spec := map[string]interface{}{
+			"modelName":     name,
+			"baseModelName": md.Spec.Model.ID,
+			"modelType":     "lora",
+			"source": map[string]interface{}{
+				"uri": adapter.Source,
+			},
+		}
+
+		if err := unstructured.SetNestedField(dm.Object, spec, "spec"); err != nil {
+			return fmt.Errorf("failed to set DynamoModel spec: %w", err)
+		}
+
+		if err := r.createOrUpdateResource(ctx, dm, md); err != nil {
+			logger.Error(err, "Failed to create/update DynamoModel", "name", modelName)
+			return err
+		}
+		logger.Info("DynamoModel reconciled", "name", modelName, "adapter", name)
+	}
+
+	// Clean up DynamoModels that are no longer needed
+	return r.cleanupOrphanedDynamoModels(ctx, md, desiredModels)
+}
+
+// cleanupOrphanedDynamoModels removes DynamoModel CRDs that no longer have matching adapters
+func (r *DynamoProviderReconciler) cleanupOrphanedDynamoModels(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, desired map[string]bool) error {
+	logger := log.FromContext(ctx)
+
+	// List existing DynamoModels for this deployment
+	existing := &unstructured.UnstructuredList{}
+	existing.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   DynamoAPIGroup,
+		Version: DynamoAPIVersion,
+		Kind:    "DynamoModelList",
+	})
+
+	if err := r.List(ctx, existing,
+		client.InNamespace(DynamoNamespace),
+		client.MatchingLabels{
+			"kubeairunway.ai/managed-by":           "kubeairunway",
+			"kubeairunway.ai/deployment":           md.Name,
+			"kubeairunway.ai/deployment-namespace": md.Namespace,
+		},
+	); err != nil {
+		// If CRD doesn't exist, nothing to clean up
+		if strings.Contains(err.Error(), "no matches for kind") {
+			return nil
+		}
+		return fmt.Errorf("failed to list DynamoModels: %w", err)
+	}
+
+	for i := range existing.Items {
+		dm := &existing.Items[i]
+		if !desired[dm.GetName()] {
+			logger.Info("Deleting orphaned DynamoModel", "name", dm.GetName())
+			if err := r.Delete(ctx, dm); err != nil && !errors.IsNotFound(err) {
+				logger.Error(err, "Failed to delete orphaned DynamoModel", "name", dm.GetName())
+			}
+		}
+	}
+
+	return nil
+}
+
+// dynamoModelName returns a unique DynamoModel name
+func dynamoModelName(namespace, deploymentName, adapterName string) string {
+	// Sanitize adapter name for use in K8s resource name
+	sanitized := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		if r >= 'A' && r <= 'Z' {
+			return r + 32 // lowercase
+		}
+		return '-'
+	}, adapterName)
+	sanitized = strings.Trim(sanitized, "-")
+
+	result := fmt.Sprintf("%s-%s-%s", namespace, deploymentName, sanitized)
+	if len(result) > 253 {
+		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(result)))
+		suffix := hash[:8]
+		result = result[:253-9] + "-" + suffix
+	}
+	return result
 }
 
 // setCondition updates a condition on the ModelDeployment

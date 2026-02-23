@@ -28,6 +28,7 @@ import {
   aikit,
   aiconfigurator,
   costs,
+  gateway,
 } from './routes';
 
 // Load static files at startup
@@ -130,6 +131,7 @@ app.route('/api/runtimes', runtimes);
 app.route('/api/aikit', aikit);
 app.route('/api/aiconfigurator', aiconfigurator);
 app.route('/api/costs', costs);
+app.route('/api/gateway', gateway);
 
 // Static file serving middleware - uses Bun.file() for zero-copy serving
 app.use('*', async (c, next) => {

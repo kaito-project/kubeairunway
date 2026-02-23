@@ -46,6 +46,36 @@ spec:
     cpu: "8"
   image: "ghcr.io/sozercan/llama-cpp-runner:latest"
 ---
+# Example: Multi-LoRA adapter deployment
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  labels:
+    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/managed-by: kustomize
+  name: llama-8b-lora-example
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-8B-Instruct"
+    source: huggingface
+  adapters:
+    - name: chess
+      source: "hf://mkopecki/chess-lora-adapter-fp-llama-3.1-8b"
+  engine:
+    type: vllm
+    args:
+      max-lora-rank: "64"
+  serving:
+    mode: aggregated
+  scaling:
+    replicas: 1
+  resources:
+    gpu:
+      count: 1
+    memory: "32Gi"
+  secrets:
+    huggingFaceToken: "hf-token"
+---
 # Example: Disaggregated prefill/decode deployment
 apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
