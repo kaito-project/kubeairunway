@@ -27,7 +27,12 @@ spec:
       type: "nvidia.com/gpu"
   scaling:
     replicas: 1
+  gateway:
+    enabled: true                # Optional: defaults to true when Gateway detected
+    modelName: ""                # Optional: override model name for routing
 ```
+
+> **Note:** If `gateway.enabled` is explicitly set to `true` but the Gateway API Inference Extension CRDs are not installed, the controller sets a `GatewayReady=False` condition with reason `CRDsNotAvailable`. This surfaces as a status warning on the `ModelDeployment`.
 
 ## InferenceProviderConfig
 Cluster-scoped resource for provider registration. Each provider controller self-registers its `InferenceProviderConfig` at startup, declaring capabilities, selection rules, and installation info:

@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: docker.io/sozercan/kubeairunway-controller
-  newTag: engine-autoselect
+  newTag: latest

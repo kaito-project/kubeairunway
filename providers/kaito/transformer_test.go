@@ -177,8 +177,8 @@ func TestTransformLlamaCpp(t *testing.T) {
 		t.Fatalf("expected 1 port, got %d", len(ports))
 	}
 	port, _ := ports[0].(map[string]interface{})
-	if port["containerPort"] != int64(DefaultLlamaCppPort) {
-		t.Errorf("expected port %d, got %v", DefaultLlamaCppPort, port["containerPort"])
+	if port["containerPort"] != int64(defaultLlamaCppPort) {
+		t.Errorf("expected port %d, got %v", defaultLlamaCppPort, port["containerPort"])
 	}
 }
 

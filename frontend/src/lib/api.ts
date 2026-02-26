@@ -45,6 +45,9 @@ export type {
   PodStatus,
   DeploymentStatus,
   ClusterStatus,
+  GatewayStatus,
+  GatewayInfo,
+  GatewayModelInfo,
 } from '@kubeairunway/shared';
 
 // Settings types
@@ -649,6 +652,12 @@ import type {
   NodePoolCostEstimate,
 } from '@kubeairunway/shared';
 
+// Import gateway types for internal use
+import type {
+  GatewayInfo,
+  GatewayModelInfo,
+} from '@kubeairunway/shared';
+
 export const costsApi = {
   /** Estimate deployment cost based on GPU configuration */
   estimate: (input: CostEstimateRequest) =>
@@ -694,4 +703,16 @@ export const costsApi = {
         hourlyRate: { aws?: number; azure?: number; gcp?: number };
       } | null;
     }>(`/costs/normalize-gpu?label=${encodeURIComponent(label)}`),
+};
+
+// ============================================================================
+// Gateway API
+// ============================================================================
+
+export const gatewayApi = {
+  /** Get gateway readiness and endpoint URL */
+  getStatus: () => request<GatewayInfo>('/gateway/status'),
+
+  /** List all models accessible through the gateway */
+  getModels: () => request<{ models: GatewayModelInfo[] }>('/gateway/models'),
 };

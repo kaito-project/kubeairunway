@@ -7,6 +7,9 @@
 # Controller image
 CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway-controller:latest
 
+# Gateway API Inference Extension version
+GAIE_VERSION ?= v1.3.1
+
 # Provider images
 KAITO_PROVIDER_IMG ?= ghcr.io/kaito-project/kaito-provider:latest
 DYNAMO_PROVIDER_IMG ?= ghcr.io/kaito-project/dynamo-provider:latest

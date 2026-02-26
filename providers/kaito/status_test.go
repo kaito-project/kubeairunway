@@ -214,8 +214,8 @@ func TestTranslateStatusEndpointLlamaCpp(t *testing.T) {
 	if result.Endpoint.Service != "test-ws" {
 		t.Errorf("expected service name test-ws, got %s", result.Endpoint.Service)
 	}
-	if result.Endpoint.Port != DefaultLlamaCppPort {
-		t.Errorf("expected port %d for llamacpp template, got %d", DefaultLlamaCppPort, result.Endpoint.Port)
+	if result.Endpoint.Port != defaultKAITOPort {
+		t.Errorf("expected service port %d for llamacpp template, got %d", defaultKAITOPort, result.Endpoint.Port)
 	}
 }
 

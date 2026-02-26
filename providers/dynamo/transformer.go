@@ -246,6 +246,9 @@ func (t *Transformer) buildFrontendService(md *kubeairunwayv1alpha1.ModelDeploym
 			},
 		},
 		"extraPodSpec": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"kubeairunway.ai/model-deployment": md.Name,
+			},
 			"mainContainer": map[string]interface{}{
 				"image": t.getImage(md),
 			},
@@ -283,6 +286,9 @@ func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeploy
 		"replicas":        replicas,
 		"resources":       resources,
 		"extraPodSpec": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"kubeairunway.ai/model-deployment": md.Name,
+			},
 			"mainContainer": map[string]interface{}{
 				"image":   image,
 				"command": toInterfaceSlice(t.engineCommand(md.ResolvedEngineType())),
@@ -338,6 +344,9 @@ func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeploymen
 		"replicas":         int64(prefillSpec.Replicas),
 		"resources":        resources,
 		"extraPodSpec": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"kubeairunway.ai/model-deployment": md.Name,
+			},
 			"mainContainer": map[string]interface{}{
 				"image":   image,
 				"command": toInterfaceSlice(t.engineCommand(md.ResolvedEngineType())),
@@ -392,6 +401,9 @@ func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment
 		"replicas":         int64(decodeSpec.Replicas),
 		"resources":        resources,
 		"extraPodSpec": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"kubeairunway.ai/model-deployment": md.Name,
+			},
 			"mainContainer": map[string]interface{}{
 				"image":   image,
 				"command": toInterfaceSlice(t.engineCommand(md.ResolvedEngineType())),
