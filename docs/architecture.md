@@ -13,7 +13,7 @@ Note: The UI layer shown above includes the Frontend layer and the Backend layer
 | Component                | Language              | Role                                                        | Required?        |
 | ------------------------ | --------------------- | ----------------------------------------------------------- | ---------------- |
 | **Controller**           | Go (Kubebuilder)      | Core operator — manages CRDs, provider selection, lifecycle | ✅ Yes            |
-| **Provider Controllers** | Go                    | Out-of-tree controllers for KAITO, Dynamo, KubeRay          | ✅ Yes (1+)       |
+| **Provider Controllers** | Go                    | Out-of-tree controllers for KAITO, Dynamo, KubeRay, llmd          | ✅ Yes (1+)       |
 | **Backend API**          | TypeScript (Hono/Bun) | REST API — proxies K8s operations, auth, model catalog      | Optional         |
 | **React Frontend**       | React/TypeScript      | Bundled Web UI                                              | ❌ Swappable      |
 | **Headlamp Plugin**      | React/TypeScript      | Alternative UI inside Headlamp dashboard                    | ❌ Swappable      |
@@ -72,9 +72,9 @@ Note: The UI layer shown above includes the Frontend layer and the Backend layer
  │  ┌──────────────────────┐  ┌──────────────────────────────────────────┐  │
  │  │  ModelDeployment     │  │     Provider Controllers (out-of-tree)   │  │
  │  │  (CRD)               │  │                                          │  │
- │  │                      │  │  ┌────────┐  ┌────────┐  ┌──────────┐   │  │
- │  │  InferenceProvider   │  │  │ KAITO  │  │ Dynamo │  │ KubeRay  │   │  │
- │  │  Config (CRD)        │  │  └───┬────┘  └───┬────┘  └────┬─────┘   │  │
+ │  │                      │  │  ┌────────┐  ┌────────┐  ┌──────────┐┌───────┐  │  │
+ │  │  InferenceProvider   │  │  │ KAITO  │  │ Dynamo │  │ KubeRay  ││ llmd  |  │  │
+ │  │  Config (CRD)        │  │  └───┬────┘  └───┬────┘  └────┬─────┘└────┬──┘  │  │
  │  └──────────────────────┘  │      │           │            │          │  │
  │                             │      ▼           ▼            ▼          │  │
  │                             │  ┌────────┐  ┌────────┐  ┌──────────┐   │  │

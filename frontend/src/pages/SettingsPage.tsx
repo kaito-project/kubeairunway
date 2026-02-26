@@ -48,7 +48,7 @@ import { cn } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 
 type SettingsTab = 'general' | 'runtimes' | 'integrations'
-type RuntimeId = 'dynamo' | 'kuberay' | 'kaito'
+type RuntimeId = 'dynamo' | 'kuberay' | 'kaito'| 'llmd'
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -84,14 +84,14 @@ export function SettingsPage() {
   // Set default runtime once data is loaded
   useEffect(() => {
     if (runtimesStatus?.runtimes && selectedRuntime === null) {
-      const installedRuntime = runtimes.find(r => r.installed)
+      const installedRuntime = runtimesStatus.runtimes.find(r => r.installed)
       if (installedRuntime) {
         setSelectedRuntime(installedRuntime.id as RuntimeId)
       } else {
         setSelectedRuntime('dynamo')
       }
     }
-  }, [runtimesStatus, selectedRuntime, runtimes])
+  }, [runtimesStatus, selectedRuntime])
 
   // Update URL when tab changes
   useEffect(() => {
@@ -439,6 +439,8 @@ export function SettingsPage() {
                         ? 'KAITO for simplified model deployment'
                         : runtime.id === 'dynamo'
                           ? 'NVIDIA Dynamo for high-performance GPU inference'
+                          : runtime.id === 'llmd'
+                        ? 'LLM-D for distributed inference'
                           : 'Ray Serve via KubeRay for distributed Ray-based model serving with vLLM'}
                     </CardDescription>
                   </CardHeader>

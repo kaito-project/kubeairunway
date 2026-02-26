@@ -47,16 +47,16 @@ The selection reason is recorded in `status.provider.selectedReason` for observa
 
 ### Provider Capability Matrix
 
-| Criteria          | KAITO   | Dynamo        | KubeRay            |
-| ----------------- | ------- | ------------- | ------------------ |
-| CPU inference     | **Yes** | No            | No                 |
-| GPU inference     | Yes     | **Yes**       | Yes                |
-| vLLM engine       | Yes     | **Yes**       | Yes                |
-| sglang engine     | No      | **Yes**       | No                 |
-| trtllm engine     | No      | **Yes**       | No                 |
-| llamacpp engine   | **Yes** | No            | No                 |
-| Disaggregated P/D | No      | **Yes**       | Yes                |
-| Auto-selection    | Yes     | Yes (default) | No (explicit only) |
+| Criteria          | KAITO   | Dynamo        | KubeRay            | llm-d              |
+| ----------------- | ------- | ------------- | ------------------ | ------------------ |
+| CPU inference     | **Yes** | No            | No                 | No                 |
+| GPU inference     | Yes     | **Yes**       | Yes                | Yes                |
+| vLLM engine       | Yes     | **Yes**       | Yes                | Yes                |
+| sglang engine     | No      | **Yes**       | No                 | No                 |
+| trtllm engine     | No      | **Yes**       | No                 | No                 |
+| llamacpp engine   | **Yes** | No            | No                 | No                 |
+| Disaggregated P/D | No      | **Yes**       | Yes                | Yes                |
+| Auto-selection    | Yes     | Yes (default) | No (explicit only) | No (explicit only) |
 
 ## Provider Abstraction
 
@@ -78,6 +78,7 @@ The Web UI backend reads provider information (capabilities, installation steps,
 | NVIDIA Dynamo | DynamoGraphDeployment | ✅ Available | High-performance GPU inference with KV-cache routing and disaggregated serving |
 | KubeRay       | RayService            | ✅ Available | Ray-based distributed inference with autoscaling                               |
 | KAITO         | Workspace             | ✅ Available | Flexible inference with vLLM (GPU) or llama.cpp (CPU/GPU)                      |
+| llm-d         | none                  | ✅ Available | Flexible inference with vLLM (GPU) with KV-cache routing and disaggregated serving |
 
 ### KAITO Provider
 

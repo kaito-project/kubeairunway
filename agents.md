@@ -2,7 +2,7 @@
 
 ## WHY: Project Purpose
 
-**KubeAIRunway** is a platform for deploying and managing machine learning models on Kubernetes. It provides a unified CRD abstraction (`ModelDeployment`) that works across multiple inference providers (KAITO, Dynamo, KubeRay, etc.).
+**KubeAIRunway** is a platform for deploying and managing machine learning models on Kubernetes. It provides a unified CRD abstraction (`ModelDeployment`) that works across multiple inference providers (KAITO, Dynamo, KubeRay, llm-d, etc.).
 
 ## WHAT: Tech Stack & Structure
 

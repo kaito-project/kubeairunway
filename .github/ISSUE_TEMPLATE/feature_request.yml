@@ -54,6 +54,7 @@ body:
         - Provider (KAITO)
         - Provider (NVIDIA Dynamo)
         - Provider (KubeRay)
+        - Provider (llm-d)
         - New Provider
         - Metrics / Monitoring
         - HuggingFace Integration

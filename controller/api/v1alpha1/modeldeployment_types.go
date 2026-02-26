@@ -86,7 +86,7 @@ type ModelSpec struct {
 
 // ProviderSpec defines the provider selection
 type ProviderSpec struct {
-	// name is the provider name (e.g., dynamo, kaito, kuberay)
+	// name is the provider name (e.g., dynamo, kaito, kuberay, llmd)
 	// If not specified, the provider-selector will choose one
 	// +optional
 	Name string `json:"name,omitempty"`

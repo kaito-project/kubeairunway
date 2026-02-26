@@ -53,6 +53,8 @@ function getResourceBadgeStyle(kind: string): string {
       return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300';
     case 'dynamographdeployment':
       return 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300';
+    case 'deployment':
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300';
     case 'service':
       return 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300';
     case 'configmap':
@@ -175,6 +177,7 @@ const deployedQuery = useDeploymentManifest(
     };
 
     fetchPreview();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.mode, isExpanded, props.mode === 'preview' ? (props as ManifestViewerPreviewProps).config : undefined]);
 
   // Handle deployed mode data

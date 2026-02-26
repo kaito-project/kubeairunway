@@ -97,6 +97,7 @@ kubeairunway/
 │   ├── kaito/         # KAITO provider
 │   ├── dynamo/        # NVIDIA Dynamo provider
 │   └── kuberay/       # KubeRay provider
+│   └── llmd/          # llm-d provider
 └── docs/              # Documentation
 ```
 

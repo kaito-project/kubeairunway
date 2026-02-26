@@ -22,6 +22,25 @@ import { PendingExplanation } from '@/components/deployments/PendingExplanation'
 import { DeploymentLogs } from '@/components/deployments/DeploymentLogs'
 import { ManifestViewer } from '@/components/deployments/ManifestViewer'
 
+function getProviderBadgeClass(provider: string): string {
+  switch (provider) {
+    case 'kuberay': return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+    case 'kaito':   return 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+    case 'llmd':    return 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
+    default:        return 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+  }
+}
+
+function getProviderDisplayName(provider: string): string {
+  switch (provider) {
+    case 'kuberay': return 'KubeRay'
+    case 'kaito':   return 'KAITO'
+    case 'llmd':    return 'llm-d'
+    case 'dynamo':  return 'Dynamo'
+    default:        return provider
+  }
+}
+
 export function DeploymentDetailsPage() {
   const { name } = useParams<{ name: string }>()
   const [searchParams] = useSearchParams()
@@ -138,17 +157,11 @@ export function DeploymentDetailsPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Runtime</p>
-              <Badge 
-                variant="secondary" 
-                className={
-                  deployment.provider === 'kuberay' 
-                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' 
-                    : deployment.provider === 'kaito'
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
-                    : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
-                }
+              <Badge
+                variant="secondary"
+                className={getProviderBadgeClass(deployment.provider)}
               >
-                {deployment.provider === 'kuberay' ? 'KubeRay' : deployment.provider === 'kaito' ? 'KAITO' : 'Dynamo'}
+                {getProviderDisplayName(deployment.provider)}
               </Badge>
             </div>
             <div>

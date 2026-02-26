@@ -99,7 +99,7 @@ body:
       options:
         - Frontend / UI
         - Backend / API
-        - Provider (KAITO/Dynamo/KubeRay)
+        - Provider (KAITO/Dynamo/KubeRay/llm-d)
         - Kubernetes Integration
         - Metrics / Monitoring
         - Installation / Setup

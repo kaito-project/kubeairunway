@@ -26,6 +26,7 @@ KubeAIRunway gives you a web UI and a unified Kubernetes CRD (`ModelDeployment`)
 | [**NVIDIA Dynamo**](https://github.com/ai-dynamo/dynamo) | GPU-accelerated inference with aggregated or disaggregated serving |
 | [**KubeRay**](https://github.com/ray-project/kuberay) | Ray-based distributed inference |
 | [**KAITO**](https://github.com/kaito-project/kaito) | vLLM (GPU) and llama.cpp (CPU/GPU) support |
+| [**LLM-D**](https://github.com/llm-d/llm-d) | vLLM (GPU) with aggregated or disaggregated serving |
 
 ## Quick Start
 

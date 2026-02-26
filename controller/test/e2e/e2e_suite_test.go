@@ -34,6 +34,8 @@ import (
 var (
 	// managerImage is the manager image to be built and loaded for testing.
 	managerImage = "example.com/controller:v0.0.1"
+	// llmdProviderImage is the llm-d provider image to be built and loaded for testing.
+	llmdProviderImage = "llmd-provider:e2e"
 	// skipDeploy skips image build/load and deploy/undeploy when testing against an existing cluster.
 	skipDeploy = os.Getenv("SKIP_DEPLOY") == "true"
 )
@@ -62,6 +64,18 @@ var _ = BeforeSuite(func() {
 	By("loading the manager image on Kind")
 	err = utils.LoadImageToKindClusterWithName(managerImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
+
+	if os.Getenv("LLMD_INSTALLED") == "true" {
+		By("building the llm-d provider image")
+		cmd = exec.Command("make", "-C", "..", "llmd-provider-docker-build",
+			fmt.Sprintf("LLMD_PROVIDER_IMG=%s", llmdProviderImage))
+		_, err = utils.Run(cmd)
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the llm-d provider image")
+
+		By("loading the llm-d provider image on Kind")
+		err = utils.LoadImageToKindClusterWithName(llmdProviderImage)
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the llm-d provider image into Kind")
+	}
 })
 
 var _ = AfterSuite(func() {

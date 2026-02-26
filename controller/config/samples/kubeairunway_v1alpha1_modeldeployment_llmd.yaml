@@ -1,0 +1,58 @@
+# llm-d provider samples
+# llm-d is not auto-selected; always specify spec.provider.name: llmd explicitly.
+# Prerequisite: install llm-d infrastructure (see providers/llmd/config/) and
+# create the HuggingFace token secret:
+#   kubectl create secret generic llm-d-hf-token --from-literal=HF_TOKEN=<token>
+---
+# Aggregated mode: single Deployment with intelligent inference scheduling
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-8b-llmd
+  namespace: default
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-8B-Instruct"
+    source: huggingface
+  provider:
+    name: llmd
+  engine:
+    type: vllm
+  scaling:
+    replicas: 2
+  resources:
+    gpu:
+      count: 1
+    memory: "24Gi"
+  secrets:
+    huggingFaceToken: "llm-d-hf-token"
+---
+# Disaggregated mode: separate prefill and decode Deployments for reduced TTFT
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-70b-llmd-pd
+  namespace: default
+spec:
+  model:
+    id: "meta-llama/Llama-3.1-70B-Instruct"
+    source: huggingface
+  provider:
+    name: llmd
+  engine:
+    type: vllm
+  serving:
+    mode: disaggregated
+  scaling:
+    prefill:
+      replicas: 4
+      gpu:
+        count: 1
+      memory: "24Gi"
+    decode:
+      replicas: 1
+      gpu:
+        count: 4
+      memory: "96Gi"
+  secrets:
+    huggingFaceToken: "llm-d-hf-token"

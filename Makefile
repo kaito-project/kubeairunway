@@ -3,6 +3,7 @@
 .PHONY: kaito-provider-build kaito-provider-docker-build kaito-provider-deploy
 .PHONY: dynamo-provider-build dynamo-provider-docker-build dynamo-provider-deploy
 .PHONY: kuberay-provider-build kuberay-provider-docker-build kuberay-provider-deploy
+.PHONY: llmd-provider-build llmd-provider-docker-build llmd-provider-deploy
 
 # Controller image
 CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway-controller:latest
@@ -14,6 +15,7 @@ GAIE_VERSION ?= v1.3.1
 KAITO_PROVIDER_IMG ?= ghcr.io/kaito-project/kaito-provider:latest
 DYNAMO_PROVIDER_IMG ?= ghcr.io/kaito-project/dynamo-provider:latest
 KUBERAY_PROVIDER_IMG ?= ghcr.io/kaito-project/kuberay-provider:latest
+LLMD_PROVIDER_IMG ?= ghcr.io/kaito-project/llmd-provider:latest
 
 # Default target
 help:
@@ -53,6 +55,9 @@ help:
 	@echo "  kuberay-provider-build        Build the KubeRay provider binary"
 	@echo "  kuberay-provider-docker-build Build KubeRay provider Docker image"
 	@echo "  kuberay-provider-deploy       Deploy KubeRay provider to cluster"
+	@echo "  llmd-provider-build           Build the llm-d provider binary"
+	@echo "  llmd-provider-docker-build    Build llm-d provider Docker image"
+	@echo "  llmd-provider-deploy          Deploy llm-d provider to cluster"
 	@echo ""
 	@echo "  help                   Show this help message"
 
@@ -214,3 +219,20 @@ kuberay-provider-deploy:
 	cd providers/kuberay/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(KUBERAY_PROVIDER_IMG)
 	kustomize build providers/kuberay/config/default | kubectl apply -f -
 	@echo "✅ KubeRay provider deployed"
+
+# Build the llm-d provider binary
+llmd-provider-build:
+	cd providers/llmd && go build -o bin/provider ./cmd/main.go
+	@echo "✅ llm-d provider built"
+
+# Build llm-d provider Docker image
+llmd-provider-docker-build:
+	cd providers/llmd && GOWORK=off go mod vendor
+	docker build --platform linux/amd64 -f providers/llmd/Dockerfile -t $(LLMD_PROVIDER_IMG) .
+	@echo "✅ llm-d provider image built: $(LLMD_PROVIDER_IMG)"
+
+# Deploy llm-d provider to the K8s cluster
+llmd-provider-deploy:
+	cd providers/llmd/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(LLMD_PROVIDER_IMG)
+	kustomize build providers/llmd/config/default | kubectl apply -f -
+	@echo "✅ llm-d provider deployed"
