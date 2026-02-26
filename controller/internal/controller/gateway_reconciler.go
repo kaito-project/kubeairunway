@@ -50,6 +50,11 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 
 	// Skip if gateway CRDs are not available
 	if !r.GatewayDetector.IsAvailable(ctx) {
+		// Warn if user explicitly enabled gateway but CRDs are missing
+		if md.Spec.Gateway != nil && md.Spec.Gateway.Enabled != nil && *md.Spec.Gateway.Enabled {
+			logger.Info("Gateway explicitly enabled but Gateway API Inference Extension CRDs not found", "name", md.Name)
+			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "CRDsNotAvailable", "Gateway API Inference Extension CRDs are not installed in the cluster")
+		}
 		return nil
 	}
 

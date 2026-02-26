@@ -4,7 +4,7 @@
 
 KubeAIRunway integrates with the [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) to provide a unified inference gateway. Instead of accessing each model's Service individually, you deploy a single Gateway and call **all** models through one endpoint using the standard OpenAI-compatible API. The Gateway routes requests to the correct model based on the `model` field in the request body.
 
-When gateway integration is active, KubeAIRunway automatically creates an **InferencePool** and an **HTTPRoute** for each `ModelDeployment`. You only need to provide the Gateway itself.
+When gateway integration is active, KubeAIRunway automatically creates an **InferencePool**, **Endpoint Picker (EPP)**, and an **HTTPRoute** for each `ModelDeployment`. You only need to provide the Gateway itself.
 
 ## Architecture
 
@@ -25,6 +25,13 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
                      │                          │                     │
                      │                          ▼                     │
                      │                  ┌───────────────┐             │
+                     │                  │  EPP (Endpoint│             │
+                     │                  │  Picker Proxy)│             │
+                     │                  │ (auto-created)│             │
+                     │                  └───────┬───────┘             │
+                     │                          │                     │
+                     │                          ▼                     │
+                     │                  ┌───────────────┐             │
                      │                  │  Model Server  │             │
                      │                  │  Pod (vLLM,    │             │
                      │                  │  sglang, etc.) │             │
@@ -34,7 +41,7 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
 
 **Request flow:** Client → Gateway (+BBR) → HTTPRoute → InferencePool → Endpoint Picker (EPP) → Model Server Pod
 
-**What KubeAIRunway creates automatically:**
+**What KubeAIRunway creates automatically** (when `gateway.enabled` is `true` or omitted, and Gateway CRDs are detected):
 - `InferencePool` — selects pods labeled with `kubeairunway.ai/model-deployment: <name>` on the model's serving port
 - `HTTPRoute` — routes from the Gateway to the InferencePool (unless `httpRouteRef` is set)
 - `EPP` — Endpoint Picker Proxy for intelligent endpoint selection
@@ -82,7 +89,6 @@ Follow the installation guide for your chosen implementation:
 - **Envoy Gateway:** [quickstart](https://gateway.envoyproxy.io/docs/tasks/quickstart/)
 - **Istio:** [getting started](https://istio.io/latest/docs/setup/getting-started/)
 - **kgateway:** [quickstart](https://kgateway.dev/docs/quickstart/)
-- **GKE Gateway:** [enable Gateway controller](https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways)
 
 > [!NOTE]
 > **Istio:** Inference Extension support must be explicitly enabled by setting `ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true` on the `istiod` deployment (or passing `--set values.pilot.env.ENABLE_GATEWAY_API_INFERENCE_EXTENSION=true` during `istioctl install`). Without this, Istio ignores InferencePool backend refs in HTTPRoutes. The `minimal` profile is sufficient — Istio auto-creates a gateway deployment and LoadBalancer Service when you create a Gateway resource. See the [Istio Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/ingress/gateway-api-inference-extension/) for full details.
@@ -113,7 +119,7 @@ metadata:
 
 ### Step 5: Deploy Models
 
-Deploy models as usual. KubeAIRunway automatically creates the InferencePool and HTTPRoute:
+Deploy models as usual. KubeAIRunway automatically creates the InferencePool, EPP, and HTTPRoute:
 
 ```yaml
 apiVersion: kubeairunway.ai/v1alpha1
@@ -125,7 +131,7 @@ spec:
   model:
     id: "Qwen/Qwen3-0.6B"
   gateway:
-    enabled: true  # Optional: enabled by default when Gateway is detected
+    enabled: true  # Optional: enabled by default when Gateway is detected; set to false to explicitly disable
 ```
 
 The `ModelDeployment` status will show gateway information once ready:

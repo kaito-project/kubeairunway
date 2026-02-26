@@ -100,7 +100,7 @@ Note: The UI layer shown above includes the Frontend layer and the Backend layer
 
 ## Gateway API Integration
 
-KubeAIRunway optionally integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8s.io/geps/gep-3567/) to provide a unified inference gateway. When Gateway API CRDs are detected in the cluster, the controller automatically creates an **InferencePool** and **HTTPRoute** for each `ModelDeployment`, allowing all models to be called through a single Gateway endpoint using body-based routing on the `model` field.
+KubeAIRunway optionally integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8s.io/geps/gep-3567/) to provide a unified inference gateway. When Gateway API Custom Resources are detected in the cluster, the controller automatically creates an **InferencePool** and **HTTPRoute** for each `ModelDeployment`, allowing all models to be called through a single Gateway endpoint using body-based routing on the `model` field.
 
 The feature is auto-detected at startup and silently disabled if the required CRDs are not present. See [Gateway Integration](gateway.md) for full details.
 

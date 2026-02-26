@@ -1623,6 +1623,8 @@ Normalize a GPU label to a standard GPU model name.
 
 ## Gateway
 
+> **Authentication:** Gateway endpoints require a valid Bearer token when authentication is enabled (same as all other non-public API routes). Access control is governed by Kubernetes TokenReview. When auth is disabled (default single-cluster mode), these endpoints are publicly accessible.
+
 ### GET /gateway/status
 Get Gateway API Inference Extension availability and endpoint.
 
