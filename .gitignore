@@ -53,6 +53,12 @@ backend/src/embedded-assets.ts
 go.work
 go.work.sum
 
+# Go vendor directories
+vendor/
+
+# Provider build outputs
+providers/*/bin/
+
 # Playwright
 /test-results/
 /playwright-report/

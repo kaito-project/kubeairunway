@@ -78,8 +78,9 @@ const deployments = new Hono()
       // Get default namespace if not specified
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
 
-      // List deployments from the ModelDeployment CRD
-      let deploymentsList: DeploymentStatus[] = await kubernetesService.listDeployments(resolvedNamespace);
+      // When no namespace filter is given, list across all namespaces
+      // TODO (Rita): Ensure only namespaces the user has access to are listed
+      let deploymentsList: DeploymentStatus[] = await kubernetesService.listDeployments(namespace);
 
       const total = deploymentsList.length;
 

@@ -5,15 +5,15 @@
 .PHONY: kuberay-provider-build kuberay-provider-docker-build kuberay-provider-deploy
 
 # Controller image
-CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway-controller:latest
+CONTROLLER_IMG ?= ghcr.io/kubeairunway/kubeairunway-controller:latest
 
 # Gateway API Inference Extension version
 GAIE_VERSION ?= v1.3.1
 
 # Provider images
-KAITO_PROVIDER_IMG ?= ghcr.io/kaito-project/kaito-provider:latest
-DYNAMO_PROVIDER_IMG ?= ghcr.io/kaito-project/dynamo-provider:latest
-KUBERAY_PROVIDER_IMG ?= ghcr.io/kaito-project/kuberay-provider:latest
+KAITO_PROVIDER_IMG ?= ghcr.io/kubeairunway/kaito-provider:latest
+DYNAMO_PROVIDER_IMG ?= ghcr.io/kubeairunway/dynamo-provider:latest
+KUBERAY_PROVIDER_IMG ?= ghcr.io/kubeairunway/kuberay-provider:latest
 
 # Default target
 help:
@@ -128,7 +128,9 @@ controller-build:
 
 # Build controller Docker image
 controller-docker-build:
-	docker build -f controller/Dockerfile -t $(CONTROLLER_IMG) .
+    # neccesary when docker's outbound DNS access is blocked.
+	cd controller && go mod vendor
+	docker build --platform linux/amd64 -f controller/Dockerfile -t $(CONTROLLER_IMG) .
 	@echo "✅ Controller image built: $(CONTROLLER_IMG)"
 
 # Generate CRD manifests and deep copy code
