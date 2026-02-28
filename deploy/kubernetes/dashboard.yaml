@@ -36,11 +36,13 @@ rules:
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # Secrets and ConfigMaps (needed for HF tokens, config storage)
+  # REVIEW: Uncomment "delete" to enable HuggingFace token removal
   - apiGroups: [""]
     resources:
       - secrets
       - configmaps
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    # verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   # Events (needed for deployment event display)
   - apiGroups: [""]
