@@ -5,15 +5,15 @@
 .PHONY: kuberay-provider-build kuberay-provider-docker-build kuberay-provider-deploy
 
 # Controller image
-CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway-controller:latest
+CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway/controller:latest
 
 # Gateway API Inference Extension version
 GAIE_VERSION ?= v1.3.1
 
 # Provider images
-KAITO_PROVIDER_IMG ?= ghcr.io/kaito-project/kaito-provider:latest
-DYNAMO_PROVIDER_IMG ?= ghcr.io/kaito-project/dynamo-provider:latest
-KUBERAY_PROVIDER_IMG ?= ghcr.io/kaito-project/kuberay-provider:latest
+KAITO_PROVIDER_IMG ?= ghcr.io/kaito-project/kubeairunway/kaito-provider:latest
+DYNAMO_PROVIDER_IMG ?= ghcr.io/kaito-project/kubeairunway/dynamo-provider:latest
+KUBERAY_PROVIDER_IMG ?= ghcr.io/kaito-project/kubeairunway/kuberay-provider:latest
 
 # Default target
 help:

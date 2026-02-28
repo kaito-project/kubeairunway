@@ -177,7 +177,7 @@ spec:
         fsGroup: 65532
       containers:
         - name: kubeairunway
-          image: ghcr.io/kaito-project/kubeairunway:latest
+          image: ghcr.io/kaito-project/kubeairunway/dashboard:latest
           imagePullPolicy: Always
           ports:
             - name: http

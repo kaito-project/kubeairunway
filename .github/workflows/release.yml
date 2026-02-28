@@ -132,7 +132,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ghcr.io/kaito-project/kubeairunway/dashboard
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -175,7 +175,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/kaito-project/kubeairunway-controller
+          images: ghcr.io/kaito-project/kubeairunway/controller
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -224,7 +224,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/kaito-project/kaito-provider
+          images: ghcr.io/kaito-project/kubeairunway/kaito-provider
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -264,7 +264,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/kaito-project/dynamo-provider
+          images: ghcr.io/kaito-project/kubeairunway/dynamo-provider
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -304,7 +304,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/kaito-project/kuberay-provider
+          images: ghcr.io/kaito-project/kubeairunway/kuberay-provider
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

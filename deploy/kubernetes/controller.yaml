@@ -1491,7 +1491,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: ghcr.io/kaito-project/kubeairunway-controller:latest
+        image: ghcr.io/kaito-project/kubeairunway/controller:latest
         livenessProbe:
           httpGet:
             path: /healthz
