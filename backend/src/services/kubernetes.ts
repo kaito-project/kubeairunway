@@ -113,26 +113,28 @@ class KubernetesService {
     }
   }
 
-  async listDeployments(namespace: string): Promise<DeploymentStatus[]> {
-    logger.debug({ namespace }, 'listDeployments called');
+  async listDeployments(namespace?: string): Promise<DeploymentStatus[]> {
+    logger.debug({ namespace: namespace || 'all' }, 'listDeployments called');
 
     try {
-      logger.debug(
-        { apiGroup: MODEL_DEPLOYMENT_CRD.apiGroup, apiVersion: MODEL_DEPLOYMENT_CRD.apiVersion, plural: MODEL_DEPLOYMENT_CRD.plural },
-        'Calling listNamespacedCustomObject for ModelDeployment'
-      );
-
-      const response = await withRetry(
-        () => this.customObjectsApi.listNamespacedCustomObject(
-          MODEL_DEPLOYMENT_CRD.apiGroup,
-          MODEL_DEPLOYMENT_CRD.apiVersion,
-          namespace,
-          MODEL_DEPLOYMENT_CRD.plural
-        ),
-        { operationName: 'listDeployments' }
-      );
-
-      logger.debug({ statusCode: response.response.statusCode }, 'listNamespacedCustomObject success');
+      const response = namespace
+        ? await withRetry(
+            () => this.customObjectsApi.listNamespacedCustomObject(
+              MODEL_DEPLOYMENT_CRD.apiGroup,
+              MODEL_DEPLOYMENT_CRD.apiVersion,
+              namespace,
+              MODEL_DEPLOYMENT_CRD.plural
+            ),
+            { operationName: 'listDeployments' }
+          )
+        : await withRetry(
+            () => this.customObjectsApi.listClusterCustomObject(
+              MODEL_DEPLOYMENT_CRD.apiGroup,
+              MODEL_DEPLOYMENT_CRD.apiVersion,
+              MODEL_DEPLOYMENT_CRD.plural
+            ),
+            { operationName: 'listDeployments:allNamespaces' }
+          );
 
       const items = (response.body as { items?: ModelDeployment[] }).items || [];
       logger.debug({ count: items.length }, 'Found ModelDeployments');
@@ -140,7 +142,8 @@ class KubernetesService {
       // Convert each ModelDeployment to DeploymentStatus
       const deployments: DeploymentStatus[] = [];
       for (const item of items) {
-        const pods = await this.getDeploymentPods(item.metadata.name, namespace);
+        const itemNamespace = item.metadata.namespace || namespace || 'default';
+        const pods = await this.getDeploymentPods(item.metadata.name, itemNamespace);
         deployments.push(toDeploymentStatus(item, pods));
       }
 

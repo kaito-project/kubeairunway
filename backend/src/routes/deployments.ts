@@ -75,11 +75,9 @@ const deployments = new Hono()
     try {
       const { namespace, limit, offset } = c.req.valid('query');
 
-      // Get default namespace if not specified
-      const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-
-      // List deployments from the ModelDeployment CRD
-      let deploymentsList: DeploymentStatus[] = await kubernetesService.listDeployments(resolvedNamespace);
+      // When no namespace filter is given, list across all namespaces
+      // TODO: Add namespace-level RBAC filtering (see issue #99)
+      let deploymentsList: DeploymentStatus[] = await kubernetesService.listDeployments(namespace);
 
       const total = deploymentsList.length;
 
