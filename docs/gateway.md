@@ -315,7 +315,7 @@ curl http://${GATEWAY_IP}/v1/chat/completions \
    ```
 2. Check controller logs for detection messages:
    ```bash
-   kubectl logs -n kubeairunway-system deploy/kubeairunway-controller | grep -i gateway
+   kubectl logs -n kubeairunway-system deploy/kubeairunway-controller-manager | grep -i gateway
    ```
 3. If CRDs were installed after the controller started, restart the controller to refresh detection.
 
