@@ -113,7 +113,7 @@ class KubernetesService {
     }
   }
 
-   async listDeployments(namespace?: string): Promise<DeploymentStatus[]> {
+  async listDeployments(namespace?: string): Promise<DeploymentStatus[]> {
     logger.debug({ namespace: namespace || 'all' }, 'listDeployments called');
 
     try {
