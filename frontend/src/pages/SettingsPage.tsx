@@ -474,6 +474,7 @@ export function SettingsPage() {
           </div>
 
           {/* Selected Runtime Installation Details */}
+          {runtimes.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -581,6 +582,18 @@ export function SettingsPage() {
               )}
             </CardContent>
           </Card>
+          )}
+
+          {runtimes.length === 0 && !runtimesLoading && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+                <Download className="h-8 w-8 text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  No inference providers are registered. Deploy an InferenceProviderConfig to get started.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Installation Steps */}
           {installationStatus?.installationSteps && installationStatus.installationSteps.length > 0 && (
