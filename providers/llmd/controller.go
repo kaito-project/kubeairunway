@@ -204,18 +204,24 @@ func (r *LLMDProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.
 		return fmt.Errorf("llm-d provider only supports vllm engine, got %s", md.ResolvedEngineType())
 	}
 
-	// llm-d requires GPU
-	if md.Spec.Resources == nil || md.Spec.Resources.GPU == nil || md.Spec.Resources.GPU.Count == 0 {
-		return fmt.Errorf("llm-d provider requires GPU resources (spec.resources.gpu.count > 0)")
-	}
-
-	// Disaggregated mode requires scaling specs
+	// Disaggregated mode: validate component-level GPUs
 	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
 		if md.Spec.Scaling == nil || md.Spec.Scaling.Prefill == nil {
 			return fmt.Errorf("spec.scaling.prefill is required for disaggregated serving mode")
 		}
 		if md.Spec.Scaling.Decode == nil {
 			return fmt.Errorf("spec.scaling.decode is required for disaggregated serving mode")
+		}
+		if md.Spec.Scaling.Prefill.GPU == nil || md.Spec.Scaling.Prefill.GPU.Count == 0 {
+			return fmt.Errorf("llm-d provider requires GPU resources for prefill (spec.scaling.prefill.gpu.count > 0)")
+		}
+		if md.Spec.Scaling.Decode.GPU == nil || md.Spec.Scaling.Decode.GPU.Count == 0 {
+			return fmt.Errorf("llm-d provider requires GPU resources for decode (spec.scaling.decode.gpu.count > 0)")
+		}
+	} else {
+		// Aggregated mode: require top-level GPU
+		if md.Spec.Resources == nil || md.Spec.Resources.GPU == nil || md.Spec.Resources.GPU.Count == 0 {
+			return fmt.Errorf("llm-d provider requires GPU resources (spec.resources.gpu.count > 0)")
 		}
 	}
 

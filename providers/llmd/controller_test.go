@@ -108,12 +108,12 @@ func TestValidateCompatibility(t *testing.T) {
 			md: &kubeairunwayv1alpha1.ModelDeployment{
 				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
 					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{
-						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
-					},
 					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
 					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{Replicas: 1},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
 					},
 				},
 			},
@@ -124,12 +124,12 @@ func TestValidateCompatibility(t *testing.T) {
 			md: &kubeairunwayv1alpha1.ModelDeployment{
 				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
 					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{
-						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
-					},
 					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
 					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{Replicas: 2},
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
 					},
 				},
 			},
@@ -140,13 +140,16 @@ func TestValidateCompatibility(t *testing.T) {
 			md: &kubeairunwayv1alpha1.ModelDeployment{
 				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
 					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{
-						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
-					},
 					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
 					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{Replicas: 2},
-						Decode:  &kubeairunwayv1alpha1.ComponentScalingSpec{Replicas: 1},
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+						},
 					},
 				},
 			},

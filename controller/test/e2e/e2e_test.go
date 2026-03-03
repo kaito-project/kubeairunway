@@ -522,7 +522,7 @@ spec:
 			}
 
 			By("creating HuggingFace token secret for llm-d")
-			cmd := exec.Command("kubectl", "create", "secret", "generic", "llm-d-hf-token",
+			cmd := exec.Command("kubectl", "create", "secret", "generic", "hf-token-secret",
 				"--from-literal=HF_TOKEN=ci-placeholder-token",
 				"-n", "default")
 			_, _ = utils.Run(cmd) // ignore error if already exists

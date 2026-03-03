@@ -81,7 +81,7 @@ func (t *Transformer) transformAggregated(md *kubeairunwayv1alpha1.ModelDeployme
 		replicas = int64(md.Spec.Scaling.Replicas)
 	}
 
-	args, err := t.buildVLLMArgs(md, "")
+	args, err := t.buildVLLMArgs(md, "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build vLLM args: %w", err)
 	}
@@ -111,12 +111,12 @@ func (t *Transformer) transformDisaggregated(md *kubeairunwayv1alpha1.ModelDeplo
 	decodeResources := componentToResourceSpec(md.Spec.Scaling.Decode)
 	prefillResources := componentToResourceSpec(md.Spec.Scaling.Prefill)
 
-	decodeArgs, err := t.buildVLLMArgs(md, KVTransferConfigDecode)
+	decodeArgs, err := t.buildVLLMArgs(md, KVTransferConfigDecode, md.Spec.Scaling.Decode.GPU.Count)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build decode vLLM args: %w", err)
 	}
 
-	prefillArgs, err := t.buildVLLMArgs(md, KVTransferConfigPrefill)
+	prefillArgs, err := t.buildVLLMArgs(md, KVTransferConfigPrefill, md.Spec.Scaling.Prefill.GPU.Count)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prefill vLLM args: %w", err)
 	}
@@ -192,6 +192,10 @@ func (t *Transformer) buildDeployment(md *kubeairunwayv1alpha1.ModelDeployment, 
 		for k, v := range md.Spec.PodTemplate.Metadata.Labels {
 			podLabels[k] = v
 		}
+	}
+	// Re-apply selector labels to prevent user overrides from breaking selectors
+	for k, v := range selectorLabels {
+		podLabels[k] = v
 	}
 
 	image := t.getImage(md)
@@ -331,7 +335,8 @@ func (t *Transformer) buildContainer(md *kubeairunwayv1alpha1.ModelDeployment, i
 
 // buildVLLMArgs constructs the vLLM command-line arguments.
 // kvTransferConfig is optional; pass "" for aggregated mode.
-func (t *Transformer) buildVLLMArgs(md *kubeairunwayv1alpha1.ModelDeployment, kvTransferConfig string) ([]string, error) {
+// gpuCount overrides the GPU count used for tensor parallelism (0 means use top-level spec.resources).
+func (t *Transformer) buildVLLMArgs(md *kubeairunwayv1alpha1.ModelDeployment, kvTransferConfig string, gpuCount int32) ([]string, error) {
 	var args []string
 
 	// Model
@@ -353,8 +358,12 @@ func (t *Transformer) buildVLLMArgs(md *kubeairunwayv1alpha1.ModelDeployment, kv
 	}
 
 	// Tensor parallelism from GPU count
-	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 1 {
-		args = append(args, "--tensor-parallel-size", fmt.Sprintf("%d", md.Spec.Resources.GPU.Count))
+	tpCount := gpuCount
+	if tpCount == 0 && md.Spec.Resources != nil && md.Spec.Resources.GPU != nil {
+		tpCount = md.Spec.Resources.GPU.Count
+	}
+	if tpCount > 1 {
+		args = append(args, "--tensor-parallel-size", fmt.Sprintf("%d", tpCount))
 	}
 
 	// KV transfer config for disaggregated mode

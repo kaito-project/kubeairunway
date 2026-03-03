@@ -313,7 +313,11 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
     mode: spec.serving?.mode || 'aggregated',
     phase: status.phase || 'Pending',
     provider: status.provider?.name || spec.provider?.name || 'unknown',
-    replicas: status.replicas || { desired: 0, ready: 0, available: 0 },
+    replicas: {
+      desired: status.replicas?.desired ?? 0,
+      ready: status.replicas?.ready ?? 0,
+      available: status.replicas?.available ?? 0,
+    },
     conditions: status.conditions,
     pods,
     createdAt: md.metadata.creationTimestamp || new Date().toISOString(),
