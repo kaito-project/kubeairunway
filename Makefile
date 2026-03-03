@@ -156,7 +156,7 @@ generate-deploy-manifests:
 	cd controller/config/manager && ../../bin/kustomize edit set image controller=$(CONTROLLER_IMG)
 	cd controller && bin/kustomize build config/default > ../deploy/controller.yaml
 	@echo "✅ Generated deploy/controller.yaml"
-	cd dashboard/config/manager && ../../../controller/bin/kustomize edit set image IMAGE_PLACEHOLDER=$(DASHBOARD_IMG)
-	controller/bin/kustomize build dashboard/config/default > deploy/dashboard.yaml
-	@git checkout dashboard/config/manager/kustomization.yaml 2>/dev/null || true
+	cd backend/config/manager && ../../../controller/bin/kustomize edit set image IMAGE_PLACEHOLDER=$(DASHBOARD_IMG)
+	controller/bin/kustomize build backend/config/default > deploy/dashboard.yaml
+	@git checkout backend/config/manager/kustomization.yaml 2>/dev/null || true
 	@echo "✅ Generated deploy/dashboard.yaml"
