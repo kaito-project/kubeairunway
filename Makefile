@@ -227,7 +227,6 @@ llmd-provider-build:
 
 # Build llm-d provider Docker image
 llmd-provider-docker-build:
-	cd providers/llmd && GOWORK=off go mod vendor
 	docker build --platform linux/amd64 -f providers/llmd/Dockerfile -t $(LLMD_PROVIDER_IMG) .
 	@echo "✅ llm-d provider image built: $(LLMD_PROVIDER_IMG)"
 

@@ -8,16 +8,24 @@ WORKDIR /workspace
 # Disable workspace mode; use replace directives from go.mod
 ENV GOWORK=off
 
-# Copy provider module manifests and vendor directory (avoids network access during build)
-# vendor/ includes the local controller dependency resolved from the replace directive
+# Copy controller dependency (referenced by go.mod replace directive)
+COPY controller/go.mod controller/go.sum controller/
+
+# Copy provider module manifests and download dependencies
 COPY providers/llmd/go.mod providers/llmd/go.sum providers/llmd/
-COPY providers/llmd/vendor providers/llmd/vendor/
+RUN cd providers/llmd && go mod download
+
+# Copy the controller Go source
+COPY controller/ controller/
 
 # Copy the provider Go source
 COPY providers/llmd/ providers/llmd/
 
+# Ensure go.sum is complete for all transitive dependencies
+RUN cd providers/llmd && go mod tidy
+
 # Build
-RUN cd providers/llmd && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -mod=vendor -a -o provider cmd/main.go
+RUN cd providers/llmd && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o provider cmd/main.go
 
 # Use distroless as minimal base image to package the provider binary
 FROM gcr.io/distroless/static:nonroot
