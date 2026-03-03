@@ -230,12 +230,15 @@ Provider controllers are independent operators in `providers/<name>/`:
 make kaito-provider-build
 make dynamo-provider-build
 make kuberay-provider-build
+make llmd-provider-build
 
 # Build provider Docker image
 make kaito-provider-docker-build
+make llmd-provider-docker-build
 
 # Deploy provider to cluster
 make kaito-provider-deploy
+make llmd-provider-deploy
 ```
 
 ## Environment Variables
