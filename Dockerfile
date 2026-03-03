@@ -16,6 +16,7 @@ COPY package.json bun.lock* ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
 COPY shared/package.json shared/
+COPY plugins/headlamp/package.json plugins/headlamp/
 
 # Install dependencies
 RUN bun install --frozen-lockfile
