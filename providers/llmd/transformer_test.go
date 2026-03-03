@@ -719,6 +719,88 @@ func assertArg(t *testing.T, args []string, flag, value string) {
 	t.Errorf("expected arg %s %s in %v", flag, value, args)
 }
 
+func assertNoArg(t *testing.T, args []string, flag string) {
+	t.Helper()
+	for _, a := range args {
+		if a == flag {
+			t.Errorf("unexpected arg %s in %v", flag, args)
+			return
+		}
+	}
+}
+
+// Test that disaggregated mode uses per-component GPU counts for tensor parallelism
+func TestTransformDisaggregatedTensorParallelism(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = nil // no top-level resources
+	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
+		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	}
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			Replicas: 4,
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+		},
+		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			Replicas: 1,
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Check decode deployment has --tensor-parallel-size 4
+	decodeContainers, _, _ := unstructured.NestedSlice(resources[0].Object, "spec", "template", "spec", "containers")
+	decodeArgs := argsToStrings(decodeContainers[0].(map[string]interface{})["args"].([]interface{}))
+	assertArg(t, decodeArgs, "--tensor-parallel-size", "4")
+
+	// Check prefill deployment has NO --tensor-parallel-size (single GPU)
+	prefillContainers, _, _ := unstructured.NestedSlice(resources[1].Object, "spec", "template", "spec", "containers")
+	prefillArgs := argsToStrings(prefillContainers[0].(map[string]interface{})["args"].([]interface{}))
+	assertNoArg(t, prefillArgs, "--tensor-parallel-size")
+}
+
+// Test that user-provided labels cannot overwrite selector-critical keys
+func TestTransformUserLabelsCannotClobberSelectors(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.PodTemplate = &kubeairunwayv1alpha1.PodTemplateSpec{
+		Metadata: &kubeairunwayv1alpha1.PodTemplateMetadata{
+			Labels: map[string]string{
+				"app":                        "my-custom-app",
+				"kubeairunway.ai/deployment": "my-custom-deployment",
+				"my-label":                   "my-value",
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	deployment := resources[0]
+	selectorLabels, _, _ := unstructured.NestedMap(deployment.Object, "spec", "selector", "matchLabels")
+	podLabels, _, _ := unstructured.NestedMap(deployment.Object, "spec", "template", "metadata", "labels")
+
+	// Selector-critical keys must match between selector and pod template
+	if selectorLabels["app"] != podLabels["app"] {
+		t.Errorf("selector app=%v but pod app=%v — selector won't match pods", selectorLabels["app"], podLabels["app"])
+	}
+	if selectorLabels["kubeairunway.ai/deployment"] != podLabels["kubeairunway.ai/deployment"] {
+		t.Errorf("selector deployment=%v but pod deployment=%v", selectorLabels["kubeairunway.ai/deployment"], podLabels["kubeairunway.ai/deployment"])
+	}
+
+	// Custom labels should still be present
+	if podLabels["my-label"] != "my-value" {
+		t.Errorf("custom label my-label not preserved, got %v", podLabels["my-label"])
+	}
+}
+
 func assertFlag(t *testing.T, args []string, flag string) {
 	t.Helper()
 	for _, a := range args {

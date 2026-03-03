@@ -77,6 +77,12 @@ export const mockSettings = {
       description: 'Ray-based distributed inference',
       defaultNamespace: 'kuberay',
     },
+    {
+      id: 'llmd',
+      name: 'llm-d',
+      description: 'vLLM with aggregated or disaggregated serving',
+      defaultNamespace: 'kubeairunway-system',
+    },
   ],
 }
 

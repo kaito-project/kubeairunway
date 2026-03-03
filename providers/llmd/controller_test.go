@@ -155,6 +155,64 @@ func TestValidateCompatibility(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "disaggregated without GPU on prefill is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disaggregated without GPU on decode is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disaggregated without top-level resources is compatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 4,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
