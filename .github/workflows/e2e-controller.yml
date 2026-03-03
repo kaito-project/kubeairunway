@@ -45,9 +45,9 @@ jobs:
 
       - name: Build and deploy KAITO provider
         run: |
-          make kaito-provider-docker-build KAITO_PROVIDER_IMG=kaito-provider:e2e
+          cd providers/kaito && make docker-build IMG=kaito-provider:e2e
           kind load docker-image kaito-provider:e2e --name kubeairunway-e2e
-          make kaito-provider-deploy KAITO_PROVIDER_IMG=kaito-provider:e2e
+          cd providers/kaito && make deploy IMG=kaito-provider:e2e
           kubectl wait --for=condition=Available deployment -n kubeairunway-system -l control-plane=kaito-provider --timeout=120s
 
       - name: Wait for provider registration
