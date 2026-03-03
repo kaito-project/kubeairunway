@@ -4,6 +4,9 @@
 # Controller image
 CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway/controller:latest
 
+# Dashboard image
+DASHBOARD_IMG ?= ghcr.io/kaito-project/kubeairunway/dashboard:latest
+
 # Gateway API Inference Extension version
 GAIE_VERSION ?= v1.3.1
 
@@ -147,9 +150,13 @@ controller-test:
 	cd controller && go test ./... -coverprofile cover.out
 	@echo "✅ Controller tests completed"
 
-# Generate deploy manifests for controller
+# Generate deploy manifests for controller and dashboard
 generate-deploy-manifests:
 	cd controller && $(MAKE) kustomize
 	cd controller/config/manager && ../../bin/kustomize edit set image controller=$(CONTROLLER_IMG)
 	cd controller && bin/kustomize build config/default > ../deploy/controller.yaml
 	@echo "✅ Generated deploy/controller.yaml"
+	cd dashboard/config/manager && ../../../controller/bin/kustomize edit set image IMAGE_PLACEHOLDER=$(DASHBOARD_IMG)
+	controller/bin/kustomize build dashboard/config/default > deploy/dashboard.yaml
+	@git checkout dashboard/config/manager/kustomization.yaml 2>/dev/null || true
+	@echo "✅ Generated deploy/dashboard.yaml"
