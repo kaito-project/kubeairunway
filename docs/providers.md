@@ -69,16 +69,16 @@ Users create `ModelDeployment` CRs, and the controller + provider controllers ha
 - Provider-agnostic lifecycle management
 
 ### Web UI Deployment
-The Web UI backend reads provider information (capabilities, installation steps, Helm charts) from `InferenceProviderConfig` CRDs in the cluster. It can trigger Helm-based provider installation and creates `ModelDeployment` CRs for model deployment, which are then handled by the controller and provider controllers.
+The Web UI backend reads provider information (capabilities, installation steps, Helm charts) from `InferenceProviderConfig` CRDs in the cluster. These CRDs are created by **provider shims** — each provider shim must be installed (e.g., `kubectl apply -f providers/kaito/deploy/kaito.yaml`) before its provider appears in the UI. Once visible, the UI can trigger Helm-based upstream provider installation and creates `ModelDeployment` CRs for model deployment, which are then handled by the controller and provider controllers.
 
 ### Supported Providers
 
-| Provider      | Upstream CRD          | Status      | Description                                                                    |
-| ------------- | --------------------- | ----------- | ------------------------------------------------------------------------------ |
-| NVIDIA Dynamo | DynamoGraphDeployment | ✅ Available | High-performance GPU inference with KV-cache routing and disaggregated serving |
-| KubeRay       | RayService            | ✅ Available | Ray-based distributed inference with autoscaling                               |
-| KAITO         | Workspace             | ✅ Available | Flexible inference with vLLM (GPU) or llama.cpp (CPU/GPU)                      |
-| llm-d         | none                  | ✅ Available | Flexible inference with vLLM (GPU) with KV-cache routing and disaggregated serving |
+| Provider      | Upstream CRD          | Status      | Shim YAML | Description                                                                    |
+| ------------- | --------------------- | ----------- | --------- | ------------------------------------------------------------------------------ |
+| NVIDIA Dynamo | DynamoGraphDeployment | ✅ Available | [dynamo.yaml](../providers/dynamo/deploy/dynamo.yaml) | High-performance GPU inference with KV-cache routing and disaggregated serving |
+| KubeRay       | RayService            | ✅ Available | [kuberay.yaml](../providers/kuberay/deploy/kuberay.yaml) | Ray-based distributed inference with autoscaling                               |
+| KAITO         | Workspace             | ✅ Available | [kaito.yaml](../providers/kaito/deploy/kaito.yaml) | Flexible inference with vLLM (GPU) or llama.cpp (CPU/GPU)                      |
+| llm-d         | none                  | ✅ Available | [llmd.yaml](../providers/llmd/deploy/llmd.yaml) | Flexible inference with vLLM (GPU) with KV-cache routing and disaggregated serving |
 
 ### KAITO Provider
 

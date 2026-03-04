@@ -11,11 +11,21 @@ This directory contains Kubernetes manifests for deploying KubeAIRunway to a clu
 # 1. Install CRDs and controller (required)
 kubectl apply -f controller.yaml
 
-# 2. Install dashboard UI (optional)
+# 2. Install one or more provider shims (required — registers providers with KubeAIRunway)
+# See "Available provider shims" below for the full list
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/providers/<provider>/deploy/<provider>.yaml
+
+# 3. Install dashboard UI (optional)
 kubectl apply -f dashboard.yaml
 ```
 
-> **Note:** `controller.yaml` must be applied first — it creates the CRDs and namespace that the dashboard depends on. Webhooks become fully functional after the controller starts and completes certificate rotation (~10-30s).
+> **Note:** `controller.yaml` must be applied first — it creates the CRDs and namespace that the dashboard depends on. Provider shims must be installed before providers appear in the UI. Webhooks become fully functional after the controller starts and completes certificate rotation (~10-30s).
+
+Available provider shims:
+- [kaito.yaml](../providers/kaito/deploy/kaito.yaml)
+- [dynamo.yaml](../providers/dynamo/deploy/dynamo.yaml)
+- [kuberay.yaml](../providers/kuberay/deploy/kuberay.yaml)
+- [llmd.yaml](../providers/llmd/deploy/llmd.yaml)
 
 ## Access KubeAIRunway
 
