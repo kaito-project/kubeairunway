@@ -174,3 +174,117 @@ describe('Installation Provider Routes', () => {
     });
   });
 });
+
+describe('Gateway Installation Routes', () => {
+  const restores: Array<() => void> = [];
+
+  afterEach(() => {
+    restores.forEach((r) => r());
+    restores.length = 0;
+  });
+
+  // ==========================================================================
+  // GET /api/installation/gateway/status
+  // ==========================================================================
+
+  describe('GET /api/installation/gateway/status', () => {
+    test('returns gateway CRD status when CRDs are installed', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'checkGatewayCRDStatus', async () => ({
+          gatewayApiInstalled: true,
+          inferenceExtInstalled: true,
+          pinnedVersion: 'v1.3.1',
+          gatewayAvailable: true,
+          gatewayEndpoint: '10.0.0.50',
+          message: 'Gateway API and Inference Extension CRDs are installed. Gateway is available.',
+          installCommands: [
+            'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml',
+            'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml',
+          ],
+        })),
+      );
+
+      const res = await app.request('/api/installation/gateway/status');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.gatewayApiInstalled).toBe(true);
+      expect(data.inferenceExtInstalled).toBe(true);
+      expect(data.pinnedVersion).toBe('v1.3.1');
+      expect(data.gatewayAvailable).toBe(true);
+      expect(data.gatewayEndpoint).toBe('10.0.0.50');
+      expect(data.installCommands).toHaveLength(2);
+    });
+
+    test('returns status when CRDs are not installed', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'checkGatewayCRDStatus', async () => ({
+          gatewayApiInstalled: false,
+          inferenceExtInstalled: false,
+          pinnedVersion: 'v1.3.1',
+          gatewayAvailable: false,
+          message: 'Gateway API and Inference Extension CRDs are not installed.',
+          installCommands: [
+            'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml',
+            'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml',
+          ],
+        })),
+      );
+
+      const res = await app.request('/api/installation/gateway/status');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.gatewayApiInstalled).toBe(false);
+      expect(data.inferenceExtInstalled).toBe(false);
+      expect(data.gatewayAvailable).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // POST /api/installation/gateway/install-crds
+  // ==========================================================================
+
+  describe('POST /api/installation/gateway/install-crds', () => {
+    test('returns 200 on successful CRD installation', async () => {
+      restores.push(
+        mockServiceMethod(helmService, 'applyManifestUrl', async () => ({
+          success: true,
+          stdout: 'customresourcedefinition.apiextensions.k8s.io/gateways.gateway.networking.k8s.io created',
+          stderr: '',
+          exitCode: 0,
+        })),
+      );
+
+      const res = await app.request('/api/installation/gateway/install-crds', { method: 'POST' });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.results).toHaveLength(2);
+      expect(data.results[0].step).toBe('gateway-api-crds');
+      expect(data.results[1].step).toBe('inference-extension-crds');
+    });
+
+    test('returns 500 when Gateway API CRD installation fails', async () => {
+      let callCount = 0;
+      restores.push(
+        mockServiceMethod(helmService, 'applyManifestUrl', async () => {
+          callCount++;
+          if (callCount === 1) {
+            return {
+              success: false,
+              stdout: '',
+              stderr: 'connection refused',
+              exitCode: 1,
+            };
+          }
+          return { success: true, stdout: 'ok', stderr: '', exitCode: 0 };
+        }),
+      );
+
+      const res = await app.request('/api/installation/gateway/install-crds', { method: 'POST' });
+      expect(res.status).toBe(500);
+    });
+  });
+});

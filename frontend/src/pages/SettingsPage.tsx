@@ -10,6 +10,7 @@ import {
 } from '@/hooks/useInstallation'
 import { useAutoscalerDetection } from '@/hooks/useAutoscaler'
 import { useGpuOperatorStatus, useInstallGpuOperator } from '@/hooks/useGpuOperator'
+import { useGatewayCRDStatus, useInstallGatewayCRDs } from '@/hooks/useGateway'
 import { useHuggingFaceStatus, useHuggingFaceOAuth, useDeleteHuggingFaceSecret } from '@/hooks/useHuggingFace'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +44,7 @@ import {
   Copy,
   Zap,
   Trash2,
+  Globe,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
@@ -58,6 +60,8 @@ export function SettingsPage() {
   const { data: helmStatus, isLoading: helmLoading } = useHelmStatus()
   const { data: autoscaler, isLoading: autoscalerLoading } = useAutoscalerDetection()
   const { data: gpuOperatorStatus, isLoading: gpuStatusLoading, refetch: refetchGpuStatus } = useGpuOperatorStatus()
+  const { data: gatewayCRDStatus, isLoading: gatewayStatusLoading, refetch: refetchGatewayStatus } = useGatewayCRDStatus()
+  const installGatewayCRDs = useInstallGatewayCRDs()
   const { data: hfStatus, isLoading: hfStatusLoading, refetch: refetchHfStatus } = useHuggingFaceStatus()
   const { startOAuth } = useHuggingFaceOAuth()
   const deleteHfSecret = useDeleteHuggingFaceSecret()
@@ -65,6 +69,7 @@ export function SettingsPage() {
   const { toast } = useToast()
 
   const [isInstallingGpu, setIsInstallingGpu] = useState(false)
+  const [isInstallingGateway, setIsInstallingGateway] = useState(false)
   const [isConnectingHf, setIsConnectingHf] = useState(false)
   
   // Tab state from URL params or default
@@ -786,6 +791,170 @@ export function SettingsPage() {
                     </div>
                   )}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Gateway API */}
+          <Card variant="elevated">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  Gateway API
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => refetchGatewayStatus()}
+                  disabled={gatewayStatusLoading}
+                >
+                  <RefreshCw className={cn('h-4 w-4', gatewayStatusLoading && 'animate-spin')} />
+                </Button>
+              </CardTitle>
+              <CardDescription>
+                Install Gateway API and Inference Extension CRDs for unified model access
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {gatewayStatusLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Checking gateway CRD status...</span>
+                </div>
+              ) : (
+                <>
+                  {/* CRD Status */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-center justify-between rounded-lg bg-muted p-3">
+                      <span>Gateway API CRDs</span>
+                      {gatewayCRDStatus?.gatewayApiInstalled ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg bg-muted p-3">
+                      <div className="flex items-center gap-1">
+                        <span>Inference Extension</span>
+                        {gatewayCRDStatus?.pinnedVersion && (
+                          <span className="text-xs text-muted-foreground">({gatewayCRDStatus.pinnedVersion})</span>
+                        )}
+                      </div>
+                      {gatewayCRDStatus?.inferenceExtInstalled ? (
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Gateway Status */}
+                  {gatewayCRDStatus?.gatewayApiInstalled && gatewayCRDStatus?.inferenceExtInstalled && (
+                    <div className="flex items-center justify-between rounded-lg bg-muted p-3 text-sm">
+                      <span>Gateway</span>
+                      <div className="flex items-center gap-2">
+                        {gatewayCRDStatus.gatewayAvailable ? (
+                          <>
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <span className="text-green-600 dark:text-green-400">
+                              {gatewayCRDStatus.gatewayEndpoint || 'Available'}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="h-4 w-4 text-yellow-500" />
+                            <span className="text-muted-foreground">Not detected</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Status Message */}
+                  {gatewayCRDStatus?.message && (
+                    <div className={cn(
+                      'rounded-lg p-3 text-sm',
+                      gatewayCRDStatus.gatewayApiInstalled && gatewayCRDStatus.inferenceExtInstalled
+                        ? gatewayCRDStatus.gatewayAvailable
+                          ? 'bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200'
+                          : 'bg-yellow-50 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200'
+                        : 'bg-muted text-muted-foreground'
+                    )}>
+                      {gatewayCRDStatus.message}
+                    </div>
+                  )}
+
+                  {/* Install Button */}
+                  {(!gatewayCRDStatus?.gatewayApiInstalled || !gatewayCRDStatus?.inferenceExtInstalled) && (
+                    <Button
+                      onClick={async () => {
+                        setIsInstallingGateway(true)
+                        try {
+                          const result = await installGatewayCRDs.mutateAsync()
+                          if (result.success) {
+                            toast({
+                              title: 'CRDs Installed',
+                              description: result.message,
+                            })
+                            refetchGatewayStatus()
+                          }
+                        } catch (error) {
+                          toast({
+                            title: 'Installation Failed',
+                            description: error instanceof Error ? error.message : 'Unknown error',
+                            variant: 'destructive',
+                          })
+                        } finally {
+                          setIsInstallingGateway(false)
+                        }
+                      }}
+                      disabled={isInstallingGateway || !clusterStatus?.connected}
+                      className="flex items-center gap-2"
+                    >
+                      {isInstallingGateway ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Installing CRDs...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4" />
+                          Install CRDs
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* Manual Installation Commands */}
+                  {gatewayCRDStatus?.installCommands && gatewayCRDStatus.installCommands.length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-sm font-medium">Manual Installation</span>
+                      <div className="space-y-1">
+                        {gatewayCRDStatus.installCommands.map((cmd, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <code className="flex-1 rounded bg-muted px-3 py-2 text-xs font-mono overflow-x-auto">
+                              {cmd}
+                            </code>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(cmd)
+                                toast({
+                                  title: 'Copied',
+                                  description: 'Command copied to clipboard',
+                                })
+                              }}
+                            >
+                              Copy
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

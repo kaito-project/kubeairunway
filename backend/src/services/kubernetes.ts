@@ -1,6 +1,6 @@
 import * as k8s from '@kubernetes/client-node';
 import { configService } from './config';
-import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo } from '@kubeairunway/shared';
+import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo, GatewayCRDStatus } from '@kubeairunway/shared';
 import { toModelDeploymentManifest, toDeploymentStatus } from '@kubeairunway/shared';
 import { withRetry } from '../lib/retry';
 import logger from '../lib/logger';
@@ -1479,6 +1479,61 @@ class KubernetesService {
     }
 
     return models;
+  }
+
+  /**
+   * Check Gateway API and GAIE CRD installation status.
+   * Also includes live gateway availability info.
+   */
+  async checkGatewayCRDStatus(): Promise<GatewayCRDStatus> {
+    const PINNED_GAIE_VERSION = 'v1.3.1';
+    const GATEWAY_API_CRD_URL = 'https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml';
+    const GAIE_CRD_URL = `https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${PINNED_GAIE_VERSION}/manifests.yaml`;
+
+    const [gatewayApiInstalled, inferenceExtInstalled] = await Promise.all([
+      this.checkCRDExists('gateways.gateway.networking.k8s.io'),
+      this.checkCRDExists('inferencepools.inference.networking.k8s.io'),
+    ]);
+
+    // Get live gateway status
+    let gatewayAvailable = false;
+    let gatewayEndpoint: string | undefined;
+    if (gatewayApiInstalled && inferenceExtInstalled) {
+      try {
+        const gwStatus = await this.getGatewayStatus();
+        gatewayAvailable = gwStatus.available;
+        gatewayEndpoint = gwStatus.endpoint;
+      } catch {
+        // Gateway status check failed, not critical
+      }
+    }
+
+    const allInstalled = gatewayApiInstalled && inferenceExtInstalled;
+    let message: string;
+    if (allInstalled && gatewayAvailable) {
+      message = 'Gateway API and Inference Extension CRDs are installed. Gateway is available.';
+    } else if (allInstalled) {
+      message = 'Gateway API and Inference Extension CRDs are installed. No active gateway detected.';
+    } else if (!gatewayApiInstalled && !inferenceExtInstalled) {
+      message = 'Gateway API and Inference Extension CRDs are not installed.';
+    } else if (!gatewayApiInstalled) {
+      message = 'Gateway API CRDs are not installed.';
+    } else {
+      message = 'Inference Extension CRDs are not installed.';
+    }
+
+    return {
+      gatewayApiInstalled,
+      inferenceExtInstalled,
+      pinnedVersion: PINNED_GAIE_VERSION,
+      gatewayAvailable,
+      gatewayEndpoint,
+      message,
+      installCommands: [
+        `kubectl apply -f ${GATEWAY_API_CRD_URL}`,
+        `kubectl apply -f ${GAIE_CRD_URL}`,
+      ],
+    };
   }
 }
 

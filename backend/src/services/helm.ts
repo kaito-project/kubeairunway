@@ -655,6 +655,16 @@ class HelmService {
   getGpuOperatorCommands(): string[] {
     return this.getInstallCommands([GPU_OPERATOR_REPO], [GPU_OPERATOR_CHART]);
   }
+
+  /**
+   * Apply a manifest from a URL using kubectl apply -f
+   */
+  async applyManifestUrl(
+    url: string,
+    onStream?: StreamCallback
+  ): Promise<HelmResult> {
+    return this.executeKubectl(['apply', '-f', url], onStream);
+  }
 }
 
 // Export singleton instance

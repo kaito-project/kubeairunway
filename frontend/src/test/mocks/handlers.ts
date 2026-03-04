@@ -268,6 +268,32 @@ export const handlers = [
     })
   }),
 
+  // Gateway CRD Installation API
+  http.get(`${API_BASE}/installation/gateway/status`, () => {
+    return HttpResponse.json({
+      gatewayApiInstalled: true,
+      inferenceExtInstalled: true,
+      pinnedVersion: 'v1.3.1',
+      gatewayAvailable: false,
+      message: 'Gateway API and Inference Extension CRDs are installed. No active gateway detected.',
+      installCommands: [
+        'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml',
+        'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml',
+      ],
+    })
+  }),
+
+  http.post(`${API_BASE}/installation/gateway/install-crds`, () => {
+    return HttpResponse.json({
+      success: true,
+      message: 'Gateway API and Inference Extension CRDs installed successfully',
+      results: [
+        { step: 'gateway-api-crds', success: true, output: 'created' },
+        { step: 'inference-extension-crds', success: true, output: 'created' },
+      ],
+    })
+  }),
+
   // HuggingFace OAuth API
   http.get(`${API_BASE}/oauth/huggingface/config`, () => {
     return HttpResponse.json({
