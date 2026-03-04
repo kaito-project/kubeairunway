@@ -172,7 +172,7 @@ export function DeploymentDetailsPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Engine</p>
-              <Badge variant="outline">{deployment.engine.toUpperCase()}</Badge>
+              <Badge variant="outline">{deployment.engine?.toUpperCase() ?? 'Pending'}</Badge>
             </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Mode</p>

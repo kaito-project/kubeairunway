@@ -134,7 +134,7 @@ export function DeploymentList({ deployments, isLoading }: DeploymentListProps) 
             {/* Badges Row */}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">
-                {deployment.engine === 'llamacpp' ? 'Llama.cpp' : deployment.engine.toUpperCase()}
+                {deployment.engine ? (deployment.engine === 'llamacpp' ? 'Llama.cpp' : deployment.engine.toUpperCase()) : 'Pending'}
               </Badge>
               <Badge
                 variant="secondary"
@@ -227,7 +227,7 @@ export function DeploymentList({ deployments, isLoading }: DeploymentListProps) 
                 </td>
                 <td className="px-4 py-3 hidden lg:table-cell">
                   <Badge variant="outline">
-                    {deployment.engine === 'llamacpp' ? 'Llama.cpp' : deployment.engine.toUpperCase()}
+                    {deployment.engine ? (deployment.engine === 'llamacpp' ? 'Llama.cpp' : deployment.engine.toUpperCase()) : 'Pending'}
                   </Badge>
                 </td>
                 <td className="px-4 py-3 hidden lg:table-cell">

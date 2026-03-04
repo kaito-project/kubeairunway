@@ -248,7 +248,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     provider: getDefaultRuntime(),
     routerMode: 'none',
     replicas: 1,
-    hfTokenSecret: import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret',
+    hfTokenSecret: model.gated ? (import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret') : '',
     enforceEager: true,
     enablePrefixCaching: false,
     trustRemoteCode: false,
@@ -369,6 +369,11 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     try {
       // Build the deployment config, adding KAITO-specific fields if needed
       let deployConfig = { ...config }
+
+      // Only include hfTokenSecret for gated models
+      if (!model.gated) {
+        delete deployConfig.hfTokenSecret;
+      }
 
       if (selectedRuntime === 'kaito') {
         // Add kaitoResourceType to all KAITO deployments
@@ -592,7 +597,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
   // Status-aware button content
   const getButtonContent = () => {
-    if (needsHfAuth && selectedRuntime !== 'kaito') {
+    if (needsHfAuth) {
       return 'HuggingFace Auth Required'
     }
 
@@ -1558,7 +1563,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         </Button>
         <Button
           type="submit"
-          disabled={createDeployment.isProcessing || (needsHfAuth && selectedRuntime !== 'kaito') || !isRuntimeInstalled || !isKaitoConfigValid}
+          disabled={createDeployment.isProcessing || needsHfAuth || !isRuntimeInstalled || !isKaitoConfigValid}
           loading={createDeployment.isProcessing}
           className={cn(
             "flex-1 gap-2",

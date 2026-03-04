@@ -20,6 +20,7 @@ spec:
     gpu:
       count: 1
     memory: "32Gi"
+  # Required: Llama is a gated model requiring HuggingFace authentication
   secrets:
     huggingFaceToken: "hf-token"
 ---
@@ -77,5 +78,6 @@ spec:
       gpu:
         count: 2
       memory: "64Gi"
+  # Required: Llama is a gated model requiring HuggingFace authentication
   secrets:
     huggingFaceToken: "hf-token"
