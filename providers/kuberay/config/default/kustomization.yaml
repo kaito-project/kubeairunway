@@ -1,4 +1,5 @@
-namespace: kubeairunway-system
 resources:
 - ../rbac
 - ../manager
+transformers:
+- namespace-transformer.yaml

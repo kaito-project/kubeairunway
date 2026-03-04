@@ -67,8 +67,8 @@ var _ = BeforeSuite(func() {
 
 	if os.Getenv("LLMD_INSTALLED") == "true" {
 		By("building the llm-d provider image")
-		cmd = exec.Command("make", "-C", "..", "llmd-provider-docker-build",
-			fmt.Sprintf("LLMD_PROVIDER_IMG=%s", llmdProviderImage))
+		cmd = exec.Command("make", "-C", "../providers/llmd", "docker-build",
+			fmt.Sprintf("IMG=%s", llmdProviderImage))
 		_, err = utils.Run(cmd)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the llm-d provider image")
 

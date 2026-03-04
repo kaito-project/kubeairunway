@@ -52,14 +52,14 @@ Open **http://localhost:3001**
 
 ```bash
 # Install CRDs and controller (required)
-kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/kubernetes/controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/controller.yaml
 
 # Install dashboard UI (optional)
-kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/kubernetes/dashboard.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/dashboard.yaml
 kubectl port-forward -n kubeairunway-system svc/kubeairunway 3001:80
 ```
 
-Open **http://localhost:3001** — see [deployment docs](deploy/kubernetes/README.md) for more options.
+Open **http://localhost:3001** — see [deployment docs](deploy/README.md) for more options.
 
 ### Getting Started
 
@@ -102,7 +102,7 @@ The controller automatically selects the best engine and provider, creates provi
 | Providers | [docs/providers.md](docs/providers.md) |
 | Observability | [docs/observability.md](docs/observability.md) |
 | Development | [docs/development.md](docs/development.md) |
-| Kubernetes Deployment | [deploy/kubernetes/README.md](deploy/kubernetes/README.md) |
+| Kubernetes Deployment | [deploy/README.md](deploy/README.md) |
 | Gateway Integration | [docs/gateway.md](docs/gateway.md) |
 | Headlamp Plugin | [docs/headlamp-plugin.md](docs/headlamp-plugin.md) |
 

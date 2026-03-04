@@ -226,19 +226,22 @@ kubectl patch modeldeployment my-llm --type=merge \
 Provider controllers are independent operators in `providers/<name>/`:
 
 ```bash
-# Build a provider binary
-make kaito-provider-build
-make dynamo-provider-build
-make kuberay-provider-build
-make llmd-provider-build
+# Build a provider binary (from provider directory)
+cd providers/kaito && make build
+cd providers/dynamo && make build
+cd providers/kuberay && make build
+cd providers/llmd && make build
 
 # Build provider Docker image
-make kaito-provider-docker-build
-make llmd-provider-docker-build
+cd providers/kaito && make docker-build
+cd providers/llmd && make docker-build
 
 # Deploy provider to cluster
-make kaito-provider-deploy
-make llmd-provider-deploy
+cd providers/kaito && make deploy
+cd providers/llmd && make deploy
+
+# Generate deploy manifest
+cd providers/kaito && make generate-deploy-manifests
 ```
 
 ## Environment Variables

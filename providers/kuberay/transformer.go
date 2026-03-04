@@ -36,7 +36,7 @@ const (
 	RayServiceKind = "RayService"
 
 	// DefaultImage is the default Ray image for vLLM workloads
-	DefaultImage = "rayproject/ray-ml:2.44.0-py311-gpu"
+	DefaultImage = "rayproject/ray-llm:2.52.0-py311-cu128"
 
 	// DefaultHeadCPU is the default CPU limit for the head node
 	DefaultHeadCPU = "4"
@@ -111,21 +111,7 @@ func (t *Transformer) buildSpec(md *kubeairunwayv1alpha1.ModelDeployment) (map[s
 	spec := map[string]interface{}{}
 
 	// Build serveConfigV2
-	replicas := int64(1)
-	if md.Spec.Scaling != nil && md.Spec.Scaling.Replicas > 0 {
-		replicas = int64(md.Spec.Scaling.Replicas)
-	}
-
-	serveConfig := fmt.Sprintf(`applications:
-  - name: llm
-    route_prefix: /
-    import_path: vllm_serve:deployment
-    deployments:
-      - name: VLLMDeployment
-        num_replicas: %d
-`, replicas)
-
-	spec["serveConfigV2"] = serveConfig
+	spec["serveConfigV2"] = t.buildServeConfig(md)
 
 	// Build rayClusterConfig
 	rayClusterConfig, err := t.buildRayClusterConfig(md)
@@ -167,27 +153,13 @@ func (t *Transformer) buildHeadGroupSpec(md *kubeairunwayv1alpha1.ModelDeploymen
 		headMemory = md.Spec.Resources.Memory
 	}
 
-	// Build engine args
-	engineArgs := t.buildEngineArgs(md)
-
-	// Build env vars
-	envVars := []interface{}{
-		map[string]interface{}{
-			"name":  "MODEL_ID",
-			"value": md.Spec.Model.ID,
-		},
-		map[string]interface{}{
-			"name":  "VLLM_ENGINE_ARGS",
-			"value": engineArgs,
-		},
-	}
-
-	// Add HF_TOKEN from secret if specified
-	envVars = append(envVars, t.buildEnvVars(md)...)
+	// Build env vars (user env + HF token, no MODEL_ID/VLLM_ENGINE_ARGS)
+	envVars := t.buildEnvVars(md)
 
 	headGroupSpec := map[string]interface{}{
 		"rayStartParams": map[string]interface{}{
 			"dashboard-host": "0.0.0.0",
+			"num-cpus":       "0",
 		},
 		"template": map[string]interface{}{
 			"metadata": map[string]interface{}{
@@ -207,6 +179,28 @@ func (t *Transformer) buildHeadGroupSpec(md *kubeairunwayv1alpha1.ModelDeploymen
 							},
 						},
 						"env": envVars,
+						"ports": []interface{}{
+							map[string]interface{}{
+								"containerPort": int64(8000),
+								"name":          "serve",
+								"protocol":      "TCP",
+							},
+							map[string]interface{}{
+								"containerPort": int64(6379),
+								"name":          "gcs",
+								"protocol":      "TCP",
+							},
+							map[string]interface{}{
+								"containerPort": int64(8265),
+								"name":          "dashboard",
+								"protocol":      "TCP",
+							},
+							map[string]interface{}{
+								"containerPort": int64(10001),
+								"name":          "client",
+								"protocol":      "TCP",
+							},
+						},
 					},
 				},
 			},
@@ -258,9 +252,17 @@ func (t *Transformer) buildAggregatedWorkerGroup(md *kubeairunwayv1alpha1.ModelD
 					map[string]interface{}{
 						"name":  "ray-worker",
 						"image": image,
+						"env":   t.buildEnvVars(md),
 						"resources": map[string]interface{}{
 							"limits": limits,
 						},
+					},
+				},
+				"tolerations": []interface{}{
+					map[string]interface{}{
+						"key":      "nvidia.com/gpu",
+						"operator": "Exists",
+						"effect":   "NoSchedule",
 					},
 				},
 			},
@@ -309,9 +311,17 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 						map[string]interface{}{
 							"name":  "ray-worker",
 							"image": image,
+							"env":   t.buildEnvVars(md),
 							"resources": map[string]interface{}{
 								"limits": prefillLimits,
 							},
+						},
+					},
+					"tolerations": []interface{}{
+						map[string]interface{}{
+							"key":      "nvidia.com/gpu",
+							"operator": "Exists",
+							"effect":   "NoSchedule",
 						},
 					},
 				},
@@ -354,9 +364,17 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 						map[string]interface{}{
 							"name":  "ray-worker",
 							"image": image,
+							"env":   t.buildEnvVars(md),
 							"resources": map[string]interface{}{
 								"limits": decodeLimits,
 							},
+						},
+					},
+					"tolerations": []interface{}{
+						map[string]interface{}{
+							"key":      "nvidia.com/gpu",
+							"operator": "Exists",
+							"effect":   "NoSchedule",
 						},
 					},
 				},
@@ -366,6 +384,81 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 	}
 
 	return workerGroups
+}
+
+// buildServeConfig creates the Ray Serve LLM config using ray.serve.llm:build_openai_app
+func (t *Transformer) buildServeConfig(md *kubeairunwayv1alpha1.ModelDeployment) string {
+	// model_id is the name used in the API; use servedName or gateway modelName if specified
+	modelID := md.Spec.Model.ID
+	if md.Spec.Model.ServedName != "" {
+		modelID = md.Spec.Model.ServedName
+	}
+
+	replicas := int64(1)
+	if md.Spec.Scaling != nil && md.Spec.Scaling.Replicas > 0 {
+		replicas = int64(md.Spec.Scaling.Replicas)
+	}
+
+	var b strings.Builder
+	b.WriteString("applications:\n")
+	b.WriteString("- name: llm\n")
+	b.WriteString("  import_path: ray.serve.llm:build_openai_app\n")
+	b.WriteString("  route_prefix: \"/\"\n")
+	b.WriteString("  args:\n")
+	b.WriteString("    llm_configs:\n")
+	b.WriteString("    - model_loading_config:\n")
+	b.WriteString(fmt.Sprintf("        model_id: \"%s\"\n", modelID))
+	b.WriteString(fmt.Sprintf("        model_source: \"%s\"\n", md.Spec.Model.ID))
+
+	// Engine kwargs
+	engineKwargs := t.buildEngineKwargs(md)
+	if len(engineKwargs) > 0 {
+		b.WriteString("      engine_kwargs:\n")
+		for _, kv := range engineKwargs {
+			b.WriteString(fmt.Sprintf("        %s\n", kv))
+		}
+	}
+
+	// Deployment config with autoscaling
+	b.WriteString("      deployment_config:\n")
+	b.WriteString("        autoscaling_config:\n")
+	b.WriteString(fmt.Sprintf("          min_replicas: %d\n", replicas))
+	b.WriteString(fmt.Sprintf("          max_replicas: %d\n", replicas))
+
+	return b.String()
+}
+
+// buildEngineKwargs constructs engine kwargs for the Ray Serve LLM config
+func (t *Transformer) buildEngineKwargs(md *kubeairunwayv1alpha1.ModelDeployment) []string {
+	var kwargs []string
+
+	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
+		kwargs = append(kwargs, fmt.Sprintf("tensor_parallel_size: %d", md.Spec.Resources.GPU.Count))
+	}
+	if md.Spec.Engine.ContextLength != nil {
+		kwargs = append(kwargs, fmt.Sprintf("max_model_len: %d", *md.Spec.Engine.ContextLength))
+	}
+	if md.Spec.Engine.TrustRemoteCode {
+		kwargs = append(kwargs, "trust_remote_code: true")
+	}
+
+	// Custom args sorted for deterministic output (convert dashes to underscores for Python)
+	keys := make([]string, 0, len(md.Spec.Engine.Args))
+	for k := range md.Spec.Engine.Args {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := md.Spec.Engine.Args[key]
+		pyKey := strings.ReplaceAll(key, "-", "_")
+		if value != "" {
+			kwargs = append(kwargs, fmt.Sprintf("%s: %s", pyKey, value))
+		} else {
+			kwargs = append(kwargs, fmt.Sprintf("%s: true", pyKey))
+		}
+	}
+
+	return kwargs
 }
 
 // buildEngineArgs constructs the vLLM engine arguments string

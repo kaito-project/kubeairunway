@@ -528,8 +528,8 @@ spec:
 			_, _ = utils.Run(cmd) // ignore error if already exists
 
 			By("deploying the llm-d provider")
-			cmd = exec.Command("make", "-C", "..", "llmd-provider-deploy",
-				fmt.Sprintf("LLMD_PROVIDER_IMG=%s", llmdProviderImage))
+			cmd = exec.Command("make", "-C", "../providers/llmd", "deploy",
+				fmt.Sprintf("IMG=%s", llmdProviderImage))
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to deploy llm-d provider")
 

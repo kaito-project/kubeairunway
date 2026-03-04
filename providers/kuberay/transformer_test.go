@@ -78,8 +78,14 @@ func TestTransformAggregated(t *testing.T) {
 	// Check spec
 	spec, _, _ := unstructured.NestedMap(rs.Object, "spec")
 	serveConfig, _ := spec["serveConfigV2"].(string)
-	if !strings.Contains(serveConfig, "num_replicas: 1") {
-		t.Errorf("expected num_replicas: 1 in serveConfig, got: %s", serveConfig)
+	if !strings.Contains(serveConfig, "ray.serve.llm:build_openai_app") {
+		t.Errorf("expected ray.serve.llm:build_openai_app in serveConfig, got: %s", serveConfig)
+	}
+	if !strings.Contains(serveConfig, "min_replicas: 1") {
+		t.Errorf("expected min_replicas: 1 in serveConfig, got: %s", serveConfig)
+	}
+	if !strings.Contains(serveConfig, "meta-llama/Llama-2-7b-chat-hf") {
+		t.Errorf("expected model ID in serveConfig, got: %s", serveConfig)
 	}
 
 	// Check rayClusterConfig exists
@@ -114,8 +120,8 @@ func TestTransformWithScaling(t *testing.T) {
 	rs := resources[0]
 	spec, _, _ := unstructured.NestedMap(rs.Object, "spec")
 	serveConfig, _ := spec["serveConfigV2"].(string)
-	if !strings.Contains(serveConfig, "num_replicas: 3") {
-		t.Errorf("expected num_replicas: 3 in serveConfig")
+	if !strings.Contains(serveConfig, "min_replicas: 3") {
+		t.Errorf("expected min_replicas: 3 in serveConfig, got: %s", serveConfig)
 	}
 }
 
@@ -393,6 +399,12 @@ func TestBuildHeadGroupSpec(t *testing.T) {
 
 	headSpec := tr.buildHeadGroupSpec(md)
 
+	// Check rayStartParams
+	rayStartParams, _ := headSpec["rayStartParams"].(map[string]interface{})
+	if rayStartParams["num-cpus"] != "0" {
+		t.Errorf("expected num-cpus=0 in rayStartParams, got %v", rayStartParams["num-cpus"])
+	}
+
 	// Check template
 	template, _ := headSpec["template"].(map[string]interface{})
 	spec, _ := template["spec"].(map[string]interface{})
@@ -406,27 +418,10 @@ func TestBuildHeadGroupSpec(t *testing.T) {
 		t.Errorf("expected name 'ray-head', got %v", container["name"])
 	}
 
-	// Check env vars
-	envVars, _ := container["env"].([]interface{})
-	foundModelID := false
-	foundEngineArgs := false
-	for _, ev := range envVars {
-		e, _ := ev.(map[string]interface{})
-		if e["name"] == "MODEL_ID" {
-			foundModelID = true
-			if e["value"] != "meta-llama/Llama-2-7b-chat-hf" {
-				t.Errorf("expected MODEL_ID value, got %v", e["value"])
-			}
-		}
-		if e["name"] == "VLLM_ENGINE_ARGS" {
-			foundEngineArgs = true
-		}
-	}
-	if !foundModelID {
-		t.Error("expected MODEL_ID env var")
-	}
-	if !foundEngineArgs {
-		t.Error("expected VLLM_ENGINE_ARGS env var")
+	// Check ports
+	ports, _ := container["ports"].([]interface{})
+	if len(ports) == 0 {
+		t.Error("expected ports on head container")
 	}
 }
 

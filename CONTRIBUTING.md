@@ -170,11 +170,13 @@ Providers are independent Go operators in `providers/<name>/`. See existing prov
    - Map provider resource status back to `ModelDeployment` status
    - Self-register an `InferenceProviderConfig` with capabilities, selection rules, and installation info
 
-3. **Add Makefile targets** in the root `Makefile`:
+3. **Add a Makefile** in the provider directory (`providers/<name>/Makefile`):
    ```bash
-   make <name>-provider-build         # Build provider binary
-   make <name>-provider-docker-build  # Build Docker image
-   make <name>-provider-deploy        # Deploy to cluster
+   cd providers/<name>
+   make build                       # Build provider binary
+   make docker-build                # Build Docker image
+   make deploy                      # Deploy to cluster
+   make generate-deploy-manifests   # Generate deploy YAML
    ```
 
 ## Adding a New Model

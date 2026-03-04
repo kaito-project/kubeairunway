@@ -1,6 +1,6 @@
 resources:
+- service_account.yaml
 - role.yaml
 - role_binding.yaml
-- service_account.yaml
 - hf_secret_role.yaml
 - hf_secret_role_binding.yaml

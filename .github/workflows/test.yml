@@ -65,8 +65,19 @@ jobs:
 
       - name: Check for manifest drift
         run: |
-          if ! diff -u deploy/kubernetes/controller.yaml /tmp/controller.yaml; then
-            echo "❌ deploy/kubernetes/controller.yaml is out of date."
+          if ! diff -u deploy/controller.yaml /tmp/controller.yaml; then
+            echo "❌ deploy/controller.yaml is out of date."
+            echo "Run 'make generate-deploy-manifests' and commit the result."
+            exit 1
+          fi
+
+      - name: Generate dashboard manifest
+        run: controller/bin/kustomize build backend/config/default > /tmp/dashboard.yaml
+
+      - name: Check for dashboard manifest drift
+        run: |
+          if ! diff -u deploy/dashboard.yaml /tmp/dashboard.yaml; then
+            echo "❌ deploy/dashboard.yaml is out of date."
             echo "Run 'make generate-deploy-manifests' and commit the result."
             exit 1
           fi

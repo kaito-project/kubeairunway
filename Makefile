@@ -1,21 +1,14 @@
 .PHONY: install dev dev-frontend dev-backend build compile lint test clean help
 .PHONY: controller-build controller-docker-build controller-install controller-deploy controller-generate generate-deploy-manifests
-.PHONY: kaito-provider-build kaito-provider-docker-build kaito-provider-deploy
-.PHONY: dynamo-provider-build dynamo-provider-docker-build dynamo-provider-deploy
-.PHONY: kuberay-provider-build kuberay-provider-docker-build kuberay-provider-deploy
-.PHONY: llmd-provider-build llmd-provider-docker-build llmd-provider-deploy
 
 # Controller image
 CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway/controller:latest
 
+# Dashboard image
+DASHBOARD_IMG ?= ghcr.io/kaito-project/kubeairunway/dashboard:latest
+
 # Gateway API Inference Extension version
 GAIE_VERSION ?= v1.3.1
-
-# Provider images
-KAITO_PROVIDER_IMG ?= ghcr.io/kaito-project/kubeairunway/kaito-provider:latest
-DYNAMO_PROVIDER_IMG ?= ghcr.io/kaito-project/kubeairunway/dynamo-provider:latest
-KUBERAY_PROVIDER_IMG ?= ghcr.io/kaito-project/kubeairunway/kuberay-provider:latest
-LLMD_PROVIDER_IMG ?= ghcr.io/kaito-project/kubeairunway/llmd-provider:latest
 
 # Default target
 help:
@@ -44,21 +37,7 @@ help:
 	@echo "  controller-install     Install CRDs into cluster"
 	@echo "  controller-deploy      Deploy controller to cluster"
 	@echo "  controller-generate    Generate CRD manifests and code"
-	@echo "  generate-deploy-manifests  Generate deploy/kubernetes/controller.yaml"
-	@echo ""
-	@echo "Provider Targets:"
-	@echo "  kaito-provider-build          Build the KAITO provider binary"
-	@echo "  kaito-provider-docker-build   Build KAITO provider Docker image"
-	@echo "  kaito-provider-deploy         Deploy KAITO provider to cluster"
-	@echo "  dynamo-provider-build         Build the Dynamo provider binary"
-	@echo "  dynamo-provider-docker-build  Build Dynamo provider Docker image"
-	@echo "  dynamo-provider-deploy        Deploy Dynamo provider to cluster"
-	@echo "  kuberay-provider-build        Build the KubeRay provider binary"
-	@echo "  kuberay-provider-docker-build Build KubeRay provider Docker image"
-	@echo "  kuberay-provider-deploy       Deploy KubeRay provider to cluster"
-	@echo "  llmd-provider-build           Build the llm-d provider binary"
-	@echo "  llmd-provider-docker-build    Build llm-d provider Docker image"
-	@echo "  llmd-provider-deploy          Deploy llm-d provider to cluster"
+	@echo "  generate-deploy-manifests  Generate deploy/controller.yaml"
 	@echo ""
 	@echo "  help                   Show this help message"
 
@@ -171,75 +150,13 @@ controller-test:
 	cd controller && go test ./... -coverprofile cover.out
 	@echo "✅ Controller tests completed"
 
-# Generate deploy manifests for controller
+# Generate deploy manifests for controller and dashboard
 generate-deploy-manifests:
 	cd controller && $(MAKE) kustomize
 	cd controller/config/manager && ../../bin/kustomize edit set image controller=$(CONTROLLER_IMG)
-	cd controller && bin/kustomize build config/default > ../deploy/kubernetes/controller.yaml
-	@echo "✅ Generated deploy/kubernetes/controller.yaml"
-
-# ==================== Provider Targets ====================
-
-# Build the KAITO provider binary
-kaito-provider-build:
-	cd providers/kaito && go build -o bin/provider ./cmd/main.go
-	@echo "✅ KAITO provider built"
-
-# Build the Dynamo provider binary
-dynamo-provider-build:
-	cd providers/dynamo && go build -o bin/provider ./cmd/main.go
-	@echo "✅ Dynamo provider built"
-
-# Build KAITO provider Docker image
-kaito-provider-docker-build:
-	docker build -f providers/kaito/Dockerfile -t $(KAITO_PROVIDER_IMG) .
-	@echo "✅ KAITO provider image built: $(KAITO_PROVIDER_IMG)"
-
-# Build Dynamo provider Docker image
-dynamo-provider-docker-build:
-	docker build -f providers/dynamo/Dockerfile -t $(DYNAMO_PROVIDER_IMG) .
-	@echo "✅ Dynamo provider image built: $(DYNAMO_PROVIDER_IMG)"
-
-# Deploy KAITO provider to the K8s cluster
-kaito-provider-deploy:
-	cd providers/kaito/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(KAITO_PROVIDER_IMG)
-	kustomize build providers/kaito/config/default | kubectl apply -f -
-	@echo "✅ KAITO provider deployed"
-
-# Deploy Dynamo provider to the K8s cluster
-dynamo-provider-deploy:
-	cd providers/dynamo/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(DYNAMO_PROVIDER_IMG)
-	kustomize build providers/dynamo/config/default | kubectl apply -f -
-	@echo "✅ Dynamo provider deployed"
-
-# Build KubeRay provider binary
-kuberay-provider-build:
-	cd providers/kuberay && go build -o bin/provider ./cmd/main.go
-	@echo "✅ KubeRay provider built"
-
-# Build KubeRay provider Docker image
-kuberay-provider-docker-build:
-	docker build -f providers/kuberay/Dockerfile -t $(KUBERAY_PROVIDER_IMG) .
-	@echo "✅ KubeRay provider image built: $(KUBERAY_PROVIDER_IMG)"
-
-# Deploy KubeRay provider to the K8s cluster
-kuberay-provider-deploy:
-	cd providers/kuberay/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(KUBERAY_PROVIDER_IMG)
-	kustomize build providers/kuberay/config/default | kubectl apply -f -
-	@echo "✅ KubeRay provider deployed"
-
-# Build the llm-d provider binary
-llmd-provider-build:
-	cd providers/llmd && go build -o bin/provider ./cmd/main.go
-	@echo "✅ llm-d provider built"
-
-# Build llm-d provider Docker image
-llmd-provider-docker-build:
-	docker build --platform linux/amd64 -f providers/llmd/Dockerfile -t $(LLMD_PROVIDER_IMG) .
-	@echo "✅ llm-d provider image built: $(LLMD_PROVIDER_IMG)"
-
-# Deploy llm-d provider to the K8s cluster
-llmd-provider-deploy:
-	cd providers/llmd/config/manager && kustomize edit set image IMAGE_PLACEHOLDER=$(LLMD_PROVIDER_IMG)
-	kustomize build providers/llmd/config/default | kubectl apply -f -
-	@echo "✅ llm-d provider deployed"
+	cd controller && bin/kustomize build config/default > ../deploy/controller.yaml
+	@echo "✅ Generated deploy/controller.yaml"
+	cd backend/config/manager && ../../../controller/bin/kustomize edit set image IMAGE_PLACEHOLDER=$(DASHBOARD_IMG)
+	controller/bin/kustomize build backend/config/default > deploy/dashboard.yaml
+	@git checkout backend/config/manager/kustomization.yaml 2>/dev/null || true
+	@echo "✅ Generated deploy/dashboard.yaml"
