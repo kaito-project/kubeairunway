@@ -1486,9 +1486,7 @@ class KubernetesService {
    * Also includes live gateway availability info.
    */
   async checkGatewayCRDStatus(): Promise<GatewayCRDStatus> {
-    const PINNED_GAIE_VERSION = 'v1.3.1';
-    const GATEWAY_API_CRD_URL = 'https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml';
-    const GAIE_CRD_URL = `https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${PINNED_GAIE_VERSION}/manifests.yaml`;
+    const { PINNED_GAIE_VERSION, GAIE_CRD_URL, GATEWAY_API_CRD_URL } = await import('@kubeairunway/shared');
 
     const [gatewayApiInstalled, inferenceExtInstalled] = await Promise.all([
       this.checkCRDExists('gateways.gateway.networking.k8s.io'),
@@ -1534,6 +1532,55 @@ class KubernetesService {
         `kubectl apply -f ${GAIE_CRD_URL}`,
       ],
     };
+  }
+
+  /**
+   * Proxy a GET request to a Kubernetes service through the API server.
+   * This allows fetching service endpoints (e.g. /metrics) even when running off-cluster.
+   * Uses raw fetch instead of the generated client to support text/plain responses.
+   */
+  async proxyServiceGet(serviceName: string, namespace: string, port: number, path: string): Promise<string> {
+    const cluster = this.kc.getCurrentCluster();
+    if (!cluster) {
+      throw new Error('No active Kubernetes cluster configured');
+    }
+
+    // Build proxy URL: /api/v1/namespaces/{ns}/services/{name}:{port}/proxy/{path}
+    const proxyUrl = `${cluster.server}/api/v1/namespaces/${encodeURIComponent(namespace)}/services/${encodeURIComponent(serviceName)}:${port}/proxy/${path}`;
+
+    // Extract auth headers from KubeConfig
+    const reqOpts: { headers: Record<string, string>; strictSSL?: boolean } = { headers: {} };
+    await this.kc.applyToRequest(reqOpts as any);
+
+    // Extract TLS options (CA cert, client cert/key) from KubeConfig
+    const httpsOpts: { ca?: Buffer; cert?: Buffer; key?: Buffer; rejectUnauthorized?: boolean } = {};
+    this.kc.applyToHTTPSOptions(httpsOpts as any);
+
+    const tlsOpts: Record<string, any> = {};
+    if (httpsOpts.ca) tlsOpts.ca = httpsOpts.ca;
+    if (httpsOpts.cert) tlsOpts.cert = httpsOpts.cert;
+    if (httpsOpts.key) tlsOpts.key = httpsOpts.key;
+    if (cluster.skipTLSVerify || httpsOpts.rejectUnauthorized === false) {
+      tlsOpts.rejectUnauthorized = false;
+    }
+
+    const fetchOpts: RequestInit & { tls?: Record<string, any> } = {
+      method: 'GET',
+      headers: {
+        ...reqOpts.headers,
+        'Accept': 'text/plain',
+      },
+    };
+
+    if (Object.keys(tlsOpts).length > 0) {
+      fetchOpts.tls = tlsOpts;
+    }
+
+    const response = await fetch(proxyUrl, fetchOpts);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return await response.text();
   }
 }
 

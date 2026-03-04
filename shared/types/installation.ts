@@ -4,6 +4,14 @@
 
 import { InstallationStep } from './settings';
 
+/**
+ * Pinned Gateway API Inference Extension version.
+ * Must match the controller's DefaultGAIEVersion in controller/internal/gateway/detection.go.
+ */
+export const PINNED_GAIE_VERSION = 'v1.3.1';
+export const GAIE_CRD_URL = `https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${PINNED_GAIE_VERSION}/manifests.yaml`;
+export const GATEWAY_API_CRD_URL = 'https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml';
+
 export interface HelmStatus {
   available: boolean;
   version?: string;

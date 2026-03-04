@@ -263,8 +263,7 @@ const installation = new Hono()
     return c.json(status);
   })
   .post('/gateway/install-crds', async (c) => {
-    const GATEWAY_API_CRD_URL = 'https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml';
-    const GAIE_CRD_URL = 'https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml';
+    const { GATEWAY_API_CRD_URL, GAIE_CRD_URL, PINNED_GAIE_VERSION } = await import('@kubeairunway/shared');
 
     const results: Array<{ step: string; success: boolean; output: string; error?: string }> = [];
 
@@ -287,7 +286,7 @@ const installation = new Hono()
     }
 
     // Install GAIE CRDs
-    logger.info('Installing Inference Extension CRDs (v1.3.1)');
+    logger.info(`Installing Inference Extension CRDs (${PINNED_GAIE_VERSION})`);
     const gaieResult = await helmService.applyManifestUrl(GAIE_CRD_URL, (data, stream) => {
       logger.debug({ stream }, data.trim());
     });
