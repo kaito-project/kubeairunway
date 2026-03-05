@@ -44,10 +44,12 @@ const (
 	DefaultFrontendCPU      = "2"
 	DefaultFrontendMemory   = "4Gi"
 	DefaultRouterMode       = "round-robin"
+	DefaultEppReplicas      = 1
 
 	// Component types
 	ComponentTypeFrontend = "frontend"
 	ComponentTypeWorker   = "worker"
+	ComponentTypeEpp      = "epp"
 
 	// Sub-component types for disaggregated mode
 	SubComponentTypePrefill = "prefill"
@@ -61,12 +63,20 @@ type DynamoOverrides struct {
 
 	// Frontend contains frontend/router component configuration
 	Frontend *FrontendOverrides `json:"frontend,omitempty"`
+
+	// Epp contains EPP component configuration
+	Epp *EPPOverrides `json:"epp,omitempty"`
 }
 
 // FrontendOverrides contains frontend component configuration
 type FrontendOverrides struct {
 	Replicas  *int32             `json:"replicas,omitempty"`
 	Resources *ResourceOverrides `json:"resources,omitempty"`
+}
+
+// EPPOverrides contains EPP component configuration
+type EPPOverrides struct {
+	Replicas *int32 `json:"replicas,omitempty"`
 }
 
 // ResourceOverrides contains resource overrides
@@ -100,11 +110,11 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 
 	// Add labels (owner reference cannot cross namespaces, so we track the source via labels)
 	labels := map[string]string{
-		"kubeairunway.ai/managed-by":          "kubeairunway",
-		"kubeairunway.ai/deployment":          md.Name,
+		"kubeairunway.ai/managed-by":           "kubeairunway",
+		"kubeairunway.ai/deployment":           md.Name,
 		"kubeairunway.ai/deployment-namespace": md.Namespace,
-		"kubeairunway.ai/model-id":            sanitizeLabelValue(md.Spec.Model.ID),
-		"kubeairunway.ai/engine-type":         string(md.ResolvedEngineType()),
+		"kubeairunway.ai/model-id":             sanitizeLabelValue(md.Spec.Model.ID),
+		"kubeairunway.ai/engine-type":          string(md.ResolvedEngineType()),
 	}
 	dgd.SetLabels(labels)
 
@@ -174,6 +184,9 @@ func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, ov
 
 	// Add frontend service
 	services["Frontend"] = t.buildFrontendService(md, overrides)
+
+	// Add EPP service
+	services["Epp"] = t.buildEPP(md, overrides)
 
 	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
 		if md.Spec.Scaling == nil {
@@ -261,6 +274,53 @@ func (t *Transformer) buildFrontendService(md *kubeairunwayv1alpha1.ModelDeploym
 	}
 
 	return frontend
+}
+
+// buildEPP creates the EPP service configuration
+func (t *Transformer) buildEPP(md *kubeairunwayv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
+	// Determine replicas
+	replicas := int64(DefaultEppReplicas)
+	if overrides.Epp != nil && overrides.Epp.Replicas != nil {
+		replicas = int64(*overrides.Epp.Replicas)
+	}
+
+	epp := map[string]interface{}{
+		"componentType": ComponentTypeEpp,
+		"replicas":      replicas,
+		"eppConfig": map[string]interface{}{
+			"config": map[string]interface{}{
+				"plugins": []interface{}{
+					map[string]interface{}{
+						"type": "single-profile-handler",
+					},
+					map[string]interface{}{
+						"name": "picker",
+						"type": "max-score-picker",
+					},
+					map[string]interface{}{
+						"name": "dyn-kv",
+						"type": "kv-aware-scorer",
+					},
+				},
+				"schedulingProfiles": []interface{}{
+					map[string]interface{}{
+						"name": "default",
+						"plugins": []interface{}{
+							map[string]interface{}{
+								"pluginRef": "dyn-kv",
+								"weight":    1,
+							},
+							map[string]interface{}{
+								"pluginRef": "picker",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return epp
 }
 
 // buildAggregatedWorker creates the worker service for aggregated mode
@@ -474,7 +534,7 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 			args = append(args, "--max-model-len", fmt.Sprintf("%d", *md.Spec.Engine.ContextLength))
 		case kubeairunwayv1alpha1.EngineTypeSGLang:
 			args = append(args, "--context-length", fmt.Sprintf("%d", *md.Spec.Engine.ContextLength))
-		// TensorRT-LLM context length is build-time, skip with warning logged elsewhere
+			// TensorRT-LLM context length is build-time, skip with warning logged elsewhere
 		}
 	}
 

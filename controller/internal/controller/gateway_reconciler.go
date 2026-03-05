@@ -82,7 +82,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		logger.Info("Error resolving provider gateway capabilities, proceeding without provider-specific gateway capabilities", "error", err)
 	}
 
-	if gatewayCapabilities.ManagesInferencePool {
+	if gatewayCapabilities != nil && gatewayCapabilities.ManagesInferencePool {
 		// Resolve the InferencePool name for the provider.
 		// The provider-managed pool will be configured to be named with the model deployment name and namespace.
 		poolName = resolveInferencePoolName(gatewayCapabilities.InferencePoolNamePattern, md.Name, md.Namespace)
@@ -117,7 +117,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		}
 	}
 
-	if !gatewayCapabilities.ManagesEPP { // Use default EPP
+	if gatewayCapabilities != nil || !gatewayCapabilities.ManagesEPP { // Use default EPP
 		// Create or update EPP (Endpoint Picker Proxy) for the InferencePool
 		if err := r.reconcileEPP(ctx, md); err != nil {
 			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
@@ -234,8 +234,8 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 	return nil
 }
 
-func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx context.Context, 
-  mdNamespace, poolName, poolNamespace string) error {
+func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx context.Context,
+	mdNamespace, poolName, poolNamespace string) error {
 	logger := log.FromContext(ctx)
 
 	// TODO(ericdbishop): Not sure if returning an error is the best way to requeue. kuberay provider implementation uses ctrl.requeue.
@@ -264,14 +264,14 @@ func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx co
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, rg, func() error {
 		rg.Spec.From = []gatewayv1beta1.ReferenceGrantFrom{
 			{
-				Group: "gateway.networking.k8s.io",
-				Kind:  "HTTPRoute",
+				Group:     "gateway.networking.k8s.io",
+				Kind:      "HTTPRoute",
 				Namespace: gatewayv1beta1.Namespace(mdNamespace),
 			},
 		}
 		rg.Spec.To = []gatewayv1beta1.ReferenceGrantTo{
 			{
-				Group: "inference.kubearney.io",
+				Group: "inference.networking.k8s.io",
 				Kind:  "InferencePool",
 				Name:  (*gatewayv1beta1.ObjectName)(&pool.Name),
 			},
@@ -512,7 +512,7 @@ func strPtr(s string) *string { return &s }
 
 // resolveProviderGatewayCapabilities retrieves provider gateway capabilities from InferenceProviderConfig.
 func (r *ModelDeploymentReconciler) resolveProviderGatewayCapabilities(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (*kubeairunwayv1alpha1.GatewayCapabilities, error) {
-	gatewayCapabilities := r.ProviderResolver.GetGatewayCapabilities(ctx, md.Name)
+	gatewayCapabilities := r.ProviderResolver.GetGatewayCapabilities(ctx, md.Spec.Provider.Name)
 	if gatewayCapabilities == nil {
 		return nil, fmt.Errorf("failed to resolve provider capabilities for ModelDeployment %s/%s", md.Namespace, md.Name)
 	}
@@ -573,9 +573,9 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 						{
 							BackendRef: gatewayv1.BackendRef{
 								BackendObjectReference: gatewayv1.BackendObjectReference{
-									Group: &group,
-									Kind:  &kind,
-									Name:  gatewayv1.ObjectName(poolName),
+									Group:     &group,
+									Kind:      &kind,
+									Name:      gatewayv1.ObjectName(poolName),
 									Namespace: (*gatewayv1.Namespace)(&poolNamespace),
 								},
 							},
