@@ -17,7 +17,10 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -65,6 +68,87 @@ const (
 	DeploymentPhaseTerminating DeploymentPhase = "Terminating"
 )
 
+// VolumePurpose defines the intended purpose of a storage volume
+// +kubebuilder:validation:Enum=modelCache;compilationCache;custom
+type VolumePurpose string
+
+const (
+	// VolumePurposeModelCache indicates the volume is used for caching model weights
+	VolumePurposeModelCache VolumePurpose = "modelCache"
+	// VolumePurposeCompilationCache indicates the volume is used for caching compiled artifacts
+	VolumePurposeCompilationCache VolumePurpose = "compilationCache"
+	// VolumePurposeCustom indicates a general-purpose volume with no special behavior
+	VolumePurposeCustom VolumePurpose = "custom"
+)
+
+// StorageVolume defines a persistent volume claim reference for model storage
+type StorageVolume struct {
+	// name is a unique identifier for this volume (DNS label format)
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=63
+	Name string `json:"name"`
+
+	// claimName is the name of a PersistentVolumeClaim in the same namespace.
+	// When size is set and claimName is empty, it defaults to <md-name>-<volume-name>.
+	// When size is NOT set, claimName is required (references a pre-existing PVC).
+	// +optional
+	ClaimName string `json:"claimName,omitempty"`
+
+	// mountPath is the absolute path where the volume will be mounted in the container
+	// Defaults based on purpose: /model-cache for modelCache, /compilation-cache for compilationCache
+	// Required when purpose is custom
+	// +optional
+	MountPath string `json:"mountPath,omitempty"`
+
+	// purpose defines the intended use of this volume, enabling engine-aware defaults
+	// +kubebuilder:default=custom
+	// +optional
+	Purpose VolumePurpose `json:"purpose,omitempty"`
+
+	// readOnly mounts the volume as read-only when true
+	// +kubebuilder:default=false
+	// +optional
+	ReadOnly bool `json:"readOnly,omitempty"`
+
+	// size is the requested storage size (e.g., "100Gi").
+	// When set, the controller creates a PVC automatically.
+	// When not set, claimName must reference a pre-existing PVC.
+	// +optional
+	Size *resource.Quantity `json:"size,omitempty"`
+
+	// storageClassName is the StorageClass to use for controller-created PVCs.
+	// When omitted, the cluster's default StorageClass is used.
+	// Only applicable when size is set.
+	// +optional
+	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// accessMode is the PVC access mode for controller-created PVCs.
+	// Defaults to ReadWriteMany when size is set.
+	// Only applicable when size is set.
+	// +optional
+	AccessMode string `json:"accessMode,omitempty"`
+}
+
+// ResolvedClaimName returns the PVC claim name, either explicitly set or auto-generated
+// from the ModelDeployment name and volume name.
+func (v *StorageVolume) ResolvedClaimName(mdName string) string {
+	if v.ClaimName != "" {
+		return v.ClaimName
+	}
+	return fmt.Sprintf("%s-%s", mdName, v.Name)
+}
+
+// StorageSpec defines persistent storage configuration for model data
+type StorageSpec struct {
+	// volumes is a list of PVC references to mount into inference containers
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=8
+	// +optional
+	Volumes []StorageVolume `json:"volumes,omitempty"`
+}
+
 // ModelSpec defines the model specification
 type ModelSpec struct {
 	// id is the model identifier (e.g., HuggingFace model ID)
@@ -82,6 +166,10 @@ type ModelSpec struct {
 	// +kubebuilder:default=huggingface
 	// +optional
 	Source ModelSource `json:"source,omitempty"`
+
+	// storage defines persistent storage for model data (e.g., model weights, compilation caches)
+	// +optional
+	Storage *StorageSpec `json:"storage,omitempty"`
 }
 
 // ProviderSpec defines the provider selection
@@ -458,6 +546,10 @@ const (
 	ConditionTypeProviderSelected = "ProviderSelected"
 	// ConditionTypeProviderCompatible indicates the config is compatible with the provider
 	ConditionTypeProviderCompatible = "ProviderCompatible"
+	// ConditionTypeStorageReady indicates all managed PVCs are bound
+	ConditionTypeStorageReady = "StorageReady"
+	// ConditionTypeModelDownloaded indicates the model download job has completed
+	ConditionTypeModelDownloaded = "ModelDownloaded"
 	// ConditionTypeResourceCreated indicates the provider resource has been created
 	ConditionTypeResourceCreated = "ResourceCreated"
 	// ConditionTypeReady indicates the deployment is ready
@@ -468,4 +560,9 @@ const (
 
 const (
 	LabelModelDeployment = "kubeairunway.ai/model-deployment"
+	LabelManagedBy       = "kubeairunway.ai/managed-by"
+	LabelJobType         = "kubeairunway.ai/job-type"
+
+	// DefaultDownloadJobImage is the default container image for model download jobs
+	DefaultDownloadJobImage = "python:3.10-slim"
 )

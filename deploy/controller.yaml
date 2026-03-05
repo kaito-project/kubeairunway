@@ -591,6 +591,80 @@ spec:
                     - huggingface
                     - custom
                     type: string
+                  storage:
+                    description: storage defines persistent storage for model data
+                      (e.g., model weights, compilation caches)
+                    properties:
+                      volumes:
+                        description: volumes is a list of PVC references to mount
+                          into inference containers
+                        items:
+                          description: StorageVolume defines a persistent volume claim
+                            reference for model storage
+                          properties:
+                            accessMode:
+                              description: |-
+                                accessMode is the PVC access mode for controller-created PVCs.
+                                Defaults to ReadWriteMany when size is set.
+                                Only applicable when size is set.
+                              type: string
+                            claimName:
+                              description: |-
+                                claimName is the name of a PersistentVolumeClaim in the same namespace.
+                                When size is set and claimName is empty, it defaults to <md-name>-<volume-name>.
+                                When size is NOT set, claimName is required (references a pre-existing PVC).
+                              type: string
+                            mountPath:
+                              description: |-
+                                mountPath is the absolute path where the volume will be mounted in the container
+                                Defaults based on purpose: /model-cache for modelCache, /compilation-cache for compilationCache
+                                Required when purpose is custom
+                              type: string
+                            name:
+                              description: name is a unique identifier for this volume
+                                (DNS label format)
+                              maxLength: 63
+                              pattern: ^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$
+                              type: string
+                            purpose:
+                              default: custom
+                              description: purpose defines the intended use of this
+                                volume, enabling engine-aware defaults
+                              enum:
+                              - modelCache
+                              - compilationCache
+                              - custom
+                              type: string
+                            readOnly:
+                              default: false
+                              description: readOnly mounts the volume as read-only
+                                when true
+                              type: boolean
+                            size:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: |-
+                                size is the requested storage size (e.g., "100Gi").
+                                When set, the controller creates a PVC automatically.
+                                When not set, claimName must reference a pre-existing PVC.
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            storageClassName:
+                              description: |-
+                                storageClassName is the StorageClass to use for controller-created PVCs.
+                                When omitted, the cluster's default StorageClass is used.
+                                Only applicable when size is set.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        maxItems: 8
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                    type: object
                 type: object
               nodeSelector:
                 additionalProperties:

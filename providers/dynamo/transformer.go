@@ -18,7 +18,6 @@ package dynamo
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -35,9 +34,6 @@ const (
 	DynamoAPIVersion = "v1alpha1"
 	// DynamoGraphDeploymentKind is the kind for DynamoGraphDeployment
 	DynamoGraphDeploymentKind = "DynamoGraphDeployment"
-
-	// DynamoNamespace is the namespace where DynamoGraphDeployments are created
-	DynamoNamespace = "dynamo-system"
 
 	// Default component settings
 	DefaultFrontendReplicas = 1
@@ -95,16 +91,15 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 	dgd := &unstructured.Unstructured{}
 	dgd.SetAPIVersion(fmt.Sprintf("%s/%s", DynamoAPIGroup, DynamoAPIVersion))
 	dgd.SetKind(DynamoGraphDeploymentKind)
-	dgd.SetName(dynamoGraphDeploymentName(md.Namespace, md.Name))
-	dgd.SetNamespace(DynamoNamespace)
+	dgd.SetName(dynamoGraphDeploymentName(md.Name))
+	dgd.SetNamespace(md.Namespace)
 
-	// Add labels (owner reference cannot cross namespaces, so we track the source via labels)
+	// Add labels
 	labels := map[string]string{
-		"kubeairunway.ai/managed-by":          "kubeairunway",
-		"kubeairunway.ai/deployment":          md.Name,
-		"kubeairunway.ai/deployment-namespace": md.Namespace,
-		"kubeairunway.ai/model-id":            sanitizeLabelValue(md.Spec.Model.ID),
-		"kubeairunway.ai/engine-type":         string(md.ResolvedEngineType()),
+		"kubeairunway.ai/managed-by":  "kubeairunway",
+		"kubeairunway.ai/deployment":  md.Name,
+		"kubeairunway.ai/model-id":    sanitizeLabelValue(md.Spec.Model.ID),
+		"kubeairunway.ai/engine-type": string(md.ResolvedEngineType()),
 	}
 	dgd.SetLabels(labels)
 
@@ -118,6 +113,11 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 		return nil, fmt.Errorf("failed to build services: %w", err)
 	}
 	spec["services"] = services
+
+	// Add PVCs if storage is configured
+	if md.Spec.Model.Storage != nil && len(md.Spec.Model.Storage.Volumes) > 0 {
+		spec["pvcs"] = t.buildPVCs(md)
+	}
 
 	if err := unstructured.SetNestedField(dgd.Object, spec, "spec"); err != nil {
 		return nil, fmt.Errorf("failed to set spec: %w", err)
@@ -305,6 +305,9 @@ func (t *Transformer) buildAggregatedWorker(md *kubeairunwayv1alpha1.ModelDeploy
 	// Add node selector and tolerations
 	t.addSchedulingConfig(worker, md)
 
+	// Add storage configuration (PVC volume mounts and HF_HOME)
+	t.addStorageConfig(worker, md)
+
 	return worker, nil
 }
 
@@ -363,6 +366,9 @@ func (t *Transformer) buildPrefillWorker(md *kubeairunwayv1alpha1.ModelDeploymen
 	// Add node selector and tolerations
 	t.addSchedulingConfig(worker, md)
 
+	// Add storage configuration (PVC volume mounts and HF_HOME)
+	t.addStorageConfig(worker, md)
+
 	return worker, nil
 }
 
@@ -419,6 +425,9 @@ func (t *Transformer) buildDecodeWorker(md *kubeairunwayv1alpha1.ModelDeployment
 
 	// Add node selector and tolerations
 	t.addSchedulingConfig(worker, md)
+
+	// Add storage configuration (PVC volume mounts and HF_HOME)
+	t.addStorageConfig(worker, md)
 
 	return worker, nil
 }
@@ -571,6 +580,101 @@ func (t *Transformer) getImage(md *kubeairunwayv1alpha1.ModelDeployment) string 
 	return "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.1"
 }
 
+// buildPVCs creates the pvcs list for DynamoGraphDeployment from StorageSpec volumes.
+// Each entry maps to {name: claimName, create: false} since PVCs are either pre-existing
+// or created by the controller separately.
+func (t *Transformer) buildPVCs(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
+	if md.Spec.Model.Storage == nil {
+		return nil
+	}
+	var pvcs []interface{}
+	for _, vol := range md.Spec.Model.Storage.Volumes {
+		pvcs = append(pvcs, map[string]interface{}{
+			"name":   vol.ResolvedClaimName(md.Name),
+			"create": false,
+		})
+	}
+	return pvcs
+}
+
+// buildVolumeMounts creates the volumeMounts list for a DGD worker service.
+// Each volume maps to {name: claimName, mountPoint: mountPath} with optional
+// useAsCompilationCache: true for compilationCache purpose.
+func (t *Transformer) buildVolumeMounts(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
+	if md.Spec.Model.Storage == nil {
+		return nil
+	}
+	var mounts []interface{}
+	for _, vol := range md.Spec.Model.Storage.Volumes {
+		mount := map[string]interface{}{
+			"name":       vol.ResolvedClaimName(md.Name),
+			"mountPoint": vol.MountPath,
+		}
+		if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeCompilationCache {
+			mount["useAsCompilationCache"] = true
+		}
+		mounts = append(mounts, mount)
+	}
+	return mounts
+}
+
+// addStorageConfig adds volumeMounts and HF_HOME env var injection to a worker service map.
+// This should be called for worker services (aggregated, prefill, decode) but NOT the frontend.
+func (t *Transformer) addStorageConfig(worker map[string]interface{}, md *kubeairunwayv1alpha1.ModelDeployment) {
+	if md.Spec.Model.Storage == nil || len(md.Spec.Model.Storage.Volumes) == 0 {
+		return
+	}
+
+	// Add volumeMounts to the service
+	volumeMounts := t.buildVolumeMounts(md)
+	if len(volumeMounts) > 0 {
+		worker["volumeMounts"] = volumeMounts
+	}
+
+	// Auto-inject HF_HOME for modelCache volumes
+	for _, vol := range md.Spec.Model.Storage.Volumes {
+		if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeModelCache {
+			// Check if user already set HF_HOME in spec.env
+			if !hasEnvVar(md, "HF_HOME") {
+				t.injectEnvVar(worker, "HF_HOME", vol.MountPath)
+			}
+			break
+		}
+	}
+}
+
+// hasEnvVar checks if the ModelDeployment has a specific environment variable set
+func hasEnvVar(md *kubeairunwayv1alpha1.ModelDeployment, name string) bool {
+	for _, env := range md.Spec.Env {
+		if env.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// injectEnvVar adds an environment variable to the mainContainer's env list in extraPodSpec
+func (t *Transformer) injectEnvVar(service map[string]interface{}, name, value string) {
+	extraPodSpec, ok := service["extraPodSpec"].(map[string]interface{})
+	if !ok {
+		extraPodSpec = map[string]interface{}{}
+		service["extraPodSpec"] = extraPodSpec
+	}
+
+	mainContainer, ok := extraPodSpec["mainContainer"].(map[string]interface{})
+	if !ok {
+		mainContainer = map[string]interface{}{}
+		extraPodSpec["mainContainer"] = mainContainer
+	}
+
+	envList, _ := mainContainer["env"].([]interface{})
+	envList = append(envList, map[string]interface{}{
+		"name":  name,
+		"value": value,
+	})
+	mainContainer["env"] = envList
+}
+
 // addSchedulingConfig adds node selector and tolerations to a service
 func (t *Transformer) addSchedulingConfig(service map[string]interface{}, md *kubeairunwayv1alpha1.ModelDeployment) {
 	extraPodSpec, ok := service["extraPodSpec"].(map[string]interface{})
@@ -605,18 +709,11 @@ func (t *Transformer) addSchedulingConfig(service map[string]interface{}, md *ku
 	}
 }
 
-// dynamoGraphDeploymentName returns a unique DGD name by combining the source
-// namespace and name. This prevents collisions when multiple ModelDeployments
-// with the same name exist in different namespaces but all DGDs land in dynamo-system.
-func dynamoGraphDeploymentName(namespace, name string) string {
-	result := fmt.Sprintf("%s-%s", namespace, name)
-	if len(result) > 253 {
-		// Use a hash suffix to preserve uniqueness after truncation
-		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(result)))
-		suffix := hash[:8]
-		result = result[:253-9] + "-" + suffix
-	}
-	return result
+// dynamoGraphDeploymentName returns the DGD name for a given ModelDeployment name.
+// Since DGDs are now created in the same namespace as the ModelDeployment, the name
+// no longer needs a namespace prefix to prevent collisions.
+func dynamoGraphDeploymentName(name string) string {
+	return name
 }
 
 // sanitizeLabelValue ensures a value is valid for a Kubernetes label
