@@ -117,7 +117,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		}
 	}
 
-	if gatewayCapabilities != nil || !gatewayCapabilities.ManagesEPP { // Use default EPP
+	if gatewayCapabilities == nil || !gatewayCapabilities.ManagesEPP { // Use default EPP
 		// Create or update EPP (Endpoint Picker Proxy) for the InferencePool
 		if err := r.reconcileEPP(ctx, md); err != nil {
 			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
@@ -512,7 +512,16 @@ func strPtr(s string) *string { return &s }
 
 // resolveProviderGatewayCapabilities retrieves provider gateway capabilities from InferenceProviderConfig.
 func (r *ModelDeploymentReconciler) resolveProviderGatewayCapabilities(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (*kubeairunwayv1alpha1.GatewayCapabilities, error) {
-	gatewayCapabilities := r.ProviderResolver.GetGatewayCapabilities(ctx, md.Spec.Provider.Name)
+	var providerName string
+	if md.Spec.Provider != nil {
+		providerName = md.Spec.Provider.Name
+	} else if md.Status.Provider != nil {
+		providerName = md.Status.Provider.Name
+	} else {
+		return nil, fmt.Errorf("provider name not specified in ModelDeployment %s/%s", md.Namespace, md.Name)
+	}
+
+	gatewayCapabilities := r.ProviderResolver.GetGatewayCapabilities(ctx, providerName)
 	if gatewayCapabilities == nil {
 		return nil, fmt.Errorf("failed to resolve provider capabilities for ModelDeployment %s/%s", md.Namespace, md.Name)
 	}
@@ -774,17 +783,31 @@ func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, servi
 // the deployment is no longer running. Also sets GatewayReady=False.
 func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
+
+	// Resolve provider gateway capabilities
+	var gatewayCapabilities *kubeairunwayv1alpha1.GatewayCapabilities
+	var err error
+	if gatewayCapabilities, err = r.resolveProviderGatewayCapabilities(ctx, md); err != nil {
+		logger.Info("Error resolving provider gateway capabilities, proceeding without provider-specific gateway capabilities", "error", err)
+	}
+	providerManagedPool := gatewayCapabilities != nil && gatewayCapabilities.ManagesInferencePool
+	providerManagedEpp := gatewayCapabilities != nil && gatewayCapabilities.ManagesEPP
+
 	eppName := md.Name + "-epp"
 
-	// Delete InferencePool if it exists
-	pool := &inferencev1.InferencePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      md.Name,
-			Namespace: md.Namespace,
-		},
-	}
-	if err := r.Delete(ctx, pool); client.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to delete InferencePool: %w", err)
+	if !providerManagedPool {
+		// Delete InferencePool if it exists
+		pool := &inferencev1.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      md.Name,
+				Namespace: md.Namespace,
+			},
+		}
+		if err := r.Delete(ctx, pool); client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("failed to delete InferencePool: %w", err)
+		}
+	} else {
+		logger.V(1).Info("Skipping InferencePool cleanup because provider manages the pool")
 	}
 
 	// Delete auto-created HTTPRoute (skip if user-provided)
@@ -800,19 +823,23 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 		}
 	}
 
-	// Delete EPP resources
-	eppResources := []client.Object{
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-	}
-	for _, obj := range eppResources {
-		if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
-			logger.V(1).Info("Could not delete EPP resource", "resource", obj.GetObjectKind(), "error", err)
+	if !providerManagedEpp {
+		// Delete EPP resources
+		eppResources := []client.Object{
+			&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
 		}
+		for _, obj := range eppResources {
+			if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
+				logger.V(1).Info("Could not delete EPP resource", "resource", obj.GetObjectKind(), "error", err)
+			}
+		}
+	} else {
+		logger.V(1).Info("Skipping deletion of EPP resources because provider manages EPP")
 	}
 
 	md.Status.Gateway = nil
