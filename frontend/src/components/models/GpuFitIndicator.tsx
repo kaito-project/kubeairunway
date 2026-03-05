@@ -13,6 +13,7 @@ interface GpuFitIndicatorProps {
 /**
  * Determine GPU fit status based on estimated memory vs cluster capacity
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function getGpuFitStatus(
   estimatedGpuMemoryGb?: number,
   clusterCapacityGb?: number

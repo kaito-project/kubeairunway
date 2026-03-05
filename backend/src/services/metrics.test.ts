@@ -52,24 +52,26 @@ describe('MetricsService - Error Message Handling', () => {
   // Test error message mapping logic
   function mapErrorMessage(errorMessage: string): string {
     if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-      return 'Cannot resolve service DNS. KubeAIRunway must be running in-cluster to fetch metrics.';
+      return 'Cannot resolve service DNS. The deployment service may not exist yet.';
     } else if (errorMessage.includes('ECONNREFUSED')) {
       return 'Connection refused. The deployment may not be ready yet.';
     } else if (errorMessage.includes('abort')) {
       return 'Request timed out. The deployment may be under heavy load or not responding.';
-    } else if (errorMessage.includes('HTTP 404')) {
+    } else if (errorMessage.includes('HTTP 404') || errorMessage.includes('404')) {
       return 'Metrics endpoint not found. The deployment may not expose metrics.';
-    } else if (errorMessage.includes('HTTP 503')) {
+    } else if (errorMessage.includes('HTTP 503') || errorMessage.includes('503')) {
       return 'Service unavailable. The deployment is starting up.';
     } else if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
-      return 'Cannot connect to metrics endpoint. KubeAIRunway must be running in-cluster.';
+      return 'Cannot connect to metrics endpoint. Verify the deployment is running.';
+    } else if (errorMessage.includes('connect ECONNREFUSED') || errorMessage.includes('no cluster')) {
+      return 'Cannot connect to the Kubernetes cluster. Check your kubeconfig.';
     }
     return errorMessage;
   }
 
   test('maps DNS resolution errors', () => {
     expect(mapErrorMessage('getaddrinfo ENOTFOUND service.namespace.svc')).toContain('Cannot resolve service DNS');
-    expect(mapErrorMessage('Error: ENOTFOUND')).toContain('in-cluster');
+    expect(mapErrorMessage('Error: ENOTFOUND')).toContain('not exist yet');
   });
 
   test('maps connection refused errors', () => {
@@ -93,8 +95,8 @@ describe('MetricsService - Error Message Handling', () => {
   });
 
   test('maps fetch errors', () => {
-    expect(mapErrorMessage('fetch failed')).toContain('in-cluster');
-    expect(mapErrorMessage('TypeError: Failed to fetch')).toContain('in-cluster');
+    expect(mapErrorMessage('fetch failed')).toContain('Verify the deployment');
+    expect(mapErrorMessage('TypeError: Failed to fetch')).toContain('Verify the deployment');
   });
 
   test('returns original message for unknown errors', () => {

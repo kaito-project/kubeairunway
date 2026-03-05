@@ -7,7 +7,7 @@ A [Headlamp](https://headlamp.dev/) plugin that integrates KubeAIRunway's ML dep
 ## Features
 
 - **Full Feature Parity**: Complete KubeAIRunway functionality within Headlamp
-- **Multi-Runtime Support**: KAITO, KubeRay, and Dynamo runtimes
+- **Multi-Runtime Support**: KAITO, KubeRay, llm-d, and Dynamo runtimes
 - **Model Catalog**: Browse curated models and search HuggingFace
 - **Deployment Management**: Create, view, and delete deployments
 - **Metrics & Monitoring**: Real-time metrics, logs, and GPU capacity
@@ -201,9 +201,9 @@ cd ../plugins/headlamp && bun run build
          ▼                         ▼
 ┌──────────────────────────────────────────────┐
 │              Kubernetes Cluster              │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐      │
-│  │  KAITO  │  │ KubeRay │  │ Dynamo  │      │
-│  └─────────┘  └─────────┘  └─────────┘      │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐┌───────┐ │
+│  │  KAITO  │  │ KubeRay │  │ Dynamo  ││ llm-d │ │
+│  └─────────┘  └─────────┘  └─────────┘└───────┘ │
 └──────────────────────────────────────────────┘
 ```
 

@@ -1,0 +1,21 @@
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: llama-llmd-e2e
+  namespace: default
+spec:
+  model:
+    id: "meta-llama/Llama-3.2-1B-Instruct"
+    source: huggingface
+  provider:
+    name: llmd
+  engine:
+    type: vllm
+  scaling:
+    replicas: 1
+  resources:
+    gpu:
+      count: 1
+    memory: "24Gi"
+  secrets:
+    huggingFaceToken: "hf-token-secret"

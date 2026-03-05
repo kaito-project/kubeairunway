@@ -68,6 +68,8 @@ export type {
   GPUOperatorInstallResult,
   NodeGpuInfo,
   ClusterGpuCapacity,
+  GatewayCRDStatus,
+  GatewayCRDInstallResult,
 } from '@kubeairunway/shared';
 
 // HuggingFace types
@@ -133,6 +135,8 @@ import type {
   GPUOperatorStatus,
   GPUOperatorInstallResult,
   ClusterGpuCapacity,
+  GatewayCRDStatus,
+  GatewayCRDInstallResult,
   DeploymentsListResponse,
   ClusterStatusResponse,
   MetricsResponse,
@@ -429,6 +433,14 @@ export const installationApi = {
 
   uninstallProviderCRDs: (providerId: string) =>
     request<InstallResult>(`/installation/providers/${encodeURIComponent(providerId)}/uninstall-crds`, {
+      method: 'POST',
+      timeoutMs: INSTALLATION_TIMEOUT_MS,
+    }),
+
+  getGatewayCRDStatus: () => request<GatewayCRDStatus>('/installation/gateway/status'),
+
+  installGatewayCRDs: () =>
+    request<GatewayCRDInstallResult>('/installation/gateway/install-crds', {
       method: 'POST',
       timeoutMs: INSTALLATION_TIMEOUT_MS,
     }),

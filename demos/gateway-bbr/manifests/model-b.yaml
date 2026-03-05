@@ -1,0 +1,16 @@
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: model-b
+  namespace: default
+spec:
+  model:
+    source: custom
+  resources:
+    cpu: "4"
+  image: "ghcr.io/kaito-project/aikit/gemma2:2b"
+  gateway:
+    enabled: true
+    modelName: "gemma-2-2b-instruct"
+    # BYO HTTPRoute — the controller skips auto-creating an HTTPRoute
+    httpRouteRef: "model-b-route"

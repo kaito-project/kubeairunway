@@ -1,0 +1,275 @@
+package llmd
+
+import (
+	"context"
+	"testing"
+
+	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func newScheme() *runtime.Scheme {
+	s := runtime.NewScheme()
+	_ = kubeairunwayv1alpha1.AddToScheme(s)
+	return s
+}
+
+func newMDForController(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
+	return &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model:  kubeairunwayv1alpha1.ModelSpec{ID: "test-model", Source: kubeairunwayv1alpha1.ModelSourceHuggingFace},
+			Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+			Resources: &kubeairunwayv1alpha1.ResourceSpec{
+				GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			},
+		},
+		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: ProviderName},
+		},
+	}
+}
+
+func TestValidateCompatibility(t *testing.T) {
+	r := &LLMDProviderReconciler{}
+
+	tests := []struct {
+		name    string
+		md      *kubeairunwayv1alpha1.ModelDeployment
+		wantErr bool
+	}{
+		{
+			name: "vllm with GPU is compatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{
+						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "sglang is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeSGLang},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{
+						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "trtllm is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeTRTLLM},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{
+						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "no GPU resources is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Resources: nil,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "zero GPU count is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Resources: &kubeairunwayv1alpha1.ResourceSpec{
+						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 0},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disaggregated without prefill is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disaggregated without decode is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disaggregated with both prefill and decode is compatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "disaggregated without GPU on prefill is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disaggregated without GPU on decode is incompatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 2,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disaggregated without top-level resources is compatible",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
+						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 4,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+						},
+						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+							Replicas: 1,
+							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := r.validateCompatibility(tt.md)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateCompatibility() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestReconcileIgnoresOtherProviders(t *testing.T) {
+	scheme := newScheme()
+	md := newMDForController("test-model", "default")
+	md.Status.Provider.Name = "some-other-provider"
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(md).
+		WithStatusSubresource(md).
+		Build()
+
+	r := NewLLMDProviderReconciler(c, scheme)
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "test-model"},
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should return empty result (no requeue) since provider doesn't match
+	if result.Requeue || result.RequeueAfter != 0 {
+		t.Error("expected no requeue for non-matching provider")
+	}
+}
+
+func TestReconcileIgnoresNoProvider(t *testing.T) {
+	scheme := newScheme()
+	md := newMDForController("test-model", "default")
+	md.Status.Provider = nil
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(md).
+		WithStatusSubresource(md).
+		Build()
+
+	r := NewLLMDProviderReconciler(c, scheme)
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Namespace: "default", Name: "test-model"},
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Requeue || result.RequeueAfter != 0 {
+		t.Error("expected no requeue when no provider assigned")
+	}
+}

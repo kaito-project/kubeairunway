@@ -6,6 +6,7 @@
 import type { MetricsResponse, RawMetricValue } from '@kubeairunway/shared';
 import { parsePrometheusText } from '../lib/prometheus-parser';
 import logger from '../lib/logger';
+import { kubernetesService } from './kubernetes';
 import * as fs from 'fs';
 
 // Timeout for metrics fetch (5 seconds)
@@ -92,10 +93,10 @@ async function fetchRawMetrics(url: string): Promise<string> {
  */
 class MetricsService {
   /**
-   * Check if metrics fetching is available (requires in-cluster deployment)
+   * Check if metrics fetching is available (requires cluster connection)
    */
   isMetricsAvailable(): boolean {
-    return checkInCluster();
+    return true;
   }
 
   /**
@@ -108,36 +109,33 @@ class MetricsService {
    */
   async getDeploymentMetrics(deploymentName: string, namespace: string, _providerId?: string): Promise<MetricsResponse> {
     const timestamp = new Date().toISOString();
-
-    // Check if running in-cluster first
-    if (!checkInCluster()) {
-      return {
-        available: false,
-        error: 'Metrics are only available when KubeAIRunway is deployed inside the Kubernetes cluster. Run KubeAIRunway in-cluster to access deployment metrics.',
-        timestamp,
-        metrics: [],
-        runningOffCluster: true,
-      };
-    }
+    const inCluster = checkInCluster();
 
     try {
       // Use default metrics configuration
       const metricsConfig = DEFAULT_METRICS_CONFIG;
+      const serviceName = metricsConfig.serviceNamePattern.replace('{name}', deploymentName);
 
-      // Build the metrics URL
-      const url = buildMetricsUrl(
-        deploymentName,
-        namespace,
-        metricsConfig.serviceNamePattern,
-        metricsConfig.port,
-        metricsConfig.endpointPath
-      );
+      let rawText: string;
 
-      logger.debug({ url, deploymentName, namespace }, 'Fetching metrics from deployment');
-      logger.info({ metricsUrl: url }, 'Attempting to fetch metrics from URL');
+      if (inCluster) {
+        // In-cluster: fetch directly via cluster DNS (fast path)
+        const url = buildMetricsUrl(
+          deploymentName,
+          namespace,
+          metricsConfig.serviceNamePattern,
+          metricsConfig.port,
+          metricsConfig.endpointPath
+        );
 
-      // Fetch raw metrics
-      const rawText = await fetchRawMetrics(url);
+        logger.debug({ url, deploymentName, namespace }, 'Fetching metrics from deployment (in-cluster)');
+        rawText = await fetchRawMetrics(url);
+      } else {
+        // Off-cluster: proxy through the K8s API server via kubeconfig
+        const path = metricsConfig.endpointPath.replace(/^\//, ''); // strip leading slash
+        logger.debug({ deploymentName, namespace, port: metricsConfig.port, path }, 'Fetching metrics via K8s API proxy (off-cluster)');
+        rawText = await kubernetesService.proxyServiceGet(serviceName, namespace, metricsConfig.port, path);
+      }
 
       // Parse Prometheus format
       const metrics = parsePrometheusText(rawText);
@@ -159,17 +157,19 @@ class MetricsService {
       let userMessage = errorMessage;
 
       if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-        userMessage = 'Cannot resolve service DNS. KubeAIRunway must be running in-cluster to fetch metrics.';
+        userMessage = 'Cannot resolve service DNS. The deployment service may not exist yet.';
+      } else if (errorMessage.includes('no cluster') || errorMessage.includes('connect ECONNREFUSED')) {
+        userMessage = 'Cannot connect to the Kubernetes cluster. Check your kubeconfig.';
       } else if (errorMessage.includes('ECONNREFUSED')) {
         userMessage = 'Connection refused. The deployment may not be ready yet.';
       } else if (errorMessage.includes('abort')) {
         userMessage = 'Request timed out. The deployment may be under heavy load or not responding.';
-      } else if (errorMessage.includes('HTTP 404')) {
+      } else if (errorMessage.includes('HTTP 404') || errorMessage.includes('404')) {
         userMessage = 'Metrics endpoint not found. The deployment may not expose metrics.';
-      } else if (errorMessage.includes('HTTP 503')) {
+      } else if (errorMessage.includes('HTTP 503') || errorMessage.includes('503')) {
         userMessage = 'Service unavailable. The deployment is starting up.';
       } else if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
-        userMessage = 'Cannot connect to metrics endpoint. KubeAIRunway must be running in-cluster.';
+        userMessage = 'Cannot connect to metrics endpoint. Verify the deployment is running.';
       }
 
       logger.warn(

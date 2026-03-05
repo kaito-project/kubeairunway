@@ -27,6 +27,7 @@
     "dynamo",
     "kubernetes",
     "llm",
+    "llmd",
     "deployment"
   ],
   "author": "",

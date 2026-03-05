@@ -32,10 +32,10 @@ When moving between versions, conversion webhooks will handle:
 
 ```bash
 # Option A: kubectl
-kubectl apply -f https://raw.githubusercontent.com/kubeairunway/kubeairunway/main/manifests/install.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/controller.yaml
 
 # Rollback to previous version
-kubectl rollout undo deployment/kubeairunway-controller -n kubeairunway-system
+kubectl rollout undo deployment/kubeairunway-controller-manager -n kubeairunway-system
 ```
 
 **Behavior during upgrade:**

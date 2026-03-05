@@ -21,11 +21,12 @@ KubeAIRunway gives you a web UI and a unified Kubernetes CRD (`ModelDeployment`)
 
 ## Supported Providers
 
-| Provider | Description |
-| --- | --- |
-| [**NVIDIA Dynamo**](https://github.com/ai-dynamo/dynamo) | GPU-accelerated inference with aggregated or disaggregated serving |
-| [**KubeRay**](https://github.com/ray-project/kuberay) | Ray-based distributed inference |
-| [**KAITO**](https://github.com/kaito-project/kaito) | vLLM (GPU) and llama.cpp (CPU/GPU) support |
+| Provider                                                 | Description                                                        | Provider Shim                                         |
+| -------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------- |
+| [**NVIDIA Dynamo**](https://github.com/ai-dynamo/dynamo) | GPU-accelerated inference with aggregated or disaggregated serving | [dynamo.yaml](providers/dynamo/deploy/dynamo.yaml)    |
+| [**KubeRay**](https://github.com/ray-project/kuberay)    | Ray-based distributed inference                                    | [kuberay.yaml](providers/kuberay/deploy/kuberay.yaml) |
+| [**KAITO**](https://github.com/kaito-project/kaito)      | vLLM (GPU) and llama.cpp (CPU/GPU) support                         | [kaito.yaml](providers/kaito/deploy/kaito.yaml)       |
+| [**LLM-D**](https://github.com/llm-d/llm-d)              | vLLM (GPU) with aggregated or disaggregated serving                | [llmd.yaml](providers/llmd/deploy/llmd.yaml)          |
 
 ## Quick Start
 
@@ -50,18 +51,23 @@ Open **http://localhost:3001**
 ### Option B: Deploy to Kubernetes
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/kubernetes/kubeairunway.yaml
+# Install CRDs and controller (required)
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/controller.yaml
+
+# Install dashboard UI (optional)
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/dashboard.yaml
 kubectl port-forward -n kubeairunway-system svc/kubeairunway 3001:80
 ```
 
-Open **http://localhost:3001** — see [deployment docs](deploy/kubernetes/README.md) for more options.
+Open **http://localhost:3001** — see [deployment docs](deploy/README.md) for more options.
 
 ### Getting Started
 
-1. **Install a provider** — Go to the Installation page and install your preferred provider via Helm
-2. **Connect HuggingFace** — Sign in via Settings → HuggingFace (required for gated models)
-3. **Deploy a model** — Browse the catalog, pick a model, configure, and deploy
-4. **Monitor** — Track status, stream logs, and view metrics on the Deployments page
+1. **Install a provider shim** — Apply one or more provider shims to register providers with KubeAIRunway. See [Supported Providers](#supported-providers) for available options.
+2. **Install the provider** — Go to the Installation page and install the upstream provider via Helm
+3. **Connect HuggingFace** — Sign in via Settings → HuggingFace (optional for non-gated models)
+4. **Deploy a model** — Browse the catalog, pick a model, configure, and deploy
+5. **Monitor** — Track status, stream logs, and view metrics on the Deployments page
 
 ### Access Your Model
 
@@ -97,7 +103,7 @@ The controller automatically selects the best engine and provider, creates provi
 | Providers | [docs/providers.md](docs/providers.md) |
 | Observability | [docs/observability.md](docs/observability.md) |
 | Development | [docs/development.md](docs/development.md) |
-| Kubernetes Deployment | [deploy/kubernetes/README.md](deploy/kubernetes/README.md) |
+| Kubernetes Deployment | [deploy/README.md](deploy/README.md) |
 | Gateway Integration | [docs/gateway.md](docs/gateway.md) |
 | Headlamp Plugin | [docs/headlamp-plugin.md](docs/headlamp-plugin.md) |
 

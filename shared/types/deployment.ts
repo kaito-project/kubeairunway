@@ -21,7 +21,7 @@ export interface DeploymentConfig {
   modelId: string;
   engine: Engine;
   mode: DeploymentMode;
-  provider?: 'dynamo' | 'kuberay' | 'kaito';
+  provider?: 'dynamo' | 'kuberay' | 'kaito'| 'llmd';
   servedModelName?: string;
   routerMode: RouterMode;
   replicas: number;
@@ -217,7 +217,7 @@ export interface DeploymentStatus {
   namespace: string;
   modelId: string;
   servedModelName?: string;
-  engine: Engine;
+  engine?: Engine;
   mode: ServingMode;
   phase: DeploymentPhase;
   provider: string;
@@ -309,11 +309,15 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
     namespace: md.metadata.namespace,
     modelId: spec.model.id,
     servedModelName: spec.model.servedName,
-    engine: spec.engine.type as Engine,
+    engine: (spec.engine?.type as Engine) || undefined,
     mode: spec.serving?.mode || 'aggregated',
     phase: status.phase || 'Pending',
     provider: status.provider?.name || spec.provider?.name || 'unknown',
-    replicas: status.replicas || { desired: 0, ready: 0, available: 0 },
+    replicas: {
+      desired: status.replicas?.desired ?? 0,
+      ready: status.replicas?.ready ?? 0,
+      available: status.replicas?.available ?? 0,
+    },
     conditions: status.conditions,
     pods,
     createdAt: md.metadata.creationTimestamp || new Date().toISOString(),

@@ -1,0 +1,4 @@
+namespace: kubeairunway-system
+resources:
+- ../rbac
+- ../manager

@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3 # v2
@@ -42,4 +42,65 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           bun run test:coverage 2>&1 | tail -30 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  controller-manifest-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: controller/go.sum
+
+      - name: Install kustomize
+        run: cd controller && make kustomize
+
+      - name: Generate controller manifest
+        run: cd controller && bin/kustomize build config/default > /tmp/controller.yaml
+
+      - name: Check for manifest drift
+        run: |
+          if ! diff -u deploy/controller.yaml /tmp/controller.yaml; then
+            echo "❌ deploy/controller.yaml is out of date."
+            echo "Run 'make generate-deploy-manifests' and commit the result."
+            exit 1
+          fi
+
+      - name: Generate dashboard manifest
+        run: controller/bin/kustomize build backend/config/default > /tmp/dashboard.yaml
+
+      - name: Check for dashboard manifest drift
+        run: |
+          if ! diff -u deploy/dashboard.yaml /tmp/dashboard.yaml; then
+            echo "❌ deploy/dashboard.yaml is out of date."
+            echo "Run 'make generate-deploy-manifests' and commit the result."
+            exit 1
+          fi
+
+  controller-unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: controller/go.sum
+
+      - name: Run controller unit tests
+        run: |
+          cd controller
+          make test
+          echo "## 🎯 Controller Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=cover.out | tail -1 >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY

@@ -325,7 +325,7 @@ spec:
                 properties:
                   name:
                     description: |-
-                      name is the provider name (e.g., dynamo, kaito, kuberay)
+                      name is the provider name (e.g., dynamo, kaito, kuberay, llmd)
                       If not specified, the provider-selector will choose one
                     type: string
                   overrides:

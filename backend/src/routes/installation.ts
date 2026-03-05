@@ -257,6 +257,57 @@ const installation = new Hono()
         message: `Failed to remove CRDs: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }
+  })
+  .get('/gateway/status', async (c) => {
+    const status = await kubernetesService.checkGatewayCRDStatus();
+    return c.json(status);
+  })
+  .post('/gateway/install-crds', async (c) => {
+    const { GATEWAY_API_CRD_URL, GAIE_CRD_URL, PINNED_GAIE_VERSION } = await import('@kubeairunway/shared');
+
+    const results: Array<{ step: string; success: boolean; output: string; error?: string }> = [];
+
+    // Install Gateway API CRDs
+    logger.info('Installing Gateway API CRDs');
+    const gwResult = await helmService.applyManifestUrl(GATEWAY_API_CRD_URL, (data, stream) => {
+      logger.debug({ stream }, data.trim());
+    });
+    results.push({
+      step: 'gateway-api-crds',
+      success: gwResult.success,
+      output: gwResult.stdout,
+      error: gwResult.stderr || undefined,
+    });
+
+    if (!gwResult.success) {
+      throw new HTTPException(500, {
+        message: `Failed to install Gateway API CRDs: ${gwResult.stderr}`,
+      });
+    }
+
+    // Install GAIE CRDs
+    logger.info(`Installing Inference Extension CRDs (${PINNED_GAIE_VERSION})`);
+    const gaieResult = await helmService.applyManifestUrl(GAIE_CRD_URL, (data, stream) => {
+      logger.debug({ stream }, data.trim());
+    });
+    results.push({
+      step: 'inference-extension-crds',
+      success: gaieResult.success,
+      output: gaieResult.stdout,
+      error: gaieResult.stderr || undefined,
+    });
+
+    if (!gaieResult.success) {
+      throw new HTTPException(500, {
+        message: `Failed to install Inference Extension CRDs: ${gaieResult.stderr}`,
+      });
+    }
+
+    return c.json({
+      success: true,
+      message: 'Gateway API and Inference Extension CRDs installed successfully',
+      results,
+    });
   });
 
 export default installation;

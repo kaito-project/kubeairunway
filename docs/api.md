@@ -53,7 +53,7 @@ See [controller-architecture.md](controller-architecture.md) for controller inte
 | `engine.contextLength` | int | No | Model default | Max context length |
 | `engine.trustRemoteCode` | bool | No | `false` | Allow remote code (vLLM/SGLang only) |
 | `engine.args` | map[string]string | No | `{}` | Engine-specific CLI flags |
-| `provider.name` | string | No | Auto-selected | `dynamo`, `kaito`, or `kuberay` |
+| `provider.name` | string | No | Auto-selected | `dynamo`, `kaito`, or `kuberay`, or `llmd` |
 | `provider.overrides` | object | No | `{}` | Provider-specific escape hatch |
 | `serving.mode` | string | No | `aggregated` | `aggregated` or `disaggregated` |
 | `scaling.replicas` | int | No | `1` | Replicas (aggregated mode) |

@@ -1,6 +1,6 @@
 import * as k8s from '@kubernetes/client-node';
 import { configService } from './config';
-import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo } from '@kubeairunway/shared';
+import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo, GatewayCRDStatus } from '@kubeairunway/shared';
 import { toModelDeploymentManifest, toDeploymentStatus } from '@kubeairunway/shared';
 import { withRetry } from '../lib/retry';
 import logger from '../lib/logger';
@@ -113,26 +113,28 @@ class KubernetesService {
     }
   }
 
-  async listDeployments(namespace: string): Promise<DeploymentStatus[]> {
-    logger.debug({ namespace }, 'listDeployments called');
+  async listDeployments(namespace?: string): Promise<DeploymentStatus[]> {
+    logger.debug({ namespace: namespace || 'all' }, 'listDeployments called');
 
     try {
-      logger.debug(
-        { apiGroup: MODEL_DEPLOYMENT_CRD.apiGroup, apiVersion: MODEL_DEPLOYMENT_CRD.apiVersion, plural: MODEL_DEPLOYMENT_CRD.plural },
-        'Calling listNamespacedCustomObject for ModelDeployment'
-      );
-
-      const response = await withRetry(
-        () => this.customObjectsApi.listNamespacedCustomObject(
-          MODEL_DEPLOYMENT_CRD.apiGroup,
-          MODEL_DEPLOYMENT_CRD.apiVersion,
-          namespace,
-          MODEL_DEPLOYMENT_CRD.plural
-        ),
-        { operationName: 'listDeployments' }
-      );
-
-      logger.debug({ statusCode: response.response.statusCode }, 'listNamespacedCustomObject success');
+      const response = namespace
+        ? await withRetry(
+            () => this.customObjectsApi.listNamespacedCustomObject(
+              MODEL_DEPLOYMENT_CRD.apiGroup,
+              MODEL_DEPLOYMENT_CRD.apiVersion,
+              namespace,
+              MODEL_DEPLOYMENT_CRD.plural
+            ),
+            { operationName: 'listDeployments' }
+          )
+        : await withRetry(
+            () => this.customObjectsApi.listClusterCustomObject(
+              MODEL_DEPLOYMENT_CRD.apiGroup,
+              MODEL_DEPLOYMENT_CRD.apiVersion,
+              MODEL_DEPLOYMENT_CRD.plural
+            ),
+            { operationName: 'listDeployments:allNamespaces' }
+          );
 
       const items = (response.body as { items?: ModelDeployment[] }).items || [];
       logger.debug({ count: items.length }, 'Found ModelDeployments');
@@ -140,7 +142,8 @@ class KubernetesService {
       // Convert each ModelDeployment to DeploymentStatus
       const deployments: DeploymentStatus[] = [];
       for (const item of items) {
-        const pods = await this.getDeploymentPods(item.metadata.name, namespace);
+        const itemNamespace = item.metadata.namespace || namespace || 'default';
+        const pods = await this.getDeploymentPods(item.metadata.name, itemNamespace);
         deployments.push(toDeploymentStatus(item, pods));
       }
 
@@ -1476,6 +1479,108 @@ class KubernetesService {
     }
 
     return models;
+  }
+
+  /**
+   * Check Gateway API and GAIE CRD installation status.
+   * Also includes live gateway availability info.
+   */
+  async checkGatewayCRDStatus(): Promise<GatewayCRDStatus> {
+    const { PINNED_GAIE_VERSION, GAIE_CRD_URL, GATEWAY_API_CRD_URL } = await import('@kubeairunway/shared');
+
+    const [gatewayApiInstalled, inferenceExtInstalled] = await Promise.all([
+      this.checkCRDExists('gateways.gateway.networking.k8s.io'),
+      this.checkCRDExists('inferencepools.inference.networking.k8s.io'),
+    ]);
+
+    // Get live gateway status
+    let gatewayAvailable = false;
+    let gatewayEndpoint: string | undefined;
+    if (gatewayApiInstalled && inferenceExtInstalled) {
+      try {
+        const gwStatus = await this.getGatewayStatus();
+        gatewayAvailable = gwStatus.available;
+        gatewayEndpoint = gwStatus.endpoint;
+      } catch {
+        // Gateway status check failed, not critical
+      }
+    }
+
+    const allInstalled = gatewayApiInstalled && inferenceExtInstalled;
+    let message: string;
+    if (allInstalled && gatewayAvailable) {
+      message = 'Gateway API and Inference Extension CRDs are installed. Gateway is available.';
+    } else if (allInstalled) {
+      message = 'Gateway API and Inference Extension CRDs are installed. No active gateway detected.';
+    } else if (!gatewayApiInstalled && !inferenceExtInstalled) {
+      message = 'Gateway API and Inference Extension CRDs are not installed.';
+    } else if (!gatewayApiInstalled) {
+      message = 'Gateway API CRDs are not installed.';
+    } else {
+      message = 'Inference Extension CRDs are not installed.';
+    }
+
+    return {
+      gatewayApiInstalled,
+      inferenceExtInstalled,
+      pinnedVersion: PINNED_GAIE_VERSION,
+      gatewayAvailable,
+      gatewayEndpoint,
+      message,
+      installCommands: [
+        `kubectl apply -f ${GATEWAY_API_CRD_URL}`,
+        `kubectl apply -f ${GAIE_CRD_URL}`,
+      ],
+    };
+  }
+
+  /**
+   * Proxy a GET request to a Kubernetes service through the API server.
+   * This allows fetching service endpoints (e.g. /metrics) even when running off-cluster.
+   * Uses raw fetch instead of the generated client to support text/plain responses.
+   */
+  async proxyServiceGet(serviceName: string, namespace: string, port: number, path: string): Promise<string> {
+    const cluster = this.kc.getCurrentCluster();
+    if (!cluster) {
+      throw new Error('No active Kubernetes cluster configured');
+    }
+
+    // Build proxy URL: /api/v1/namespaces/{ns}/services/{name}:{port}/proxy/{path}
+    const proxyUrl = `${cluster.server}/api/v1/namespaces/${encodeURIComponent(namespace)}/services/${encodeURIComponent(serviceName)}:${port}/proxy/${path}`;
+
+    // Extract auth headers from KubeConfig
+    const reqOpts: { headers: Record<string, string>; strictSSL?: boolean } = { headers: {} };
+    await this.kc.applyToRequest(reqOpts as any);
+
+    // Extract TLS options (CA cert, client cert/key) from KubeConfig
+    const httpsOpts: { ca?: Buffer; cert?: Buffer; key?: Buffer; rejectUnauthorized?: boolean } = {};
+    this.kc.applyToHTTPSOptions(httpsOpts as any);
+
+    const tlsOpts: Record<string, any> = {};
+    if (httpsOpts.ca) tlsOpts.ca = httpsOpts.ca;
+    if (httpsOpts.cert) tlsOpts.cert = httpsOpts.cert;
+    if (httpsOpts.key) tlsOpts.key = httpsOpts.key;
+    if (cluster.skipTLSVerify || httpsOpts.rejectUnauthorized === false) {
+      tlsOpts.rejectUnauthorized = false;
+    }
+
+    const fetchOpts: RequestInit & { tls?: Record<string, any> } = {
+      method: 'GET',
+      headers: {
+        ...reqOpts.headers,
+        'Accept': 'text/plain',
+      },
+    };
+
+    if (Object.keys(tlsOpts).length > 0) {
+      fetchOpts.tls = tlsOpts;
+    }
+
+    const response = await fetch(proxyUrl, fetchOpts);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return await response.text();
   }
 }
 

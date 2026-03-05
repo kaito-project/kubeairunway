@@ -8,7 +8,7 @@ For installation and development instructions, see the [plugin README](../plugin
 
 ## Overview
 
-The KubeAIRunway Headlamp plugin integrates ML deployment management capabilities directly into the [Headlamp](https://headlamp.dev/) Kubernetes dashboard. It provides full feature parity with the main KubeAIRunway UI, supporting all runtimes (KAITO, KubeRay, Dynamo) through a full backend proxy architecture.
+The KubeAIRunway Headlamp plugin integrates ML deployment management capabilities directly into the [Headlamp](https://headlamp.dev/) Kubernetes dashboard. It provides full feature parity with the main KubeAIRunway UI, supporting all runtimes (KAITO, KubeRay, Dynamo, llm-d) through a full backend proxy architecture.
 
 ---
 

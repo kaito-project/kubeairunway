@@ -147,4 +147,5 @@ function useConfetti(duration = 3000) {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export { Confetti, useConfetti }

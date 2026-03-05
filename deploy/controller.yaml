@@ -1,0 +1,1588 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kubeairunway
+    control-plane: controller-manager
+  name: kubeairunway-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: inferenceproviderconfigs.kubeairunway.ai
+spec:
+  group: kubeairunway.ai
+  names:
+    kind: InferenceProviderConfig
+    listKind: InferenceProviderConfigList
+    plural: inferenceproviderconfigs
+    singular: inferenceproviderconfig
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - description: Provider ready
+      jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - description: Provider version
+      jsonPath: .status.version
+      name: Version
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          InferenceProviderConfig is the Schema for the inferenceproviderconfigs API
+          InferenceProviderConfig is a cluster-scoped resource that providers use to register themselves
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the provider capabilities and selection rules
+            properties:
+              capabilities:
+                description: capabilities defines what this provider supports
+                properties:
+                  cpuSupport:
+                    description: cpuSupport indicates if the provider supports CPU-only
+                      inference
+                    type: boolean
+                  engines:
+                    description: engines is the list of supported inference engines
+                    items:
+                      description: EngineType defines the inference engine type
+                      enum:
+                      - vllm
+                      - sglang
+                      - trtllm
+                      - llamacpp
+                      type: string
+                    type: array
+                  gpuSupport:
+                    description: gpuSupport indicates if the provider supports GPU
+                      inference
+                    type: boolean
+                  servingModes:
+                    description: servingModes is the list of supported serving modes
+                    items:
+                      description: ServingMode defines the serving mode
+                      enum:
+                      - aggregated
+                      - disaggregated
+                      type: string
+                    type: array
+                type: object
+              documentation:
+                description: documentation is a URL to the provider documentation
+                type: string
+              installation:
+                description: installation defines how to install the provider's upstream
+                  components
+                properties:
+                  defaultNamespace:
+                    description: defaultNamespace is the default namespace for the
+                      provider's workloads
+                    type: string
+                  description:
+                    description: description is a human-readable description of the
+                      provider
+                    type: string
+                  helmCharts:
+                    description: helmCharts are the Helm charts to install
+                    items:
+                      description: HelmChart defines a Helm chart to install
+                      properties:
+                        chart:
+                          description: chart is the chart reference (e.g. "repo/chart"
+                            or a URL)
+                          type: string
+                        createNamespace:
+                          description: createNamespace indicates whether to create
+                            the namespace if it doesn't exist
+                          type: boolean
+                        name:
+                          description: name is the release name for the Helm chart
+                          type: string
+                        namespace:
+                          description: namespace is the Kubernetes namespace to install
+                            into
+                          type: string
+                        version:
+                          description: version is the chart version to install
+                          type: string
+                      required:
+                      - chart
+                      - name
+                      - namespace
+                      type: object
+                    type: array
+                  helmRepos:
+                    description: helmRepos are the Helm repositories needed for installation
+                    items:
+                      description: HelmRepo defines a Helm repository needed for installation
+                      properties:
+                        name:
+                          description: name is the local name for the Helm repository
+                          type: string
+                        url:
+                          description: url is the Helm repository URL
+                          type: string
+                      required:
+                      - name
+                      - url
+                      type: object
+                    type: array
+                  steps:
+                    description: steps are the ordered installation steps with commands
+                    items:
+                      description: InstallationStep defines a step in the provider
+                        installation process
+                      properties:
+                        command:
+                          description: command is the shell command to run for this
+                            step
+                          type: string
+                        description:
+                          description: description is a detailed explanation of what
+                            this step does
+                          type: string
+                        title:
+                          description: title is a short description of this step
+                          type: string
+                      required:
+                      - description
+                      - title
+                      type: object
+                    type: array
+                type: object
+              selectionRules:
+                description: |-
+                  selectionRules defines rules for auto-selecting this provider
+                  Conditions use CEL (Common Expression Language)
+                items:
+                  description: SelectionRule defines a rule for auto-selecting this
+                    provider
+                  properties:
+                    condition:
+                      description: |-
+                        condition is a CEL expression that evaluates to true when this rule matches
+                        The expression has access to the full ModelDeployment spec via `spec.*`
+                        Examples:
+                          - "!has(spec.resources.gpu) || spec.resources.gpu.count == 0"
+                          - "spec.engine.type == 'llamacpp'"
+                          - "has(spec.resources.gpu) && spec.resources.gpu.count > 0"
+                      type: string
+                    priority:
+                      default: 0
+                      description: |-
+                        priority is the priority of this rule (higher values = higher priority)
+                        When multiple providers match, the one with the highest priority wins
+                      format: int32
+                      minimum: 0
+                      type: integer
+                  required:
+                  - condition
+                  type: object
+                type: array
+            type: object
+          status:
+            description: status is written by the provider controller
+            properties:
+              conditions:
+                description: conditions represent the current state of the InferenceProviderConfig
+                  resource
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastHeartbeat:
+                description: lastHeartbeat is the last time the provider controller
+                  updated this status
+                format: date-time
+                type: string
+              ready:
+                description: ready indicates if the provider is ready to accept workloads
+                type: boolean
+              upstreamCRDVersion:
+                description: upstreamCRDVersion is the API version of the upstream
+                  CRD this provider creates
+                type: string
+              upstreamSchemaHash:
+                description: upstreamSchemaHash is a hash of the upstream CRD schema
+                  for version detection
+                type: string
+              version:
+                description: version is the version of the provider controller
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: modeldeployments.kubeairunway.ai
+spec:
+  group: kubeairunway.ai
+  names:
+    kind: ModelDeployment
+    listKind: ModelDeploymentList
+    plural: modeldeployments
+    singular: modeldeployment
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Current phase
+      jsonPath: .status.phase
+      name: Phase
+      type: string
+    - description: Selected provider
+      jsonPath: .status.provider.name
+      name: Provider
+      type: string
+    - description: Inference engine
+      jsonPath: .status.engine.type
+      name: Engine
+      type: string
+    - description: Ready replicas
+      jsonPath: .status.replicas.ready
+      name: Replicas
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ModelDeployment is the Schema for the modeldeployments API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of ModelDeployment
+            properties:
+              engine:
+                description: engine defines the inference engine configuration
+                properties:
+                  args:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      args contains engine-specific arguments
+                      These are passed directly to the engine and vary by type
+                    type: object
+                  contextLength:
+                    description: |-
+                      contextLength is the maximum context length
+                      Maps to engine-specific flags (--max-model-len for vllm, etc.)
+                    format: int32
+                    type: integer
+                  trustRemoteCode:
+                    default: false
+                    description: |-
+                      trustRemoteCode allows execution of remote code from HuggingFace
+                      Only applicable for vllm and sglang engines
+                    type: boolean
+                  type:
+                    description: |-
+                      type is the inference engine type
+                      If not specified, the controller will auto-select based on provider capabilities
+                    enum:
+                    - vllm
+                    - sglang
+                    - trtllm
+                    - llamacpp
+                    type: string
+                type: object
+              env:
+                description: env defines environment variables for the container
+                items:
+                  description: EnvVar represents an environment variable present in
+                    a Container.
+                  properties:
+                    name:
+                      description: |-
+                        Name of the environment variable.
+                        May consist of any printable ASCII characters except '='.
+                      type: string
+                    value:
+                      description: |-
+                        Variable references $(VAR_NAME) are expanded
+                        using the previously defined environment variables in the container and
+                        any service environment variables. If a variable cannot be resolved,
+                        the reference in the input string will be unchanged. Double $$ are reduced
+                        to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                        "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                        Escaped references will never be expanded, regardless of whether the variable
+                        exists or not.
+                        Defaults to "".
+                      type: string
+                    valueFrom:
+                      description: Source for the environment variable's value. Cannot
+                        be used if value is not empty.
+                      properties:
+                        configMapKeyRef:
+                          description: Selects a key of a ConfigMap.
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fieldRef:
+                          description: |-
+                            Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                            spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                          properties:
+                            apiVersion:
+                              description: Version of the schema the FieldPath is
+                                written in terms of, defaults to "v1".
+                              type: string
+                            fieldPath:
+                              description: Path of the field to select in the specified
+                                API version.
+                              type: string
+                          required:
+                          - fieldPath
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fileKeyRef:
+                          description: |-
+                            FileKeyRef selects a key of the env file.
+                            Requires the EnvFiles feature gate to be enabled.
+                          properties:
+                            key:
+                              description: |-
+                                The key within the env file. An invalid key will prevent the pod from starting.
+                                The keys defined within a source may consist of any printable ASCII characters except '='.
+                                During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                              type: string
+                            optional:
+                              default: false
+                              description: |-
+                                Specify whether the file or its key must be defined. If the file or key
+                                does not exist, then the env var is not published.
+                                If optional is set to true and the specified key does not exist,
+                                the environment variable will not be set in the Pod's containers.
+
+                                If optional is set to false and the specified key does not exist,
+                                an error will be returned during Pod creation.
+                              type: boolean
+                            path:
+                              description: |-
+                                The path within the volume from which to select the file.
+                                Must be relative and may not contain the '..' path or start with '..'.
+                              type: string
+                            volumeName:
+                              description: The name of the volume mount containing
+                                the env file.
+                              type: string
+                          required:
+                          - key
+                          - path
+                          - volumeName
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        resourceFieldRef:
+                          description: |-
+                            Selects a resource of the container: only resources limits and requests
+                            (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                          properties:
+                            containerName:
+                              description: 'Container name: required for volumes,
+                                optional for env vars'
+                              type: string
+                            divisor:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: Specifies the output format of the exposed
+                                resources, defaults to "1"
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            resource:
+                              description: 'Required: resource to select'
+                              type: string
+                          required:
+                          - resource
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        secretKeyRef:
+                          description: Selects a key of a secret in the pod's namespace
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                      type: object
+                  required:
+                  - name
+                  type: object
+                type: array
+              gateway:
+                description: gateway defines the Gateway API integration configuration
+                properties:
+                  enabled:
+                    description: |-
+                      enabled controls whether an InferencePool + HTTPRoute are created for this model.
+                      Defaults to true when a Gateway is detected in the cluster.
+                    type: boolean
+                  httpRouteRef:
+                    description: |-
+                      httpRouteRef references an existing HTTPRoute by name instead of auto-creating one.
+                      When set, the controller skips HTTPRoute creation and uses the referenced route.
+                      The HTTPRoute must be in the same namespace as the ModelDeployment.
+                    type: string
+                  modelName:
+                    description: |-
+                      modelName overrides the model name used in HTTPRoute routing.
+                      Defaults to spec.model.servedName or spec.model.id
+                    type: string
+                type: object
+              image:
+                description: image is a custom container image
+                type: string
+              model:
+                description: model defines the model specification
+                properties:
+                  id:
+                    description: |-
+                      id is the model identifier (e.g., HuggingFace model ID)
+                      Required when source is huggingface
+                    type: string
+                  servedName:
+                    description: |-
+                      servedName is the API-facing model name
+                      Defaults to model ID basename if not specified
+                      Not applicable for source=custom
+                    type: string
+                  source:
+                    default: huggingface
+                    description: source indicates where the model comes from
+                    enum:
+                    - huggingface
+                    - custom
+                    type: string
+                type: object
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                description: nodeSelector constrains scheduling to nodes with specific
+                  labels
+                type: object
+              podTemplate:
+                description: podTemplate defines pod customization
+                properties:
+                  metadata:
+                    description: metadata defines labels and annotations for created
+                      pods
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: annotations are annotations to add to created
+                          pods
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: labels are labels to add to created pods
+                        type: object
+                    type: object
+                type: object
+              provider:
+                description: provider defines the provider selection
+                properties:
+                  name:
+                    description: |-
+                      name is the provider name (e.g., dynamo, kaito, kuberay, llmd)
+                      If not specified, the provider-selector will choose one
+                    type: string
+                  overrides:
+                    description: |-
+                      overrides contains provider-specific configuration
+                      This is an escape hatch for provider-specific features
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              resources:
+                description: |-
+                  resources defines the resource requirements
+                  Not allowed in disaggregated mode (use scaling.prefill/decode instead)
+                properties:
+                  cpu:
+                    description: cpu is the CPU requirement (e.g., "4")
+                    type: string
+                  gpu:
+                    description: gpu defines GPU requirements
+                    properties:
+                      count:
+                        default: 0
+                        description: count is the number of GPUs
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      type:
+                        default: nvidia.com/gpu
+                        description: |-
+                          type is the GPU resource name (defaults to nvidia.com/gpu)
+                          Override for AMD/Intel GPUs
+                        type: string
+                    type: object
+                  memory:
+                    description: memory is the memory requirement (e.g., "32Gi")
+                    type: string
+                type: object
+              scaling:
+                description: scaling defines the scaling configuration
+                properties:
+                  decode:
+                    description: decode defines decode worker configuration for disaggregated
+                      mode
+                    properties:
+                      gpu:
+                        description: |-
+                          gpu defines GPU requirements for this component
+                          Required for disaggregated mode
+                        properties:
+                          count:
+                            default: 0
+                            description: count is the number of GPUs
+                            format: int32
+                            minimum: 0
+                            type: integer
+                          type:
+                            default: nvidia.com/gpu
+                            description: |-
+                              type is the GPU resource name (defaults to nvidia.com/gpu)
+                              Override for AMD/Intel GPUs
+                            type: string
+                        type: object
+                      memory:
+                        description: |-
+                          memory is the memory requirement for this component
+                          Required for disaggregated mode
+                        type: string
+                      replicas:
+                        default: 1
+                        description: replicas is the number of replicas for this component
+                        format: int32
+                        minimum: 0
+                        type: integer
+                    type: object
+                  prefill:
+                    description: prefill defines prefill worker configuration for
+                      disaggregated mode
+                    properties:
+                      gpu:
+                        description: |-
+                          gpu defines GPU requirements for this component
+                          Required for disaggregated mode
+                        properties:
+                          count:
+                            default: 0
+                            description: count is the number of GPUs
+                            format: int32
+                            minimum: 0
+                            type: integer
+                          type:
+                            default: nvidia.com/gpu
+                            description: |-
+                              type is the GPU resource name (defaults to nvidia.com/gpu)
+                              Override for AMD/Intel GPUs
+                            type: string
+                        type: object
+                      memory:
+                        description: |-
+                          memory is the memory requirement for this component
+                          Required for disaggregated mode
+                        type: string
+                      replicas:
+                        default: 1
+                        description: replicas is the number of replicas for this component
+                        format: int32
+                        minimum: 0
+                        type: integer
+                    type: object
+                  replicas:
+                    default: 1
+                    description: replicas is the number of replicas for aggregated
+                      mode
+                    format: int32
+                    minimum: 0
+                    type: integer
+                type: object
+              secrets:
+                description: secrets defines secret references
+                properties:
+                  huggingFaceToken:
+                    description: huggingFaceToken is the name of the Kubernetes secret
+                      containing HF_TOKEN
+                    type: string
+                type: object
+              serving:
+                description: serving defines the serving mode configuration
+                properties:
+                  mode:
+                    default: aggregated
+                    description: mode is the serving mode (aggregated or disaggregated)
+                    enum:
+                    - aggregated
+                    - disaggregated
+                    type: string
+                type: object
+              tolerations:
+                description: tolerations are tolerations for the pods
+                items:
+                  description: |-
+                    The pod this Toleration is attached to tolerates any taint that matches
+                    the triple <key,value,effect> using the matching operator <operator>.
+                  properties:
+                    effect:
+                      description: |-
+                        Effect indicates the taint effect to match. Empty means match all taint effects.
+                        When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                      type: string
+                    key:
+                      description: |-
+                        Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                        If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                      type: string
+                    operator:
+                      description: |-
+                        Operator represents a key's relationship to the value.
+                        Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                        Exists is equivalent to wildcard for value, so that a pod can
+                        tolerate all taints of a particular category.
+                        Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                      type: string
+                    tolerationSeconds:
+                      description: |-
+                        TolerationSeconds represents the period of time the toleration (which must be
+                        of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                        it is not set, which means tolerate the taint forever (do not evict). Zero and
+                        negative values will be treated as 0 (evict immediately) by the system.
+                      format: int64
+                      type: integer
+                    value:
+                      description: |-
+                        Value is the taint value the toleration matches to.
+                        If the operator is Exists, the value should be empty, otherwise just a regular string.
+                      type: string
+                  type: object
+                type: array
+            required:
+            - model
+            type: object
+          status:
+            description: status defines the observed state of ModelDeployment
+            properties:
+              conditions:
+                description: conditions represent the current state of the ModelDeployment
+                  resource
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              endpoint:
+                description: endpoint contains the service endpoint information
+                properties:
+                  port:
+                    description: port is the service port
+                    format: int32
+                    type: integer
+                  service:
+                    description: service is the name of the service
+                    type: string
+                type: object
+              engine:
+                description: engine contains information about the selected engine
+                properties:
+                  selectedReason:
+                    description: selectedReason explains why this engine was selected
+                    type: string
+                  type:
+                    description: type is the resolved engine type
+                    enum:
+                    - vllm
+                    - sglang
+                    - trtllm
+                    - llamacpp
+                    type: string
+                type: object
+              gateway:
+                description: gateway contains information about the gateway integration
+                properties:
+                  endpoint:
+                    description: endpoint is the unified gateway endpoint URL
+                    type: string
+                  modelName:
+                    description: modelName is the model name to use in API requests
+                    type: string
+                type: object
+              message:
+                description: message is a human-readable message about the current
+                  state
+                type: string
+              observedGeneration:
+                description: observedGeneration is the generation observed by the
+                  controller
+                format: int64
+                type: integer
+              phase:
+                description: phase is the current phase of the deployment
+                enum:
+                - Pending
+                - Deploying
+                - Running
+                - Failed
+                - Terminating
+                type: string
+              provider:
+                description: provider contains information about the selected provider
+                properties:
+                  name:
+                    description: name is the selected provider name
+                    type: string
+                  resourceKind:
+                    description: resourceKind is the kind of the created provider
+                      resource
+                    type: string
+                  resourceName:
+                    description: resourceName is the name of the created provider
+                      resource
+                    type: string
+                  selectedReason:
+                    description: selectedReason explains why this provider was selected
+                    type: string
+                type: object
+              replicas:
+                description: replicas contains replica count information
+                properties:
+                  available:
+                    description: available is the number of available replicas
+                    format: int32
+                    type: integer
+                  desired:
+                    description: desired is the desired number of replicas
+                    format: int32
+                    type: integer
+                  ready:
+                    description: ready is the number of ready replicas
+                    format: int32
+                    type: integer
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-controller-manager
+  namespace: kubeairunway-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-leader-election-role
+  namespace: kubeairunway-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeairunway-cert-rotation-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  - mutatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - update
+  - patch
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-inferenceproviderconfig-admin-role
+rules:
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - inferenceproviderconfigs
+  verbs:
+  - '*'
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - inferenceproviderconfigs/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-inferenceproviderconfig-editor-role
+rules:
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - inferenceproviderconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - inferenceproviderconfigs/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-inferenceproviderconfig-viewer-role
+rules:
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - inferenceproviderconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - inferenceproviderconfigs/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeairunway-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - serviceaccounts
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - inference.networking.k8s.io
+  resources:
+  - inferencepools
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - inference.networking.x-k8s.io
+  resources:
+  - inferencemodelrewrites
+  - inferenceobjectives
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - inferenceproviderconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  - roles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeairunway-metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeairunway-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-modeldeployment-admin-role
+rules:
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments
+  verbs:
+  - '*'
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-modeldeployment-editor-role
+rules:
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-modeldeployment-viewer-role
+rules:
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kubeairunway.ai
+  resources:
+  - modeldeployments/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-leader-election-rolebinding
+  namespace: kubeairunway-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubeairunway-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: kubeairunway-controller-manager
+  namespace: kubeairunway-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeairunway-cert-rotation-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeairunway-cert-rotation-role
+subjects:
+- kind: ServiceAccount
+  name: kubeairunway-controller-manager
+  namespace: kubeairunway-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+  name: kubeairunway-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeairunway-manager-role
+subjects:
+- kind: ServiceAccount
+  name: kubeairunway-controller-manager
+  namespace: kubeairunway-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeairunway-metrics-auth-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeairunway-metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: kubeairunway-controller-manager
+  namespace: kubeairunway-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubeairunway-webhook-server-cert
+  namespace: kubeairunway-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kubeairunway
+    control-plane: controller-manager
+  name: kubeairunway-controller-manager-metrics-service
+  namespace: kubeairunway-system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app.kubernetes.io/name: kubeairunway
+    control-plane: controller-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kubeairunway
+  name: kubeairunway-webhook-service
+  namespace: kubeairunway-system
+spec:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 9443
+  selector:
+    app.kubernetes.io/name: kubeairunway
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: kubeairunway
+    control-plane: controller-manager
+  name: kubeairunway-controller-manager
+  namespace: kubeairunway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubeairunway
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/name: kubeairunway
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - --metrics-bind-address=:8443
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        - --enable-provider-selector=true
+        command:
+        - /manager
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: ghcr.io/kaito-project/kubeairunway/controller:latest
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert-dir
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: kubeairunway-controller-manager
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - emptyDir: {}
+        name: cert-dir
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: kubeairunway-mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kubeairunway-webhook-service
+      namespace: kubeairunway-system
+      path: /mutate-kubeairunway-ai-v1alpha1-modeldeployment
+  failurePolicy: Fail
+  name: mmodeldeployment-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - kubeairunway.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - modeldeployments
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: kubeairunway-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kubeairunway-webhook-service
+      namespace: kubeairunway-system
+      path: /validate-kubeairunway-ai-v1alpha1-modeldeployment
+  failurePolicy: Fail
+  name: vmodeldeployment-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - kubeairunway.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - modeldeployments
+  sideEffects: None

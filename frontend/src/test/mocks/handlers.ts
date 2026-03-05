@@ -77,6 +77,12 @@ export const mockSettings = {
       description: 'Ray-based distributed inference',
       defaultNamespace: 'kuberay',
     },
+    {
+      id: 'llmd',
+      name: 'llm-d',
+      description: 'vLLM with aggregated or disaggregated serving',
+      defaultNamespace: 'kubeairunway-system',
+    },
   ],
 }
 
@@ -210,7 +216,7 @@ export const handlers = [
   http.get(`${API_BASE}/installation/providers/:id/status`, ({ params }) => {
     return HttpResponse.json({
       providerId: params.id,
-      providerName: params.id === 'dynamo' ? 'NVIDIA Dynamo' : 'KubeRay',
+      providerName: params.id === 'dynamo' ? 'NVIDIA Dynamo' : params.id === 'llmd' ? 'LLM-D' :'KubeRay',
       installed: true,
       version: '1.0.0',
       crdFound: true,
@@ -259,6 +265,32 @@ export const handlers = [
     return HttpResponse.json({
       success: true,
       message: 'GPU Operator installed successfully',
+    })
+  }),
+
+  // Gateway CRD Installation API
+  http.get(`${API_BASE}/installation/gateway/status`, () => {
+    return HttpResponse.json({
+      gatewayApiInstalled: true,
+      inferenceExtInstalled: true,
+      pinnedVersion: 'v1.3.1',
+      gatewayAvailable: false,
+      message: 'Gateway API and Inference Extension CRDs are installed. No active gateway detected.',
+      installCommands: [
+        'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/latest/download/standard-install.yaml',
+        'kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.3.1/manifests.yaml',
+      ],
+    })
+  }),
+
+  http.post(`${API_BASE}/installation/gateway/install-crds`, () => {
+    return HttpResponse.json({
+      success: true,
+      message: 'Gateway API and Inference Extension CRDs installed successfully',
+      results: [
+        { step: 'gateway-api-crds', success: true, output: 'created' },
+        { step: 'inference-extension-crds', success: true, output: 'created' },
+      ],
     })
   }),
 

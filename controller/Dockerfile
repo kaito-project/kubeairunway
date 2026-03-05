@@ -1,13 +1,9 @@
 # Build the manager binary
-FROM golang:1.25 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
-
-# Copy provider dependencies first (referenced by go.mod replace directive)
-COPY providers/kaito/go.mod providers/kaito/go.sum providers/kaito/
-COPY providers/kaito/*.go providers/kaito/
 
 # Copy the Go Modules manifests
 COPY controller/go.mod controller/go.sum controller/

@@ -226,16 +226,22 @@ kubectl patch modeldeployment my-llm --type=merge \
 Provider controllers are independent operators in `providers/<name>/`:
 
 ```bash
-# Build a provider binary
-make kaito-provider-build
-make dynamo-provider-build
-make kuberay-provider-build
+# Build a provider binary (from provider directory)
+cd providers/kaito && make build
+cd providers/dynamo && make build
+cd providers/kuberay && make build
+cd providers/llmd && make build
 
 # Build provider Docker image
-make kaito-provider-docker-build
+cd providers/kaito && make docker-build
+cd providers/llmd && make docker-build
 
 # Deploy provider to cluster
-make kaito-provider-deploy
+cd providers/kaito && make deploy
+cd providers/llmd && make deploy
+
+# Generate deploy manifest
+cd providers/kaito && make generate-deploy-manifests
 ```
 
 ## Environment Variables
@@ -345,6 +351,27 @@ bun run dev:backend     # Start with watch mode
 bun run build:backend   # Compile TypeScript
 bun run compile         # Build single binary executable
 ```
+
+#### Backend Testing
+
+```bash
+cd backend
+bun test                           # Run all backend tests
+bun test src/routes/autoscaler.test.ts  # Run a specific test file
+bun test --watch                   # Watch mode
+bun test --coverage                # With coverage report
+```
+
+**Test organization:**
+- `src/routes/*.test.ts` — Route-level tests using Hono's `app.request()` (exercises full middleware stack)
+- `src/services/*.test.ts` — Service unit tests with mocked dependencies
+- `src/lib/*.test.ts` — Utility/library unit tests
+- `src/test/helpers.ts` — Shared test utilities (`mockServiceMethod`, `withTimeout`)
+- `src/test/fixtures.ts` — Reusable mock data for K8s resources
+
+**How mocking works:** Tests import the Hono `app` directly and use `app.request()` to invoke routes in-process (no HTTP server needed). K8s-dependent services are mocked via property replacement on singleton instances. Tests that may hit K8s use `withTimeout` to gracefully skip when no cluster is available.
+
+**CI pipelines:** The `test.yml` workflow runs all tests in an environment without a Kubernetes cluster (K8s-dependent tests gracefully skip via timeout). The `e2e-backend.yml` workflow runs the same tests against a real Kind cluster with KAITO and the controller deployed, where K8s-dependent tests execute fully.
 
 ### Headlamp Plugin
 

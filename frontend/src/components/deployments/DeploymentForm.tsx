@@ -83,7 +83,7 @@ interface DeploymentFormProps {
 type TraditionalEngine = 'vllm' | 'sglang' | 'trtllm'
 type RouterMode = 'none' | 'kv' | 'round-robin'
 type DeploymentMode = 'aggregated' | 'disaggregated'
-type RuntimeId = 'dynamo' | 'kuberay' | 'kaito'
+type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
 type KaitoComputeType = 'cpu' | 'gpu'
 type GgufRunMode = 'build' | 'direct'
 
@@ -104,6 +104,11 @@ const RUNTIME_INFO: Record<RuntimeId, { name: string; description: string; defau
     description: 'Flexible inference with GGUF (llama.cpp) and vLLM support',
     defaultNamespace: 'kaito-workspace',
   },
+  llmd: {
+    name: 'llm-d',
+    description: 'GPU-accelerated vLLM inference with disaggregated prefill/decode support',
+    defaultNamespace: 'default',
+  },
 }
 
 // Engine support by runtime (only traditional GPU engines, not llamacpp)
@@ -111,6 +116,7 @@ const RUNTIME_ENGINES: Record<RuntimeId, TraditionalEngine[]> = {
   dynamo: ['vllm', 'sglang', 'trtllm'],
   kuberay: ['vllm'], // KubeRay only supports vLLM currently
   kaito: [], // KAITO uses llama.cpp, not traditional engines
+  llmd: ['vllm'], // llm-d uses vLLM exclusively
 }
 
 // Check if a runtime is compatible with a model based on engine support
@@ -145,7 +151,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     }
 
     // Find first compatible and installed runtime
-    const compatibleRuntimes: RuntimeId[] = ['dynamo', 'kuberay', 'kaito'];
+    const compatibleRuntimes: RuntimeId[] = ['dynamo', 'kuberay', 'kaito', 'llmd'];
     for (const rtId of compatibleRuntimes) {
       const rt = runtimes.find(r => r.id === rtId);
       if (rt?.installed && isRuntimeCompatible(rtId, model.supportedEngines)) {
@@ -208,17 +214,18 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
   // Auto-select Q4_K_M file if available, otherwise first file
   useEffect(() => {
-    if (ggufFiles.length > 0 && !ggufFile) {
+    const files = ggufFilesData?.files || [];
+    if (files.length > 0 && !ggufFile) {
       // Look for Q4_K_M variant (case-insensitive)
-      const q4kmFile = ggufFiles.find(f => /q4_k_m/i.test(f));
+      const q4kmFile = files.find(f => /q4_k_m/i.test(f));
       if (q4kmFile) {
         setGgufFile(q4kmFile);
       } else {
         // Fallback to first file
-        setGgufFile(ggufFiles[0]);
+        setGgufFile(files[0]);
       }
     }
-  }, [ggufFiles, ggufFile]);
+  }, [ggufFilesData, ggufFile]);
 
   // Get supported engines for the selected runtime, filtered by model support
   const getAvailableEngines = (): TraditionalEngine[] => {
@@ -241,7 +248,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     provider: getDefaultRuntime(),
     routerMode: 'none',
     replicas: 1,
-    hfTokenSecret: import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret',
+    hfTokenSecret: model.gated ? (import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret') : '',
     enforceEager: true,
     enablePrefixCaching: false,
     trustRemoteCode: false,
@@ -270,6 +277,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         }
       }))
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpuRecommendation.recommendedGpus])
 
   // Auto-select matching premade model when navigating with a KAITO model from Models page
@@ -361,6 +369,11 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     try {
       // Build the deployment config, adding KAITO-specific fields if needed
       let deployConfig = { ...config }
+
+      // Only include hfTokenSecret for gated models
+      if (!model.gated) {
+        delete deployConfig.hfTokenSecret;
+      }
 
       if (selectedRuntime === 'kaito') {
         // Add kaitoResourceType to all KAITO deployments
@@ -584,7 +597,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
   // Status-aware button content
   const getButtonContent = () => {
-    if (needsHfAuth && selectedRuntime !== 'kaito') {
+    if (needsHfAuth) {
       return 'HuggingFace Auth Required'
     }
 
@@ -1550,7 +1563,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         </Button>
         <Button
           type="submit"
-          disabled={createDeployment.isProcessing || (needsHfAuth && selectedRuntime !== 'kaito') || !isRuntimeInstalled || !isKaitoConfigValid}
+          disabled={createDeployment.isProcessing || needsHfAuth || !isRuntimeInstalled || !isKaitoConfigValid}
           loading={createDeployment.isProcessing}
           className={cn(
             "flex-1 gap-2",

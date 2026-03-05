@@ -239,6 +239,9 @@ The controller extracts meaningful error messages from provider status:
 | KubeRay  | `serviceStatus: Running`   | Running       | —                            |
 | KubeRay  | `serviceStatus: Pending`   | Pending       | —                            |
 | KubeRay  | `serviceStatus: Failed`    | Failed        | Extract from serveStatuses   |
+| llmd     | `Available`                | Running       | —                            |
+| llmd     | `Progressing`              | Deploying     | Extract condition message    |
+| llmd.    | Error condition            | Failed        |  Extract error from condition  |
 
 ## Label Propagation
 
@@ -313,6 +316,8 @@ The controller includes a validating admission webhook for `ModelDeployment` res
 | `gpu.count: 0` with `provider: dynamo`       | "Dynamo requires GPU"                            |
 | `gpu.count: 0` with `provider: kuberay`      | "KubeRay requires GPU"                           |
 | `mode: disaggregated` with `provider: kaito` | "KAITO does not support disaggregated mode"      |
+| `engine: sglang` with `provider: llmd`       | "llm-d only supports vllm engine"           | 
+| `gpu.count: 0` with `provider: llmd`         | "llm-d requires GPU"                            |
 
 Provider compatibility is surfaced in `ModelDeployment.status.conditions` with type `ProviderCompatible: False`, maintaining the "core has zero provider knowledge" principle.
 

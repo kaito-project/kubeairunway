@@ -483,7 +483,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 		})
 
-		It("should reject invalid ModelDeployment", func() {
+		It("should reject invalid ModelDeployment (KAITO context)", func() {
 			By("attempting to create a ModelDeployment with missing model.id for huggingface source")
 			invalidYAML := `apiVersion: kubeairunway.ai/v1alpha1
 kind: ModelDeployment
@@ -505,6 +505,219 @@ spec:
 			Expect(err).To(HaveOccurred(),
 				"Expected webhook to reject ModelDeployment without model.id, but it was accepted")
 			_, _ = fmt.Fprintf(GinkgoWriter, "Expected rejection output: %s\n", output)
+		})
+	})
+
+	Context("llm-d ModelDeployment Lifecycle", Ordered, func() {
+		// These tests require llm-d infrastructure and provider to be installed.
+		// Skip when running standalone `make test-e2e` without llm-d.
+		if os.Getenv("LLMD_INSTALLED") != "true" {
+			return
+		}
+
+		BeforeAll(func() {
+			if skipDeploy {
+				By("skipping llm-d provider deploy (SKIP_DEPLOY=true)")
+				return
+			}
+
+			By("creating HuggingFace token secret for llm-d")
+			cmd := exec.Command("kubectl", "create", "secret", "generic", "hf-token-secret",
+				"--from-literal=HF_TOKEN=ci-placeholder-token",
+				"-n", "default")
+			_, _ = utils.Run(cmd) // ignore error if already exists
+
+			By("deploying the llm-d provider")
+			cmd = exec.Command("make", "-C", "../providers/llmd", "deploy",
+				fmt.Sprintf("IMG=%s", llmdProviderImage))
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to deploy llm-d provider")
+
+			By("waiting for llm-d provider deployment to be available")
+			cmd = exec.Command("kubectl", "wait", "--for=condition=Available", "deployment",
+				"-n", "kubeairunway-system", "-l", "control-plane=llmd-provider", "--timeout=120s")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "llm-d provider not available within 120s")
+		})
+
+		AfterAll(func() {
+			By("cleaning up the llm-d ModelDeployment")
+			cmd := exec.Command("kubectl", "delete", "-f",
+				"test/e2e/testdata/llmd-modeldeployment.yaml", "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+
+			By("cleaning up the llm-d HF token secret")
+			cmd = exec.Command("kubectl", "delete", "secret", "llm-d-hf-token",
+				"-n", "default", "--ignore-not-found")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should have llm-d provider registered and ready", func() {
+			By("verifying InferenceProviderConfig 'llmd' exists and is ready")
+			verifyProvider := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "inferenceproviderconfig", "llmd")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "InferenceProviderConfig 'llmd' should exist")
+
+				cmd = exec.Command("kubectl", "get", "inferenceproviderconfig", "llmd",
+					"-o", "jsonpath={.status.ready}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true"), "llm-d provider should be ready")
+			}
+			Eventually(verifyProvider, 2*time.Minute, time.Second).Should(Succeed())
+		})
+
+		It("should create a GPU ModelDeployment and reach Running phase", func() {
+			By("applying the llm-d ModelDeployment fixture")
+			cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/testdata/llmd-modeldeployment.yaml")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply llm-d ModelDeployment")
+
+			By("waiting for ModelDeployment to reach Running phase")
+			verifyRunning := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "modeldeployment", "llama-llmd-e2e",
+					"-n", "default", "-o", "jsonpath={.status.phase}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("Running"),
+					fmt.Sprintf("ModelDeployment phase is %q, expected Running", output))
+			}
+			Eventually(verifyRunning, 15*time.Minute, 10*time.Second).Should(Succeed())
+
+			By("verifying provider is llmd")
+			cmd = exec.Command("kubectl", "get", "modeldeployment", "llama-llmd-e2e",
+				"-n", "default", "-o", "jsonpath={.status.provider.name}")
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal("llmd"), "Expected provider to be 'llmd'")
+
+			By("verifying engine type is vllm")
+			cmd = exec.Command("kubectl", "get", "modeldeployment", "llama-llmd-e2e",
+				"-n", "default", "-o", "jsonpath={.status.engine.type}")
+			output, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal("vllm"), "Expected engine type to be 'vllm'")
+
+			By("verifying status conditions are set")
+			verifyConditions := func(g Gomega) {
+				for _, condType := range []string{"Validated", "EngineSelected", "ProviderSelected"} {
+					cmd := exec.Command("kubectl", "get", "modeldeployment", "llama-llmd-e2e",
+						"-n", "default", "-o",
+						fmt.Sprintf("jsonpath={.status.conditions[?(@.type=='%s')].status}", condType))
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("True"),
+						fmt.Sprintf("Condition %s should be True, got %q", condType, output))
+				}
+			}
+			Eventually(verifyConditions, 2*time.Minute, time.Second).Should(Succeed())
+		})
+
+		It("should create Deployment and Service in the default namespace", func() {
+			By("verifying the Deployment exists")
+			verifyDeployment := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", "llama-llmd-e2e", "-n", "default")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Deployment 'llama-llmd-e2e' should exist")
+			}
+			Eventually(verifyDeployment, 2*time.Minute, time.Second).Should(Succeed())
+
+			By("verifying the Service exists")
+			verifyService := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "service", "llama-llmd-e2e", "-n", "default")
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Service 'llama-llmd-e2e' should exist")
+			}
+			Eventually(verifyService, 2*time.Minute, time.Second).Should(Succeed())
+		})
+
+		It("should serve inference requests", func() {
+			By("starting port-forward to the llm-d service")
+			portForwardCmd := exec.Command("kubectl", "port-forward",
+				"svc/llama-llmd-e2e", "8082:8000", "-n", "default")
+			portForwardCmd.Stdout = GinkgoWriter
+			portForwardCmd.Stderr = GinkgoWriter
+			err := portForwardCmd.Start()
+			Expect(err).NotTo(HaveOccurred(), "Failed to start port-forward")
+			defer func() {
+				if portForwardCmd.Process != nil {
+					_ = portForwardCmd.Process.Kill()
+					_, _ = portForwardCmd.Process.Wait()
+				}
+			}()
+
+			time.Sleep(3 * time.Second)
+
+			By("sending an inference request")
+			verifyChatCompletion := func(g Gomega) {
+				requestBody := `{"model":"meta-llama/Llama-3.2-1B-Instruct","messages":[{"role":"user","content":"Say hello in one word."}],"max_tokens":10}`
+				cmd := exec.Command("curl", "-s", "-X", "POST",
+					"http://localhost:8082/v1/chat/completions",
+					"-H", "Content-Type: application/json",
+					"-d", requestBody,
+					"--max-time", "30")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Inference request failed")
+
+				_, _ = fmt.Fprintf(GinkgoWriter, "Inference response: %s\n", output)
+
+				var response map[string]interface{}
+				g.Expect(json.Unmarshal([]byte(output), &response)).To(Succeed(),
+					"Response should be valid JSON")
+				g.Expect(response).To(HaveKey("choices"), "Response should have 'choices' field")
+
+				choices, ok := response["choices"].([]interface{})
+				g.Expect(ok).To(BeTrue(), "choices should be an array")
+				g.Expect(choices).NotTo(BeEmpty(), "choices should not be empty")
+
+				firstChoice, ok := choices[0].(map[string]interface{})
+				g.Expect(ok).To(BeTrue())
+				message, ok := firstChoice["message"].(map[string]interface{})
+				g.Expect(ok).To(BeTrue(), "choice should have a message")
+				content, ok := message["content"].(string)
+				g.Expect(ok).To(BeTrue(), "message should have content")
+				g.Expect(content).NotTo(BeEmpty(), "content should not be empty")
+			}
+			Eventually(verifyChatCompletion, 2*time.Minute, 5*time.Second).Should(Succeed())
+		})
+
+		It("should reject invalid ModelDeployment", func() {
+			By("attempting to create a ModelDeployment with explicit llmd provider but no GPU")
+			invalidYAML := `apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: invalid-llmd-test
+  namespace: default
+spec:
+  model:
+    id: "meta-llama/Llama-3.2-1B-Instruct"
+    source: huggingface
+  provider:
+    name: llmd
+  engine:
+    type: vllm`
+
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(invalidYAML)
+			_, _ = utils.Run(cmd)
+
+			By("verifying ProviderCompatible condition is False")
+			verifyIncompatible := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "modeldeployment", "invalid-llmd-test",
+					"-n", "default", "-o",
+					"jsonpath={.status.conditions[?(@.type=='ProviderCompatible')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("False"),
+					"ProviderCompatible condition should be False for GPU-less llmd deployment")
+			}
+			Eventually(verifyIncompatible, 30*time.Second, time.Second).Should(Succeed())
+
+			By("cleaning up the invalid llm-d ModelDeployment")
+			cmd = exec.Command("kubectl", "delete", "modeldeployment", "invalid-llmd-test",
+				"--ignore-not-found", "-n", "default")
+			_, _ = utils.Run(cmd)
 		})
 	})
 })
