@@ -118,10 +118,11 @@ type StorageVolume struct {
 	Size *resource.Quantity `json:"size,omitempty"`
 
 	// storageClassName is the StorageClass to use for controller-created PVCs.
-	// When omitted, the cluster's default StorageClass is used.
+	// When nil (omitted), the cluster's default StorageClass is used.
+	// When set to empty string (""), no StorageClass is applied (disables dynamic provisioning).
 	// Only applicable when size is set.
 	// +optional
-	StorageClassName string `json:"storageClassName,omitempty"`
+	StorageClassName *string `json:"storageClassName,omitempty"`
 
 	// accessMode is the PVC access mode for controller-created PVCs.
 	// Defaults to ReadWriteMany when size is set.

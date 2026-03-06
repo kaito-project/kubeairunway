@@ -360,7 +360,8 @@ spec:
                             storageClassName:
                               description: |-
                                 storageClassName is the StorageClass to use for controller-created PVCs.
-                                When omitted, the cluster's default StorageClass is used.
+                                When nil (omitted), the cluster's default StorageClass is used.
+                                When set to empty string (""), no StorageClass is applied (disables dynamic provisioning).
                                 Only applicable when size is set.
                               type: string
                           required:

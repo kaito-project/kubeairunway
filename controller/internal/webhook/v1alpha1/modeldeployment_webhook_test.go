@@ -33,6 +33,8 @@ var _ = Describe("ModelDeployment Webhook", func() {
 		defaulter ModelDeploymentCustomDefaulter
 	)
 
+	stringPtr := func(s string) *string { return &s }
+
 	BeforeEach(func() {
 		obj = &kubeairunwayv1alpha1.ModelDeployment{}
 		oldObj = &kubeairunwayv1alpha1.ModelDeployment{}
@@ -483,7 +485,7 @@ var _ = Describe("ModelDeployment Webhook", func() {
 						MountPath:        "/model-cache",
 						Purpose:          kubeairunwayv1alpha1.VolumePurposeModelCache,
 						Size:             &size,
-						StorageClassName: "fast-ssd",
+						StorageClassName: stringPtr("fast-ssd"),
 					},
 				},
 			}
@@ -566,6 +568,45 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("Unsupported value"))
+		})
+
+		It("Should reject storageClassName set without size", func() {
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:             "model-data",
+						ClaimName:        "existing-pvc",
+						MountPath:        "/model-cache",
+						Purpose:          kubeairunwayv1alpha1.VolumePurposeModelCache,
+						StorageClassName: stringPtr("fast-ssd"),
+					},
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("storageClassName is only applicable when size is set"))
+		})
+
+		It("Should admit volume with size and empty storageClassName", func() {
+			obj.Name = "my-deployment"
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			size := resource.MustParse("100Gi")
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:             "model-data",
+						ClaimName:        "my-deployment-model-data",
+						MountPath:        "/model-cache",
+						Purpose:          kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:             &size,
+						StorageClassName: stringPtr(""),
+					},
+				},
+			}
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
 		})
 	})
 })

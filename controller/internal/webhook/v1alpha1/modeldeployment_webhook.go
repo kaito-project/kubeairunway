@@ -477,6 +477,15 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 			}
 		}
 
+		// storageClassName is only meaningful when size is set
+		if vol.StorageClassName != nil && vol.Size == nil {
+			allErrs = append(allErrs, field.Invalid(
+				volPath.Child("storageClassName"),
+				*vol.StorageClassName,
+				"storageClassName is only applicable when size is set (controller-created PVCs)",
+			))
+		}
+
 		// Check duplicate names
 		if namesSeen[vol.Name] {
 			allErrs = append(allErrs, field.Invalid(

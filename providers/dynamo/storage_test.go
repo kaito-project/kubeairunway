@@ -168,6 +168,8 @@ func TestEnsurePVCsCreation(t *testing.T) {
 	}
 }
 
+func stringPtr(s string) *string { return &s }
+
 func TestEnsurePVCsWithStorageClass(t *testing.T) {
 	scheme := newScheme()
 	_ = corev1.AddToScheme(scheme)
@@ -187,7 +189,7 @@ func TestEnsurePVCsWithStorageClass(t *testing.T) {
 						{
 							Name:             "model-cache",
 							Size:             &size,
-							StorageClassName: "fast-ssd",
+							StorageClassName: stringPtr("fast-ssd"),
 							AccessMode:       corev1.ReadWriteOnce,
 						},
 					},
@@ -398,6 +400,55 @@ func TestDeleteManagedPVCs(t *testing.T) {
 	err = c.Get(context.Background(), types.NamespacedName{Name: "unrelated-pvc", Namespace: "default"}, pvc)
 	if err != nil {
 		t.Error("expected unrelated PVC to still exist")
+	}
+}
+
+func TestEnsurePVCsWithEmptyStorageClass(t *testing.T) {
+	scheme := newScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	size := resource.MustParse("100Gi")
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
+				ID: "test-model",
+				Storage: &kubeairunwayv1alpha1.StorageSpec{
+					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						{
+							Name:             "model-cache",
+							Size:             &size,
+							StorageClassName: stringPtr(""),
+							AccessMode:       corev1.ReadWriteMany,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	_, err := EnsurePVCs(context.Background(), c, md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "my-model-model-cache", Namespace: "default"}, pvc)
+	if err != nil {
+		t.Fatalf("expected PVC to be created: %v", err)
+	}
+
+	// Verify storageClassName is non-nil and equals empty string (disables dynamic provisioning)
+	if pvc.Spec.StorageClassName == nil {
+		t.Fatal("expected non-nil storageClassName, got nil")
+	}
+	if *pvc.Spec.StorageClassName != "" {
+		t.Errorf("expected empty storageClassName, got %q", *pvc.Spec.StorageClassName)
 	}
 }
 

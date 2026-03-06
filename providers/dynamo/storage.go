@@ -140,10 +140,8 @@ func buildPVC(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwayv1alpha
 		},
 	}
 
-	// Set storage class if specified (omit for cluster default)
-	if vol.StorageClassName != "" {
-		pvc.Spec.StorageClassName = &vol.StorageClassName
-	}
+	// Set storage class name directly (nil→cluster default, ""→no class, "x"→named class)
+	pvc.Spec.StorageClassName = vol.StorageClassName
 
 	return pvc, nil
 }
