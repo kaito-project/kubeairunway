@@ -33,7 +33,7 @@ import (
 
 const (
 	// DefaultDownloadJobImage is the default container image for model download jobs.
-	// This image has huggingface_hub and hf_transfer pre-installed.
+	// This image has huggingface_hub (with hf_xet) pre-installed.
 	DefaultDownloadJobImage = "ghcr.io/kaito-project/kubeairunway/model-downloader:latest"
 
 	// downloadJobSuffix is the suffix appended to the ModelDeployment name to form the Job name
@@ -43,7 +43,7 @@ const (
 	defaultBackoffLimit int32 = 3
 
 	// Resource defaults for the download Job container.
-	// The download job runs hf_transfer (HTTP streaming to disk),
+	// The download job uses hf_xet (chunk-based Xet storage) for fast downloads,
 	// so its resource needs are predictable and I/O-bound rather than CPU/memory-bound.
 	defaultDownloadJobCPURequest    = "100m"
 	defaultDownloadJobMemoryRequest = "512Mi"
@@ -149,10 +149,6 @@ func buildDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwa
 			Name:  "HF_HOME",
 			Value: vol.MountPath,
 		},
-		{
-			Name:  "HF_HUB_ENABLE_HF_TRANSFER",
-			Value: "1",
-		},
 	}
 
 	job := &batchv1.Job{
@@ -185,7 +181,7 @@ func buildDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwa
 						{
 							Name:    "model-download",
 							Image:   downloadJobImage,
-							Command: []string{"hf", "download", md.Spec.Model.ID},
+							Args: []string{"download", md.Spec.Model.ID},
 							Env:     envVars,
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{

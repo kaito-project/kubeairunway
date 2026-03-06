@@ -170,45 +170,37 @@ func TestEnsureDownloadJobCreation(t *testing.T) {
 		t.Errorf("expected image %s, got %s", DefaultDownloadJobImage, job.Spec.Template.Spec.Containers[0].Image)
 	}
 
-	// Verify command uses exec form (not shell) to prevent injection
+	// Verify args use exec form (not shell) to prevent injection.
+	// The container image has ENTRYPOINT ["hf"], so Args appends to it.
 	container := job.Spec.Template.Spec.Containers[0]
-	expectedCmd := []string{"hf", "download", "meta-llama/Llama-2-7b-chat-hf"}
-	if len(container.Command) != len(expectedCmd) {
-		t.Fatalf("expected command %v, got %v", expectedCmd, container.Command)
+	expectedArgs := []string{"download", "meta-llama/Llama-2-7b-chat-hf"}
+	if len(container.Args) != len(expectedArgs) {
+		t.Fatalf("expected args %v, got %v", expectedArgs, container.Args)
 	}
-	for i, arg := range expectedCmd {
-		if container.Command[i] != arg {
-			t.Errorf("expected command[%d]=%s, got %s", i, arg, container.Command[i])
+	for i, arg := range expectedArgs {
+		if container.Args[i] != arg {
+			t.Errorf("expected args[%d]=%s, got %s", i, arg, container.Args[i])
 		}
 	}
-	if len(container.Args) != 0 {
-		t.Errorf("expected no args (exec form), got %v", container.Args)
+	if len(container.Command) != 0 {
+		t.Errorf("expected no command override (using ENTRYPOINT), got %v", container.Command)
 	}
 
-	// Verify env vars (MODEL_NAME should NOT be present — model ID is passed directly in Command)
+	// Verify env vars (MODEL_NAME should NOT be present — model ID is passed directly in Args)
 	foundHFHome := false
-	foundHFTransfer := false
 	for _, env := range container.Env {
 		switch env.Name {
 		case "MODEL_NAME":
-			t.Error("MODEL_NAME env var should not be set — model ID is passed directly in Command")
+			t.Error("MODEL_NAME env var should not be set — model ID is passed directly in Args")
 		case "HF_HOME":
 			foundHFHome = true
 			if env.Value != "/model-cache" {
 				t.Errorf("expected HF_HOME=/model-cache, got %s", env.Value)
 			}
-		case "HF_HUB_ENABLE_HF_TRANSFER":
-			foundHFTransfer = true
-			if env.Value != "1" {
-				t.Errorf("expected HF_HUB_ENABLE_HF_TRANSFER=1, got %s", env.Value)
-			}
 		}
 	}
 	if !foundHFHome {
 		t.Error("expected HF_HOME env var")
-	}
-	if !foundHFTransfer {
-		t.Error("expected HF_HUB_ENABLE_HF_TRANSFER env var")
 	}
 
 	// Verify volume mount
