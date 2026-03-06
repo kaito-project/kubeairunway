@@ -244,6 +244,17 @@ func TestEnsureDownloadJobCreation(t *testing.T) {
 	if len(container.EnvFrom) != 0 {
 		t.Errorf("expected no envFrom when no HF token secret, got %d", len(container.EnvFrom))
 	}
+
+	// Verify the download script does not contain pip install (dependencies are pre-installed in the image)
+	downloadScript := container.Args[0]
+	if strings.Contains(downloadScript, "pip install") {
+		t.Error("download script should not contain 'pip install' — dependencies are pre-installed in the image")
+	}
+
+	// Verify the download script contains the hf download command
+	if !strings.Contains(downloadScript, "hf download") {
+		t.Error("download script should contain 'hf download'")
+	}
 }
 
 func TestEnsureDownloadJobWithHFToken(t *testing.T) {

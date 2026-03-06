@@ -32,8 +32,9 @@ import (
 )
 
 const (
-	// DefaultDownloadJobImage is the default container image for model download jobs
-	DefaultDownloadJobImage = "python:3.10-slim"
+	// DefaultDownloadJobImage is the default container image for model download jobs.
+	// This image has huggingface_hub and hf_transfer pre-installed.
+	DefaultDownloadJobImage = "ghcr.io/kaito-project/kubeairunway/model-downloader:latest"
 
 	// downloadJobSuffix is the suffix appended to the ModelDeployment name to form the Job name
 	downloadJobSuffix = "-model-download"
@@ -42,7 +43,7 @@ const (
 	defaultBackoffLimit int32 = 3
 
 	// Resource defaults for the download Job container.
-	// The download job runs pip install + hf_transfer (HTTP streaming to disk),
+	// The download job runs hf_transfer (HTTP streaming to disk),
 	// so its resource needs are predictable and I/O-bound rather than CPU/memory-bound.
 	defaultDownloadJobCPURequest    = "100m"
 	defaultDownloadJobMemoryRequest = "512Mi"
@@ -132,7 +133,6 @@ func buildDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwa
 	parallelism := int32(1)
 
 	downloadScript := `set -eux
-pip install --no-cache-dir huggingface_hub hf_transfer
 hf download $MODEL_NAME`
 
 	envVars := []corev1.EnvVar{
