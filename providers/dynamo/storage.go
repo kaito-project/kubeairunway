@@ -106,8 +106,11 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 func buildPVC(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwayv1alpha1.StorageVolume) (*corev1.PersistentVolumeClaim, error) {
 	claimName := vol.ResolvedClaimName(md.Name)
 
-	// Parse access mode
-	accessMode := parseAccessMode(vol.AccessMode)
+	// Use the typed access mode directly; default to ReadWriteMany if empty
+	accessMode := vol.AccessMode
+	if accessMode == "" {
+		accessMode = corev1.ReadWriteMany
+	}
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -143,20 +146,6 @@ func buildPVC(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwayv1alpha
 	}
 
 	return pvc, nil
-}
-
-// parseAccessMode converts a string access mode to a corev1 constant.
-func parseAccessMode(mode string) corev1.PersistentVolumeAccessMode {
-	switch mode {
-	case "ReadWriteOnce":
-		return corev1.ReadWriteOnce
-	case "ReadOnlyMany":
-		return corev1.ReadOnlyMany
-	case "ReadWriteOncePod":
-		return corev1.ReadWriteOncePod
-	default:
-		return corev1.ReadWriteMany
-	}
 }
 
 // DeleteManagedPVCs deletes all PVCs managed by the given ModelDeployment.

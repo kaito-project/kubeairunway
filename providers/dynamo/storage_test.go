@@ -112,7 +112,7 @@ func TestEnsurePVCsCreation(t *testing.T) {
 						{
 							Name:       "model-cache",
 							Size:       &size,
-							AccessMode: "ReadWriteMany",
+							AccessMode: corev1.ReadWriteMany,
 							Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
 						},
 					},
@@ -188,7 +188,7 @@ func TestEnsurePVCsWithStorageClass(t *testing.T) {
 							Name:             "model-cache",
 							Size:             &size,
 							StorageClassName: "fast-ssd",
-							AccessMode:       "ReadWriteOnce",
+							AccessMode:       corev1.ReadWriteOnce,
 						},
 					},
 				},
@@ -235,7 +235,7 @@ func TestEnsurePVCsIdempotent(t *testing.T) {
 						{
 							Name:       "model-cache",
 							Size:       &size,
-							AccessMode: "ReadWriteMany",
+							AccessMode: corev1.ReadWriteMany,
 						},
 					},
 				},
@@ -296,7 +296,7 @@ func TestEnsurePVCsPending(t *testing.T) {
 						{
 							Name:       "model-cache",
 							Size:       &size,
-							AccessMode: "ReadWriteMany",
+							AccessMode: corev1.ReadWriteMany,
 						},
 					},
 				},
@@ -401,25 +401,3 @@ func TestDeleteManagedPVCs(t *testing.T) {
 	}
 }
 
-func TestParseAccessMode(t *testing.T) {
-	tests := []struct {
-		input string
-		want  corev1.PersistentVolumeAccessMode
-	}{
-		{"ReadWriteOnce", corev1.ReadWriteOnce},
-		{"ReadOnlyMany", corev1.ReadOnlyMany},
-		{"ReadWriteMany", corev1.ReadWriteMany},
-		{"ReadWriteOncePod", corev1.ReadWriteOncePod},
-		{"", corev1.ReadWriteMany}, // default
-		{"unknown", corev1.ReadWriteMany},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := parseAccessMode(tt.input)
-			if got != tt.want {
-				t.Errorf("parseAccessMode(%q) = %s, want %s", tt.input, got, tt.want)
-			}
-		})
-	}
-}

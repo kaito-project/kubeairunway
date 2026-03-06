@@ -23,6 +23,7 @@ import (
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -47,7 +48,7 @@ func newDownloadMD(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
 							MountPath:  "/model-cache",
 							Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
 							Size:       size,
-							AccessMode: "ReadWriteMany",
+							AccessMode: corev1.ReadWriteMany,
 						},
 					},
 				},

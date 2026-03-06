@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -129,7 +130,7 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeair
 				}
 				// Default accessMode to ReadWriteMany
 				if vol.AccessMode == "" {
-					vol.AccessMode = "ReadWriteMany"
+					vol.AccessMode = corev1.ReadWriteMany
 				}
 			}
 		}
@@ -446,6 +447,34 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 				vol.ReadOnly,
 				"readOnly must not be true when size is set (controller-created PVCs need write access)",
 			))
+		}
+
+		// Validate accessMode if set
+		if vol.AccessMode != "" {
+			switch vol.AccessMode {
+			case corev1.ReadWriteOnce, corev1.ReadWriteMany, corev1.ReadOnlyMany, corev1.ReadWriteOncePod:
+				// valid
+			default:
+				allErrs = append(allErrs, field.NotSupported(
+					volPath.Child("accessMode"),
+					vol.AccessMode,
+					[]string{
+						string(corev1.ReadWriteOnce),
+						string(corev1.ReadWriteMany),
+						string(corev1.ReadOnlyMany),
+						string(corev1.ReadWriteOncePod),
+					},
+				))
+			}
+
+			// accessMode is only meaningful when size is set
+			if vol.Size == nil {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("accessMode"),
+					vol.AccessMode,
+					"accessMode is only applicable when size is set (controller-created PVCs)",
+				))
+			}
 		}
 
 		// Check duplicate names

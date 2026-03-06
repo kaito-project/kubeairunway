@@ -622,7 +622,7 @@ func newMDWithStorage(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
 							MountPath:  "/model-cache",
 							Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
 							Size:       &size,
-							AccessMode: "ReadWriteMany",
+							AccessMode: corev1.ReadWriteMany,
 						},
 					},
 				},

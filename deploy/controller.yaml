@@ -607,6 +607,11 @@ spec:
                                 accessMode is the PVC access mode for controller-created PVCs.
                                 Defaults to ReadWriteMany when size is set.
                                 Only applicable when size is set.
+                              enum:
+                              - ReadWriteOnce
+                              - ReadWriteMany
+                              - ReadOnlyMany
+                              - ReadWriteOncePod
                               type: string
                             claimName:
                               description: |-

@@ -126,8 +126,9 @@ type StorageVolume struct {
 	// accessMode is the PVC access mode for controller-created PVCs.
 	// Defaults to ReadWriteMany when size is set.
 	// Only applicable when size is set.
+	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany;ReadOnlyMany;ReadWriteOncePod
 	// +optional
-	AccessMode string `json:"accessMode,omitempty"`
+	AccessMode corev1.PersistentVolumeAccessMode `json:"accessMode,omitempty"`
 }
 
 // ResolvedClaimName returns the PVC claim name, either explicitly set or auto-generated

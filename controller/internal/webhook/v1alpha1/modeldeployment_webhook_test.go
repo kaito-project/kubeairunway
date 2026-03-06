@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -145,7 +146,7 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			}
 			err := defaulter.Default(ctx, obj)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(obj.Spec.Model.Storage.Volumes[0].AccessMode).To(Equal("ReadWriteMany"))
+			Expect(obj.Spec.Model.Storage.Volumes[0].AccessMode).To(Equal(corev1.ReadWriteMany))
 		})
 
 		It("Should not override explicitly set claimName when size is set", func() {
@@ -526,6 +527,45 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("readOnly must not be true when size is set"))
+		})
+
+		It("Should reject accessMode set without size", func() {
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "existing-pvc",
+						MountPath:  "/model-cache",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+						AccessMode: corev1.ReadWriteMany,
+					},
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("accessMode is only applicable when size is set"))
+		})
+
+		It("Should reject unsupported accessMode value", func() {
+			obj.Name = "my-deployment"
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			size := resource.MustParse("100Gi")
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "my-deployment-model-data",
+						MountPath:  "/model-cache",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:       &size,
+						AccessMode: corev1.PersistentVolumeAccessMode("banana"),
+					},
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Unsupported value"))
 		})
 	})
 })
