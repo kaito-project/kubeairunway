@@ -445,8 +445,8 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":            "kubeairunway",
-		"kubeairunway.ai/deployment-namespace":  "default",
+		"kubeairunway.ai/managed-by":           "kubeairunway",
+		"kubeairunway.ai/deployment-namespace": "default",
 	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
@@ -477,8 +477,8 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":            "kubeairunway",
-		"kubeairunway.ai/deployment-namespace":  "default",
+		"kubeairunway.ai/managed-by":           "kubeairunway",
+		"kubeairunway.ai/deployment-namespace": "default",
 	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 

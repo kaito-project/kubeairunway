@@ -71,6 +71,12 @@ func GetProviderConfigSpec() kubeairunwayv1alpha1.InferenceProviderConfigSpec {
 			},
 			CPUSupport: false,
 			GPUSupport: true,
+			Gateway: &kubeairunwayv1alpha1.GatewayCapabilities{
+				ManagesInferencePool:     true,
+				ManagesEPP:               true,
+				InferencePoolNamePattern: "{namespace}-{name}-pool",
+				InferencePoolNamespace:   "dynamo-system",
+			},
 		},
 		SelectionRules: []kubeairunwayv1alpha1.SelectionRule{
 			{
@@ -176,8 +182,8 @@ func (m *ProviderConfigManager) UpdateStatus(ctx context.Context, ready bool) er
 	now := metav1.Now()
 	config.Status = kubeairunwayv1alpha1.InferenceProviderConfigStatus{
 		Ready:              ready,
-		Version:           ProviderVersion,
-		LastHeartbeat:     &now,
+		Version:            ProviderVersion,
+		LastHeartbeat:      &now,
 		UpstreamCRDVersion: fmt.Sprintf("%s/%s", DynamoAPIGroup, DynamoAPIVersion),
 	}
 

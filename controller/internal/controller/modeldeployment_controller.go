@@ -45,6 +45,10 @@ type ModelDeploymentReconciler struct {
 
 	// GatewayDetector checks for Gateway API CRD availability and resolves gateway config
 	GatewayDetector *gateway.Detector
+
+	// ProviderResolver looks up gateway capabilities from InferenceProviderConfig CRs.
+	// When nil, the reconciler treats all providers as having no gateway capabilities.
+	ProviderResolver gateway.ProviderCapabilityResolver
 }
 
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete

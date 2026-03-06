@@ -22,12 +22,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,6 +38,7 @@ import (
 	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
 	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 // reconcileGateway creates or updates InferencePool and HTTPRoute resources
@@ -72,33 +75,54 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		return nil
 	}
 
-	// Determine target port for InferencePool (needs the pod/container port, not service port)
-	port := int32(8000) // sensible default
-	if md.Status.Endpoint != nil && md.Status.Endpoint.Service != "" {
-		// Look up the service's target port (the actual container port)
-		if targetPort := r.resolveTargetPort(ctx, md.Status.Endpoint.Service, md.Namespace); targetPort > 0 {
-			port = targetPort
-		} else if md.Status.Endpoint.Port > 0 {
-			port = md.Status.Endpoint.Port
+	var gatewayCapabilities *kubeairunwayv1alpha1.GatewayCapabilities
+	var poolName, poolNamespace string = md.Name, md.Namespace
+	// Resolve provider gateway capabilities
+	if gatewayCapabilities, err = r.resolveProviderGatewayCapabilities(ctx, md); err != nil {
+		logger.Info("Error resolving provider gateway capabilities, proceeding without provider-specific gateway capabilities", "error", err)
+	}
+
+	if gatewayCapabilities != nil && gatewayCapabilities.ManagesInferencePool {
+		// Resolve the InferencePool name for the provider.
+		// The provider-managed pool will be configured to be named with the model deployment name and namespace.
+		poolName = resolveProviderInferencePoolName(gatewayCapabilities.InferencePoolNamePattern, md.Name, md.Namespace)
+		poolNamespace = gatewayCapabilities.InferencePoolNamespace
+
+		// Use provider-managed InferencePool
+		if err := r.reconcileProviderManagedInferencePool(ctx, md.Namespace, poolName, poolNamespace); err != nil {
+			return fmt.Errorf("failed to reconcile provider-managed InferencePool: %w", err)
+		}
+	} else { // Use default InferencePool
+		// Determine target port for InferencePool (needs the pod/container port, not service port)
+		port := int32(8000) // sensible default
+		if md.Status.Endpoint != nil && md.Status.Endpoint.Service != "" {
+			// Look up the service's target port (the actual container port)
+			if targetPort := r.resolveTargetPort(ctx, md.Status.Endpoint.Service, md.Namespace); targetPort > 0 {
+				port = targetPort
+			} else if md.Status.Endpoint.Port > 0 {
+				port = md.Status.Endpoint.Port
+			}
+		}
+
+		// Ensure model pods have the selector label for InferencePool
+		if err := r.labelModelPods(ctx, md); err != nil {
+			logger.V(1).Info("Could not label model pods", "error", err)
+			// Non-fatal: pods may not exist yet or provider may handle labels
+		}
+
+		// Create or update InferencePool
+		if err := r.reconcileInferencePool(ctx, md, port); err != nil {
+			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
+			return fmt.Errorf("reconciling InferencePool: %w", err)
 		}
 	}
 
-	// Ensure model pods have the selector label for InferencePool
-	if err := r.labelModelPods(ctx, md); err != nil {
-		logger.V(1).Info("Could not label model pods", "error", err)
-		// Non-fatal: pods may not exist yet or provider may handle labels
-	}
-
-	// Create or update InferencePool
-	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
-		return fmt.Errorf("reconciling InferencePool: %w", err)
-	}
-
-	// Create or update EPP (Endpoint Picker Proxy) for the InferencePool
-	if err := r.reconcileEPP(ctx, md); err != nil {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
-		return fmt.Errorf("reconciling EPP: %w", err)
+	if gatewayCapabilities == nil || !gatewayCapabilities.ManagesEPP { // Use default EPP
+		// Create or update EPP (Endpoint Picker Proxy) for the InferencePool
+		if err := r.reconcileEPP(ctx, md); err != nil {
+			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
+			return fmt.Errorf("reconciling EPP: %w", err)
+		}
 	}
 
 	// Resolve model name early (needed for HTTPRoute header match and status)
@@ -108,7 +132,8 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 	if md.Spec.Gateway != nil && md.Spec.Gateway.HTTPRouteRef != "" {
 		logger.V(1).Info("Using user-provided HTTPRoute", "httpRouteRef", md.Spec.Gateway.HTTPRouteRef)
 	} else {
-		if err := r.reconcileHTTPRoute(ctx, md, gwConfig, modelName); err != nil {
+		// Pool name and namespace may differ from model deployment name and namespace, if provider manages the pool.
+		if err := r.reconcileHTTPRoute(ctx, md, gwConfig, modelName, poolName, poolNamespace); err != nil {
 			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "HTTPRouteFailed", err.Error())
 			return fmt.Errorf("reconciling HTTPRoute: %w", err)
 		}
@@ -207,6 +232,71 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 
 	log.FromContext(ctx).V(1).Info("InferencePool reconciled", "name", pool.Name, "result", result)
 	return nil
+}
+
+func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx context.Context,
+	mdNamespace, poolName, poolNamespace string) error {
+	logger := log.FromContext(ctx)
+
+	// TODO(ericdbishop): Returning an error doesn't seem like the best way to requeue,
+	// but using ctrl.requeue would require threading the result through the return path.
+	// Wait for the pool to exist (requeue if not ready).
+	pool := &inferencev1.InferencePool{}
+	poolKey := client.ObjectKey{Name: poolName, Namespace: poolNamespace}
+	if err := r.Get(ctx, poolKey, pool); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("Provider-managed InferencePool not found yet, requeuing",
+				"pool", poolKey)
+			return fmt.Errorf("provider-managed InferencePool %s not found, will retry: %w", poolKey, err)
+		}
+		return fmt.Errorf("failed to get provider-managed InferencePool %s: %w", poolKey, err)
+	}
+
+	logger.V(1).Info("Found provider-managed InferencePool", "pool", poolKey)
+
+	// Use it as HTTPRoute backend ref (cross-namespace ref + ReferenceGrant).
+	// Create ReferenceGrant in the inference pool namespace.
+	rg := &gatewayv1beta1.ReferenceGrant{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      poolName + "-referencegrant",
+			Namespace: poolNamespace,
+		},
+	}
+	result, err := ctrl.CreateOrUpdate(ctx, r.Client, rg, func() error {
+		rg.Spec.From = []gatewayv1beta1.ReferenceGrantFrom{
+			{
+				Group:     "gateway.networking.k8s.io",
+				Kind:      "HTTPRoute",
+				Namespace: gatewayv1beta1.Namespace(mdNamespace),
+			},
+		}
+		rg.Spec.To = []gatewayv1beta1.ReferenceGrantTo{
+			{
+				Group: "inference.networking.k8s.io",
+				Kind:  "InferencePool",
+				Name:  (*gatewayv1beta1.ObjectName)(&pool.Name),
+			},
+		}
+		return ctrl.SetControllerReference(pool, rg, r.Scheme)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create/update ReferenceGrant for provider-managed InferencePool: %w", err)
+	}
+
+	logger.V(1).Info("ReferenceGrant for provider-managed InferencePool reconciled", "name", rg.Name, "result", result)
+	return nil
+}
+
+// resolveProviderInferencePoolName applies the provider's naming pattern to produce the
+// concrete InferencePool name for a given ModelDeployment. If the provider has
+// no pattern configured, it falls back to the ModelDeployment name.
+func resolveProviderInferencePoolName(pattern, mdName, mdNamespace string) string {
+	if pattern == "" {
+		return mdName
+	}
+	result := strings.ReplaceAll(pattern, "{name}", mdName)
+	result = strings.ReplaceAll(result, "{namespace}", mdNamespace)
+	return result
 }
 
 // reconcileEPP creates or updates the Endpoint Picker Proxy deployment and service
@@ -421,8 +511,27 @@ kind: EndpointPickerConfig
 func int64Ptr(i int64) *int64 { return &i }
 func strPtr(s string) *string { return &s }
 
+// resolveProviderGatewayCapabilities retrieves provider gateway capabilities from InferenceProviderConfig.
+func (r *ModelDeploymentReconciler) resolveProviderGatewayCapabilities(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (*kubeairunwayv1alpha1.GatewayCapabilities, error) {
+	var providerName string
+	if md.Spec.Provider != nil {
+		providerName = md.Spec.Provider.Name
+	} else if md.Status.Provider != nil {
+		providerName = md.Status.Provider.Name
+	} else {
+		return nil, fmt.Errorf("provider name not specified in ModelDeployment %s/%s", md.Namespace, md.Name)
+	}
+
+	gatewayCapabilities := r.ProviderResolver.GetGatewayCapabilities(ctx, providerName)
+	if gatewayCapabilities == nil {
+		return nil, fmt.Errorf("failed to resolve provider capabilities for ModelDeployment %s/%s", md.Namespace, md.Name)
+	}
+
+	return gatewayCapabilities, nil
+}
+
 // reconcileHTTPRoute creates or updates the HTTPRoute for a ModelDeployment.
-func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig, modelName string) error {
+func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig, modelName, poolName, poolNamespace string) error {
 	route := &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      md.Name,
@@ -474,9 +583,10 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 						{
 							BackendRef: gatewayv1.BackendRef{
 								BackendObjectReference: gatewayv1.BackendObjectReference{
-									Group: &group,
-									Kind:  &kind,
-									Name:  gatewayv1.ObjectName(md.Name),
+									Group:     &group,
+									Kind:      &kind,
+									Name:      gatewayv1.ObjectName(poolName),
+									Namespace: (*gatewayv1.Namespace)(&poolNamespace),
 								},
 							},
 						},
@@ -674,17 +784,31 @@ func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, servi
 // the deployment is no longer running. Also sets GatewayReady=False.
 func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
+
+	// Resolve provider gateway capabilities
+	var gatewayCapabilities *kubeairunwayv1alpha1.GatewayCapabilities
+	var err error
+	if gatewayCapabilities, err = r.resolveProviderGatewayCapabilities(ctx, md); err != nil {
+		logger.Info("Error resolving provider gateway capabilities, proceeding without provider-specific gateway capabilities", "error", err)
+	}
+	providerManagedPool := gatewayCapabilities != nil && gatewayCapabilities.ManagesInferencePool
+	providerManagedEpp := gatewayCapabilities != nil && gatewayCapabilities.ManagesEPP
+
 	eppName := md.Name + "-epp"
 
-	// Delete InferencePool if it exists
-	pool := &inferencev1.InferencePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      md.Name,
-			Namespace: md.Namespace,
-		},
-	}
-	if err := r.Delete(ctx, pool); client.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to delete InferencePool: %w", err)
+	if !providerManagedPool {
+		// Delete InferencePool if it exists
+		pool := &inferencev1.InferencePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      md.Name,
+				Namespace: md.Namespace,
+			},
+		}
+		if err := r.Delete(ctx, pool); client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("failed to delete InferencePool: %w", err)
+		}
+	} else {
+		logger.V(1).Info("Skipping InferencePool cleanup because provider manages the pool")
 	}
 
 	// Delete auto-created HTTPRoute (skip if user-provided)
@@ -700,19 +824,23 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 		}
 	}
 
-	// Delete EPP resources
-	eppResources := []client.Object{
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
-	}
-	for _, obj := range eppResources {
-		if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
-			logger.V(1).Info("Could not delete EPP resource", "resource", obj.GetObjectKind(), "error", err)
+	if !providerManagedEpp {
+		// Delete EPP resources
+		eppResources := []client.Object{
+			&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
+			&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
 		}
+		for _, obj := range eppResources {
+			if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
+				logger.V(1).Info("Could not delete EPP resource", "resource", obj.GetObjectKind(), "error", err)
+			}
+		}
+	} else {
+		logger.V(1).Info("Skipping deletion of EPP resources because provider manages EPP")
 	}
 
 	md.Status.Gateway = nil

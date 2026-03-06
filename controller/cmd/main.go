@@ -53,8 +53,8 @@ import (
 	"github.com/kaito-project/kubeairunway/controller/internal/controller"
 	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
 	webhookv1alpha1 "github.com/kaito-project/kubeairunway/controller/internal/webhook/v1alpha1"
-	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -364,6 +364,7 @@ func main() {
 		Scheme:                 mgr.GetScheme(),
 		EnableProviderSelector: enableProviderSelector,
 		GatewayDetector:        gatewayDetector,
+		ProviderResolver:       gateway.NewInferenceProviderConfigResolver(mgr.GetClient()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ModelDeployment")
 		os.Exit(1)
