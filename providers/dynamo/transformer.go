@@ -109,8 +109,8 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 
 	// Add labels
 	labels := map[string]string{
-		"kubeairunway.ai/managed-by":  "kubeairunway",
-		"kubeairunway.ai/deployment":  md.Name,
+		kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+		kubeairunwayv1alpha1.LabelModelDeployment: md.Name,
 		"kubeairunway.ai/model-id":    sanitizeLabelValue(md.Spec.Model.ID),
 		"kubeairunway.ai/engine-type": string(md.ResolvedEngineType()),
 	}

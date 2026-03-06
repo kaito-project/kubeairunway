@@ -69,7 +69,7 @@ func TestTransformAggregated(t *testing.T) {
 
 	// Check labels
 	labels := dgd.GetLabels()
-	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" {
+	if labels[kubeairunwayv1alpha1.LabelManagedBy] != "kubeairunway" {
 		t.Errorf("expected managed-by label 'kubeairunway'")
 	}
 	if labels["kubeairunway.ai/engine-type"] != "vllm" {

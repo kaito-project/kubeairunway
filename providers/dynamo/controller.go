@@ -537,8 +537,8 @@ func (r *DynamoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				}
 				// Fall back to label-based lookup
 				labels := obj.GetLabels()
-				if labels["kubeairunway.ai/managed-by"] == "kubeairunway" {
-					if deployment := labels["kubeairunway.ai/deployment"]; deployment != "" {
+				if labels[kubeairunwayv1alpha1.LabelManagedBy] == "kubeairunway" {
+					if deployment := labels[kubeairunwayv1alpha1.LabelModelDeployment]; deployment != "" {
 						return []reconcile.Request{
 							{
 								NamespacedName: types.NamespacedName{

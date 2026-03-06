@@ -407,7 +407,7 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 	dgd.SetName("test")
 	dgd.SetNamespace("default")
 	dgd.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":           "kubeairunway",
+		kubeairunwayv1alpha1.LabelManagedBy:           "kubeairunway",
 	})
 	dgd.SetOwnerReferences([]metav1.OwnerReference{
 		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
@@ -456,7 +456,7 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":            "kubeairunway",
+		kubeairunwayv1alpha1.LabelManagedBy:            "kubeairunway",
 	})
 	existing.SetOwnerReferences([]metav1.OwnerReference{
 		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
@@ -491,7 +491,7 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":            "kubeairunway",
+		kubeairunwayv1alpha1.LabelManagedBy:            "kubeairunway",
 	})
 	existing.SetOwnerReferences([]metav1.OwnerReference{
 		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
@@ -967,7 +967,7 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 	dgd.SetName("test")
 	dgd.SetNamespace("default")
 	dgd.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by": "kubeairunway",
+		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
 	})
 	dgd.SetOwnerReferences([]metav1.OwnerReference{
 		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
@@ -1074,7 +1074,7 @@ func TestVerifyDynamoOwnershipRejectsWrongUID(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by": "kubeairunway",
+		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
 	})
 	existing.SetOwnerReferences([]metav1.OwnerReference{
 		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "other-md", UID: "other-uid"},
@@ -1095,7 +1095,7 @@ func TestVerifyDynamoOwnershipRejectsNoOwnerRef(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by": "kubeairunway",
+		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
 	})
 	// No OwnerReferences set — simulates a manually created resource with the label
 
