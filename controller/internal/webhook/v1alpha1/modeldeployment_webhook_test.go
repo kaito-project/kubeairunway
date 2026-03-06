@@ -640,7 +640,7 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			}
 			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("size is immutable"))
+			Expect(err.Error()).To(ContainSubstring("managed storage volumes are immutable"))
 		})
 
 		It("Should reject storageClassName change on managed volume", func() {
@@ -675,7 +675,7 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			}
 			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("storageClassName is immutable"))
+			Expect(err.Error()).To(ContainSubstring("managed storage volumes are immutable"))
 		})
 
 		It("Should reject accessMode change on managed volume", func() {
@@ -708,7 +708,7 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			}
 			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("accessMode is immutable"))
+			Expect(err.Error()).To(ContainSubstring("managed storage volumes are immutable"))
 		})
 
 		It("Should reject removing size from managed volume", func() {
@@ -740,7 +740,107 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			}
 			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("size is immutable"))
+			Expect(err.Error()).To(ContainSubstring("managed storage volumes are immutable"))
+		})
+
+		It("Should reject mountPath change on managed volume", func() {
+			size := resource.MustParse("100Gi")
+			oldObj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			oldObj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "my-deployment-model-data",
+						MountPath:  "/model-cache",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:       &size,
+						AccessMode: corev1.ReadWriteMany,
+					},
+				},
+			}
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "my-deployment-model-data",
+						MountPath:  "/new-mount-path",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:       &size,
+						AccessMode: corev1.ReadWriteMany,
+					},
+				},
+			}
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("managed storage volumes are immutable"))
+		})
+
+		It("Should reject readOnly change on managed volume", func() {
+			size := resource.MustParse("100Gi")
+			oldObj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			oldObj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "my-deployment-model-data",
+						MountPath:  "/model-cache",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:       &size,
+						AccessMode: corev1.ReadWriteMany,
+					},
+				},
+			}
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "my-deployment-model-data",
+						MountPath:  "/model-cache",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:       &size,
+						AccessMode: corev1.ReadWriteMany,
+						ReadOnly:   true,
+					},
+				},
+			}
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("managed storage volumes are immutable"))
+		})
+
+		It("Should reject purpose change on managed volume", func() {
+			size := resource.MustParse("100Gi")
+			oldObj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			oldObj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "my-deployment-model-data",
+						MountPath:  "/model-cache",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:       &size,
+						AccessMode: corev1.ReadWriteMany,
+					},
+				},
+			}
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:       "model-data",
+						ClaimName:  "my-deployment-model-data",
+						MountPath:  "/model-cache",
+						Purpose:    kubeairunwayv1alpha1.VolumePurposeCompilationCache,
+						Size:       &size,
+						AccessMode: corev1.ReadWriteMany,
+					},
+				},
+			}
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("managed storage volumes are immutable"))
 		})
 
 		It("Should allow PVC field changes on unmanaged volumes", func() {
