@@ -626,6 +626,9 @@ func (t *Transformer) buildVolumeMounts(md *kubeairunwayv1alpha1.ModelDeployment
 		if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeCompilationCache {
 			mount["useAsCompilationCache"] = true
 		}
+		if vol.ReadOnly {
+			mount["readOnly"] = true
+		}
 		mounts = append(mounts, mount)
 	}
 	return mounts

@@ -1186,6 +1186,10 @@ func TestTransformWithModelCacheStorage(t *testing.T) {
 	if mount["mountPoint"] != "/model-cache" {
 		t.Errorf("expected mountPoint '/model-cache', got %v", mount["mountPoint"])
 	}
+	// readOnly should not be present when ReadOnly is false (default)
+	if _, ok := mount["readOnly"]; ok {
+		t.Errorf("expected readOnly to be absent when ReadOnly is false, got %v", mount["readOnly"])
+	}
 
 	// Check HF_HOME auto-injected
 	eps, _ := worker["extraPodSpec"].(map[string]interface{})
@@ -1473,5 +1477,50 @@ func TestTransformDisaggregatedBothWorkersGetVolumeMounts(t *testing.T) {
 	frontend, _ := services["Frontend"].(map[string]interface{})
 	if _, ok := frontend["volumeMounts"]; ok {
 		t.Error("frontend should not have volumeMounts in disaggregated mode")
+	}
+}
+
+func TestTransformWithReadOnlyVolume(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "model-data",
+				ClaimName: "model-pvc",
+				MountPath: "/model-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+				ReadOnly:  true,
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+
+	// Check worker has volumeMounts with readOnly
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	volumeMounts, ok := worker["volumeMounts"].([]interface{})
+	if !ok {
+		t.Fatal("expected volumeMounts on worker")
+	}
+	if len(volumeMounts) != 1 {
+		t.Fatalf("expected 1 volumeMount, got %d", len(volumeMounts))
+	}
+	mount, _ := volumeMounts[0].(map[string]interface{})
+	if mount["name"] != "model-pvc" {
+		t.Errorf("expected mount name 'model-pvc', got %v", mount["name"])
+	}
+	if mount["mountPoint"] != "/model-cache" {
+		t.Errorf("expected mountPoint '/model-cache', got %v", mount["mountPoint"])
+	}
+	if mount["readOnly"] != true {
+		t.Errorf("expected readOnly=true, got %v", mount["readOnly"])
 	}
 }
