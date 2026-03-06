@@ -24,6 +24,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,6 +40,13 @@ const (
 
 	// defaultBackoffLimit is the number of retries for the download Job
 	defaultBackoffLimit int32 = 3
+
+	// Resource defaults for the download Job container.
+	// The download job runs pip install + hf_transfer (HTTP streaming to disk),
+	// so its resource needs are predictable and I/O-bound rather than CPU/memory-bound.
+	defaultDownloadJobCPURequest    = "100m"
+	defaultDownloadJobMemoryRequest = "512Mi"
+	defaultDownloadJobMemoryLimit   = "1Gi"
 )
 
 // NeedsDownloadJob returns true when a model download Job should be created:
@@ -175,6 +183,15 @@ hf download $MODEL_NAME`
 							Command: []string{"sh", "-c"},
 							Args:    []string{downloadScript},
 							Env:     envVars,
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse(defaultDownloadJobCPURequest),
+									corev1.ResourceMemory: resource.MustParse(defaultDownloadJobMemoryRequest),
+								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceMemory: resource.MustParse(defaultDownloadJobMemoryLimit),
+								},
+							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "model-cache",

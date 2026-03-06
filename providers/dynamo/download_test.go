@@ -24,6 +24,7 @@ import (
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -193,6 +194,28 @@ func TestEnsureDownloadJobCreation(t *testing.T) {
 	}
 	if container.VolumeMounts[0].MountPath != "/model-cache" {
 		t.Errorf("expected mount path /model-cache, got %s", container.VolumeMounts[0].MountPath)
+	}
+
+	// Verify resource requests and limits
+	expectedCPURequest := resource.MustParse("100m")
+	if cpuReq, ok := container.Resources.Requests[corev1.ResourceCPU]; !ok {
+		t.Error("expected CPU request to be set")
+	} else if !cpuReq.Equal(expectedCPURequest) {
+		t.Errorf("expected CPU request %s, got %s", expectedCPURequest.String(), cpuReq.String())
+	}
+
+	expectedMemoryRequest := resource.MustParse("512Mi")
+	if memReq, ok := container.Resources.Requests[corev1.ResourceMemory]; !ok {
+		t.Error("expected memory request to be set")
+	} else if !memReq.Equal(expectedMemoryRequest) {
+		t.Errorf("expected memory request %s, got %s", expectedMemoryRequest.String(), memReq.String())
+	}
+
+	expectedMemoryLimit := resource.MustParse("1Gi")
+	if memLim, ok := container.Resources.Limits[corev1.ResourceMemory]; !ok {
+		t.Error("expected memory limit to be set")
+	} else if !memLim.Equal(expectedMemoryLimit) {
+		t.Errorf("expected memory limit %s, got %s", expectedMemoryLimit.String(), memLim.String())
 	}
 
 	// Verify PVC volume
