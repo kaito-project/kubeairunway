@@ -433,6 +433,18 @@ func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubeairunwayv1alpha1
 		}
 	}
 
+	// Warn if readOnly is true on a modelCache volume with huggingface source (download will be skipped)
+	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceHuggingFace && spec.Model.Storage != nil {
+		for _, vol := range spec.Model.Storage.Volumes {
+			if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeModelCache && vol.ReadOnly {
+				warnings = append(warnings, fmt.Sprintf(
+					"storage volume %q has purpose=modelCache with readOnly=true; model download will be skipped (ensure the PVC already contains the model data)",
+					vol.Name,
+				))
+			}
+		}
+	}
+
 	return warnings
 }
 

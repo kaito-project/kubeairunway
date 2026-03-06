@@ -53,11 +53,20 @@ const (
 // NeedsDownloadJob returns true when a model download Job should be created:
 // - Model source is huggingface
 // - A volume with purpose=modelCache exists
+// - The modelCache volume is not readOnly (readOnly implies pre-populated data)
 func NeedsDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment) bool {
 	if md.Spec.Model.Source != kubeairunwayv1alpha1.ModelSourceHuggingFace {
 		return false
 	}
-	return findModelCacheVolume(md) != nil
+	vol := findModelCacheVolume(md)
+	if vol == nil {
+		return false
+	}
+	// readOnly modelCache means the model is pre-populated — no download needed
+	if vol.ReadOnly {
+		return false
+	}
+	return true
 }
 
 // findModelCacheVolume returns the first volume with purpose=modelCache, or nil.

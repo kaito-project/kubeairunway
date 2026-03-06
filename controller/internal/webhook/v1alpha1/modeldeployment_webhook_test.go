@@ -453,6 +453,28 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			Expect(warnings[0]).To(ContainSubstring("readOnly"))
 		})
 
+		It("Should warn on readOnly modelCache with huggingface source", func() {
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Model.Source = kubeairunwayv1alpha1.ModelSourceHuggingFace
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:      "model-data",
+						ClaimName: "my-pvc",
+						MountPath: "/model-cache",
+						Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+						ReadOnly:  true,
+					},
+				},
+			}
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("modelCache"))
+			Expect(warnings[0]).To(ContainSubstring("readOnly"))
+			Expect(warnings[0]).To(ContainSubstring("download will be skipped"))
+		})
+
 		It("Should admit volume with size and auto-generated claimName", func() {
 			obj.Name = "my-deployment"
 			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"

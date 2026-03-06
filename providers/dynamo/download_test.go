@@ -112,6 +112,22 @@ func TestNeedsDownloadJob(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "huggingface with readOnly modelCache volume",
+			md: &kubeairunwayv1alpha1.ModelDeployment{
+				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+					Model: kubeairunwayv1alpha1.ModelSpec{
+						Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
+						Storage: &kubeairunwayv1alpha1.StorageSpec{
+							Volumes: []kubeairunwayv1alpha1.StorageVolume{
+								{Name: "cache", Purpose: kubeairunwayv1alpha1.VolumePurposeModelCache, ReadOnly: true, ClaimName: "my-pvc"},
+							},
+						},
+					},
+				},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
