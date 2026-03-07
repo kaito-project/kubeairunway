@@ -111,8 +111,8 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 	labels := map[string]string{
 		kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 		kubeairunwayv1alpha1.LabelModelDeployment: md.Name,
-		"kubeairunway.ai/model-id":    sanitizeLabelValue(md.Spec.Model.ID),
-		"kubeairunway.ai/engine-type": string(md.ResolvedEngineType()),
+		"kubeairunway.ai/model-id":                sanitizeLabelValue(md.Spec.Model.ID),
+		"kubeairunway.ai/engine-type":             string(md.ResolvedEngineType()),
 	}
 	dgd.SetLabels(labels)
 
@@ -496,7 +496,7 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 			args = append(args, "--max-model-len", fmt.Sprintf("%d", *md.Spec.Engine.ContextLength))
 		case kubeairunwayv1alpha1.EngineTypeSGLang:
 			args = append(args, "--context-length", fmt.Sprintf("%d", *md.Spec.Engine.ContextLength))
-		// TensorRT-LLM context length is build-time, skip with warning logged elsewhere
+			// TensorRT-LLM context length is build-time, skip with warning logged elsewhere
 		}
 	}
 
@@ -772,8 +772,9 @@ func applyOverrides(obj *unstructured.Unstructured, md *kubeairunwayv1alpha1.Mod
 	return nil
 }
 
-// deepMerge recursively merges src into dst.
-// For maps, values are merged recursively. For all other types, src overwrites dst.
+// deepMerge recursively merges src into dst. dst is modified in place and also
+// returned for convenience. For maps, values are merged recursively. For all
+// other types, src overwrites dst.
 func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 	for key, srcVal := range src {
 		if dstVal, exists := dst[key]; exists {
