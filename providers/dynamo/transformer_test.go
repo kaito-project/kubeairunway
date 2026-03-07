@@ -54,7 +54,7 @@ func TestTransformAggregated(t *testing.T) {
 	if dgd.GetKind() != DynamoGraphDeploymentKind {
 		t.Errorf("expected kind %s, got %s", DynamoGraphDeploymentKind, dgd.GetKind())
 	}
-	expectedName := dynamoGraphDeploymentName("default", "test-model")
+	expectedName := "test-model"
 	if dgd.GetName() != expectedName {
 		t.Errorf("expected name %q, got %s", expectedName, dgd.GetName())
 	}
@@ -62,21 +62,42 @@ func TestTransformAggregated(t *testing.T) {
 		t.Errorf("expected apiVersion 'nvidia.com/v1alpha1', got %s", dgd.GetAPIVersion())
 	}
 
-	// Check namespace
-	if dgd.GetNamespace() != DynamoNamespace {
-		t.Errorf("expected namespace %q, got %q", DynamoNamespace, dgd.GetNamespace())
+	// Check namespace — DGD should be in the same namespace as the ModelDeployment
+	if dgd.GetNamespace() != "default" {
+		t.Errorf("expected namespace %q, got %q", "default", dgd.GetNamespace())
 	}
 
 	// Check labels
 	labels := dgd.GetLabels()
-	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" {
+	if labels[kubeairunwayv1alpha1.LabelManagedBy] != "kubeairunway" {
 		t.Errorf("expected managed-by label 'kubeairunway'")
-	}
-	if labels["kubeairunway.ai/deployment-namespace"] != "default" {
-		t.Errorf("expected deployment-namespace label 'default'")
 	}
 	if labels["kubeairunway.ai/engine-type"] != "vllm" {
 		t.Errorf("expected engine-type label 'vllm'")
+	}
+
+	// Check OwnerReference
+	ownerRefs := dgd.GetOwnerReferences()
+	if len(ownerRefs) != 1 {
+		t.Fatalf("expected 1 OwnerReference, got %d", len(ownerRefs))
+	}
+	if ownerRefs[0].UID != md.UID {
+		t.Errorf("expected OwnerReference UID %q, got %q", md.UID, ownerRefs[0].UID)
+	}
+	if ownerRefs[0].Kind != "ModelDeployment" {
+		t.Errorf("expected OwnerReference Kind 'ModelDeployment', got %q", ownerRefs[0].Kind)
+	}
+	if ownerRefs[0].Name != md.Name {
+		t.Errorf("expected OwnerReference Name %q, got %q", md.Name, ownerRefs[0].Name)
+	}
+	if ownerRefs[0].APIVersion != kubeairunwayv1alpha1.GroupVersion.String() {
+		t.Errorf("expected OwnerReference APIVersion %q, got %q", kubeairunwayv1alpha1.GroupVersion.String(), ownerRefs[0].APIVersion)
+	}
+	if ownerRefs[0].Controller == nil || !*ownerRefs[0].Controller {
+		t.Errorf("expected OwnerReference Controller to be true")
+	}
+	if ownerRefs[0].BlockOwnerDeletion == nil || !*ownerRefs[0].BlockOwnerDeletion {
+		t.Errorf("expected OwnerReference BlockOwnerDeletion to be true")
 	}
 
 	// Check spec
@@ -1105,5 +1126,401 @@ func TestBuildResourceLimitsWithAllFields(t *testing.T) {
 	// Memory and CPU should not be in requests (only gpu goes there)
 	if _, ok := requests["memory"]; ok {
 		t.Error("did not expect memory in requests")
+	}
+}
+
+// --- Storage Tests ---
+
+func TestTransformWithModelCacheStorage(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "model-data",
+				ClaimName: "model-pvc",
+				MountPath: "/model-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+
+	// Check pvcs
+	pvcs, ok := spec["pvcs"].([]interface{})
+	if !ok {
+		t.Fatal("expected pvcs in spec")
+	}
+	if len(pvcs) != 1 {
+		t.Fatalf("expected 1 pvc, got %d", len(pvcs))
+	}
+	pvc, _ := pvcs[0].(map[string]interface{})
+	if pvc["name"] != "model-pvc" {
+		t.Errorf("expected pvc name 'model-pvc', got %v", pvc["name"])
+	}
+	if pvc["create"] != false {
+		t.Errorf("expected pvc create=false, got %v", pvc["create"])
+	}
+
+	// Check worker has volumeMounts
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	volumeMounts, ok := worker["volumeMounts"].([]interface{})
+	if !ok {
+		t.Fatal("expected volumeMounts on worker")
+	}
+	if len(volumeMounts) != 1 {
+		t.Fatalf("expected 1 volumeMount, got %d", len(volumeMounts))
+	}
+	mount, _ := volumeMounts[0].(map[string]interface{})
+	if mount["name"] != "model-pvc" {
+		t.Errorf("expected mount name 'model-pvc', got %v", mount["name"])
+	}
+	if mount["mountPoint"] != "/model-cache" {
+		t.Errorf("expected mountPoint '/model-cache', got %v", mount["mountPoint"])
+	}
+	// readOnly should not be present when ReadOnly is false (default)
+	if _, ok := mount["readOnly"]; ok {
+		t.Errorf("expected readOnly to be absent when ReadOnly is false, got %v", mount["readOnly"])
+	}
+
+	// Check HF_HOME auto-injected
+	eps, _ := worker["extraPodSpec"].(map[string]interface{})
+	mc, _ := eps["mainContainer"].(map[string]interface{})
+	envList, _ := mc["env"].([]interface{})
+	foundHFHome := false
+	for _, e := range envList {
+		envMap, _ := e.(map[string]interface{})
+		if envMap["name"] == "HF_HOME" && envMap["value"] == "/model-cache" {
+			foundHFHome = true
+			break
+		}
+	}
+	if !foundHFHome {
+		t.Errorf("expected HF_HOME=/model-cache in env, got: %v", envList)
+	}
+}
+
+func TestTransformWithCompilationCacheStorage(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "compile-data",
+				ClaimName: "compile-pvc",
+				MountPath: "/compilation-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeCompilationCache,
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	volumeMounts, _ := worker["volumeMounts"].([]interface{})
+	if len(volumeMounts) != 1 {
+		t.Fatalf("expected 1 volumeMount, got %d", len(volumeMounts))
+	}
+	mount, _ := volumeMounts[0].(map[string]interface{})
+	if mount["useAsCompilationCache"] != true {
+		t.Errorf("expected useAsCompilationCache=true, got %v", mount["useAsCompilationCache"])
+	}
+}
+
+func TestTransformWithBothCaches(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "model-data",
+				ClaimName: "model-pvc",
+				MountPath: "/model-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+			},
+			{
+				Name:      "compile-data",
+				ClaimName: "compile-pvc",
+				MountPath: "/compilation-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeCompilationCache,
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+
+	// Check pvcs
+	pvcs, _ := spec["pvcs"].([]interface{})
+	if len(pvcs) != 2 {
+		t.Fatalf("expected 2 pvcs, got %d", len(pvcs))
+	}
+
+	// Check worker has 2 volumeMounts
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	volumeMounts, _ := worker["volumeMounts"].([]interface{})
+	if len(volumeMounts) != 2 {
+		t.Fatalf("expected 2 volumeMounts, got %d", len(volumeMounts))
+	}
+
+	// Verify one has useAsCompilationCache and the other doesn't
+	foundModel := false
+	foundCompile := false
+	for _, vm := range volumeMounts {
+		m, _ := vm.(map[string]interface{})
+		if m["name"] == "model-pvc" && m["mountPoint"] == "/model-cache" {
+			foundModel = true
+			if _, hasKey := m["useAsCompilationCache"]; hasKey {
+				t.Error("model-pvc should not have useAsCompilationCache")
+			}
+		}
+		if m["name"] == "compile-pvc" && m["mountPoint"] == "/compilation-cache" {
+			foundCompile = true
+			if m["useAsCompilationCache"] != true {
+				t.Error("compile-pvc should have useAsCompilationCache=true")
+			}
+		}
+	}
+	if !foundModel {
+		t.Error("missing model-pvc volumeMount")
+	}
+	if !foundCompile {
+		t.Error("missing compile-pvc volumeMount")
+	}
+}
+
+func TestTransformNoStorageNoPVCs(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	// No storage configured
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+
+	// Should not have pvcs key
+	if _, ok := spec["pvcs"]; ok {
+		t.Error("expected no pvcs key when storage is not configured")
+	}
+
+	// Worker should not have volumeMounts
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	if _, ok := worker["volumeMounts"]; ok {
+		t.Error("expected no volumeMounts when storage is not configured")
+	}
+}
+
+func TestTransformHFHomeNotInjectedWhenUserSetsIt(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "model-data",
+				ClaimName: "model-pvc",
+				MountPath: "/model-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+			},
+		},
+	}
+	// User explicitly sets HF_HOME
+	md.Spec.Env = []corev1.EnvVar{
+		{Name: "HF_HOME", Value: "/custom/hf/home"},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+
+	// HF_HOME should NOT be auto-injected
+	eps, _ := worker["extraPodSpec"].(map[string]interface{})
+	mc, _ := eps["mainContainer"].(map[string]interface{})
+	envList, _ := mc["env"].([]interface{})
+	for _, e := range envList {
+		envMap, _ := e.(map[string]interface{})
+		if envMap["name"] == "HF_HOME" {
+			t.Errorf("HF_HOME should not be auto-injected when user sets it, found: %v", envMap)
+		}
+	}
+}
+
+func TestTransformFrontendHasNoVolumeMounts(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "model-data",
+				ClaimName: "model-pvc",
+				MountPath: "/model-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+	frontend, _ := services["Frontend"].(map[string]interface{})
+
+	// Frontend should NOT have volumeMounts (router doesn't load models)
+	if _, ok := frontend["volumeMounts"]; ok {
+		t.Error("frontend should not have volumeMounts")
+	}
+}
+
+func TestTransformDisaggregatedBothWorkersGetVolumeMounts(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
+		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	}
+	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			Replicas: 1,
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2},
+		},
+		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			Replicas: 1,
+			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+		},
+	}
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "model-data",
+				ClaimName: "model-pvc",
+				MountPath: "/model-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+	services, _ := spec["services"].(map[string]interface{})
+
+	// Check prefill worker has volumeMounts
+	prefill, _ := services["VllmPrefillWorker"].(map[string]interface{})
+	prefillMounts, ok := prefill["volumeMounts"].([]interface{})
+	if !ok || len(prefillMounts) == 0 {
+		t.Error("expected volumeMounts on prefill worker")
+	}
+
+	// Check decode worker has volumeMounts
+	decode, _ := services["VllmDecodeWorker"].(map[string]interface{})
+	decodeMounts, ok := decode["volumeMounts"].([]interface{})
+	if !ok || len(decodeMounts) == 0 {
+		t.Error("expected volumeMounts on decode worker")
+	}
+
+	// Check HF_HOME is injected on both workers
+	for name, svc := range map[string]map[string]interface{}{"prefill": prefill, "decode": decode} {
+		eps, _ := svc["extraPodSpec"].(map[string]interface{})
+		mc, _ := eps["mainContainer"].(map[string]interface{})
+		envList, _ := mc["env"].([]interface{})
+		foundHFHome := false
+		for _, e := range envList {
+			envMap, _ := e.(map[string]interface{})
+			if envMap["name"] == "HF_HOME" && envMap["value"] == "/model-cache" {
+				foundHFHome = true
+				break
+			}
+		}
+		if !foundHFHome {
+			t.Errorf("expected HF_HOME=/model-cache on %s worker", name)
+		}
+	}
+
+	// Check frontend has NO volumeMounts
+	frontend, _ := services["Frontend"].(map[string]interface{})
+	if _, ok := frontend["volumeMounts"]; ok {
+		t.Error("frontend should not have volumeMounts in disaggregated mode")
+	}
+}
+
+func TestTransformWithReadOnlyVolume(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+		Volumes: []kubeairunwayv1alpha1.StorageVolume{
+			{
+				Name:      "model-data",
+				ClaimName: "model-pvc",
+				MountPath: "/model-cache",
+				Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+				ReadOnly:  true,
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	dgd := resources[0]
+	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
+
+	// Check worker has volumeMounts with readOnly
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	volumeMounts, ok := worker["volumeMounts"].([]interface{})
+	if !ok {
+		t.Fatal("expected volumeMounts on worker")
+	}
+	if len(volumeMounts) != 1 {
+		t.Fatalf("expected 1 volumeMount, got %d", len(volumeMounts))
+	}
+	mount, _ := volumeMounts[0].(map[string]interface{})
+	if mount["name"] != "model-pvc" {
+		t.Errorf("expected mount name 'model-pvc', got %v", mount["name"])
+	}
+	if mount["mountPoint"] != "/model-cache" {
+		t.Errorf("expected mountPoint '/model-cache', got %v", mount["mountPoint"])
+	}
+	if mount["readOnly"] != true {
+		t.Errorf("expected readOnly=true, got %v", mount["readOnly"])
 	}
 }

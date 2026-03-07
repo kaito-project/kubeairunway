@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"time"
 
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -64,15 +66,20 @@ type DynamoProviderReconciler struct {
 	Scheme           *runtime.Scheme
 	Transformer      *Transformer
 	StatusTranslator *StatusTranslator
+	DownloadJobImage string
 }
 
 // NewDynamoProviderReconciler creates a new Dynamo provider reconciler
-func NewDynamoProviderReconciler(client client.Client, scheme *runtime.Scheme) *DynamoProviderReconciler {
+func NewDynamoProviderReconciler(client client.Client, scheme *runtime.Scheme, downloadJobImage string) *DynamoProviderReconciler {
+	if downloadJobImage == "" {
+		downloadJobImage = DefaultDownloadJobImage
+	}
 	return &DynamoProviderReconciler{
 		Client:           client,
 		Scheme:           scheme,
 		Transformer:      NewTransformer(),
 		StatusTranslator: NewStatusTranslator(),
+		DownloadJobImage: downloadJobImage,
 	}
 }
 
@@ -82,6 +89,8 @@ func NewDynamoProviderReconciler(client client.Client, scheme *runtime.Scheme) *
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=nvidia.com,resources=dynamographdeployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
 
 // Reconcile handles the reconciliation loop for ModelDeployments assigned to the Dynamo provider
 func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -130,6 +139,52 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with Dynamo")
 
+	// --- Phase 1: Ensure PVCs ---
+	if HasStorageVolumes(&md) {
+		allReady, err := EnsurePVCs(ctx, r.Client, &md)
+		if err != nil {
+			logger.Error(err, "Failed to ensure PVCs", "name", md.Name)
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCFailed", err.Error())
+			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			md.Status.Message = fmt.Sprintf("Failed to ensure PVCs: %s", err.Error())
+			return ctrl.Result{}, r.Status().Update(ctx, &md)
+		}
+		if !allReady {
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCsPending", "Waiting for PVCs to be bound")
+			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhasePending
+			md.Status.Message = "Waiting for PVCs to be bound"
+			if statusErr := r.Status().Update(ctx, &md); statusErr != nil {
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionTrue, "PVCsBound", "All managed PVCs are bound")
+	}
+
+	// --- Phase 2: Ensure model download ---
+	if NeedsDownloadJob(&md) {
+		completed, err := EnsureDownloadJob(ctx, r.Client, &md, r.DownloadJobImage)
+		if err != nil {
+			logger.Error(err, "Failed to ensure download Job", "name", md.Name)
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadFailed", err.Error())
+			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			md.Status.Message = fmt.Sprintf("Model download failed: %s", err.Error())
+			return ctrl.Result{}, r.Status().Update(ctx, &md)
+		}
+		if !completed {
+			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadInProgress", "Model download in progress")
+			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhasePending
+			md.Status.Message = "Model download in progress"
+			if statusErr := r.Status().Update(ctx, &md); statusErr != nil {
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+		}
+		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionTrue, "DownloadComplete", "Model download completed")
+	}
+
+	// --- Phase 3: Create/update DGD ---
+
 	// Transform ModelDeployment to DynamoGraphDeployment
 	resources, err := r.Transformer.Transform(ctx, &md)
 	if err != nil {
@@ -159,7 +214,7 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "DynamoGraphDeployment created successfully")
 
 	// Update provider status
-	md.Status.Provider.ResourceName = dynamoGraphDeploymentName(md.Namespace, md.Name)
+	md.Status.Provider.ResourceName = md.Name
 	md.Status.Provider.ResourceKind = DynamoGraphDeploymentKind
 
 	// Sync status from upstream resource
@@ -231,14 +286,14 @@ func isResourceConflict(err error) bool {
 	return stderrors.As(err, &conflict)
 }
 
-// verifyDynamoOwnership checks that the existing resource is managed by kubeairunway and
-// belongs to the expected deployment namespace.
-func verifyDynamoOwnership(existing *unstructured.Unstructured, expectedNamespace string) error {
-	labels := existing.GetLabels()
-	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" || labels["kubeairunway.ai/deployment-namespace"] != expectedNamespace {
-		return &resourceConflictError{namespace: existing.GetNamespace(), name: existing.GetName()}
+// verifyDynamoOwnership checks that the existing resource is managed by this specific ModelDeployment.
+func verifyDynamoOwnership(existing *unstructured.Unstructured, mdUID types.UID) error {
+	for _, ref := range existing.GetOwnerReferences() {
+		if ref.UID == mdUID {
+			return nil
+		}
 	}
-	return nil
+	return &resourceConflictError{namespace: existing.GetNamespace(), name: existing.GetName()}
 }
 
 // createOrUpdateResource creates or updates an unstructured resource
@@ -264,7 +319,7 @@ func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, r
 	}
 
 	// Verify ownership before updating
-	if err := verifyDynamoOwnership(existing, md.Namespace); err != nil {
+	if err := verifyDynamoOwnership(existing, md.UID); err != nil {
 		return err
 	}
 
@@ -341,7 +396,7 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubea
 		logger.Error(err, "Failed to update status to Terminating")
 	}
 
-	// Delete the upstream resource
+	// Delete the DGD first so its Pods terminate before we remove PVCs/Jobs
 	dgd := &unstructured.Unstructured{}
 	dgd.SetGroupVersionKind(schema.GroupVersionKind{
 		Group:   DynamoAPIGroup,
@@ -349,15 +404,15 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubea
 		Kind:    DynamoGraphDeploymentKind,
 	})
 
-	dgdName := dynamoGraphDeploymentName(md.Namespace, md.Name)
+	dgdName := md.Name
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      dgdName,
-		Namespace: DynamoNamespace,
+		Namespace: md.Namespace,
 	}, dgd)
 
 	if err == nil {
 		// Verify ownership before deleting
-		if err := verifyDynamoOwnership(dgd, md.Namespace); err != nil {
+		if err := verifyDynamoOwnership(dgd, md.UID); err != nil {
 			logger.Info("Resource exists but is not managed by this ModelDeployment, skipping deletion", "name", dgdName)
 			controllerutil.RemoveFinalizer(md, FinalizerName)
 			return ctrl.Result{}, r.Update(ctx, md)
@@ -380,16 +435,44 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubea
 			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 
-		// Requeue to wait for deletion
+		// Requeue to wait for DGD and its Pods to be fully terminated
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if !errors.IsNotFound(err) {
-		return ctrl.Result{}, fmt.Errorf("failed to get upstream resource: %w", err)
+		// Unexpected error fetching DGD — check timeout before requeueing
+		deletionTime := md.DeletionTimestamp.Time
+		if time.Since(deletionTime) > FinalizerTimeout {
+			logger.Info("Finalizer timeout reached, removing finalizer without cleanup")
+			controllerutil.RemoveFinalizer(md, FinalizerName)
+			return ctrl.Result{}, r.Update(ctx, md)
+		}
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	// Resource is gone, remove finalizer
-	logger.Info("Upstream resource deleted, removing finalizer", "name", md.Name)
+	// DGD is confirmed gone — clean up managed Jobs and PVCs
+	var cleanupErrs []error
+	if err := DeleteManagedJobs(ctx, r.Client, md); err != nil {
+		logger.Error(err, "Failed to delete managed Jobs")
+		cleanupErrs = append(cleanupErrs, err)
+	}
+	if err := DeleteManagedPVCs(ctx, r.Client, md); err != nil {
+		logger.Error(err, "Failed to delete managed PVCs")
+		cleanupErrs = append(cleanupErrs, err)
+	}
+	if err := stderrors.Join(cleanupErrs...); err != nil {
+		// Check if we should force-remove the finalizer
+		deletionTime := md.DeletionTimestamp.Time
+		if time.Since(deletionTime) > FinalizerTimeout {
+			logger.Info("Finalizer timeout reached, removing finalizer without cleanup")
+			controllerutil.RemoveFinalizer(md, FinalizerName)
+			return ctrl.Result{}, r.Update(ctx, md)
+		}
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	// All resources cleaned up, remove finalizer
+	logger.Info("All resources deleted, removing finalizer", "name", md.Name)
 	controllerutil.RemoveFinalizer(md, FinalizerName)
 	return ctrl.Result{}, r.Update(ctx, md)
 }
@@ -411,6 +494,9 @@ func (r *DynamoProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDe
 func (r *DynamoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kubeairunwayv1alpha1.ModelDeployment{}).
+		// Watch PVCs and Jobs owned by ModelDeployments (auto-reconcile on status changes)
+		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&batchv1.Job{}).
 		// Only watch ModelDeployments where provider.name == "dynamo"
 		WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
 			md, ok := obj.(*kubeairunwayv1alpha1.ModelDeployment)
@@ -435,7 +521,7 @@ func (r *DynamoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				"kind":       DynamoGraphDeploymentKind,
 			}},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				// Get owner references
+				// Check owner references first
 				for _, ref := range obj.GetOwnerReferences() {
 					if ref.APIVersion == kubeairunwayv1alpha1.GroupVersion.String() &&
 						ref.Kind == "ModelDeployment" {
@@ -443,6 +529,20 @@ func (r *DynamoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 							{
 								NamespacedName: types.NamespacedName{
 									Name:      ref.Name,
+									Namespace: obj.GetNamespace(),
+								},
+							},
+						}
+					}
+				}
+				// Fall back to label-based lookup
+				labels := obj.GetLabels()
+				if labels[kubeairunwayv1alpha1.LabelManagedBy] == "kubeairunway" {
+					if deployment := labels[kubeairunwayv1alpha1.LabelModelDeployment]; deployment != "" {
+						return []reconcile.Request{
+							{
+								NamespacedName: types.NamespacedName{
+									Name:      deployment,
 									Namespace: obj.GetNamespace(),
 								},
 							},

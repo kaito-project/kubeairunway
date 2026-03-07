@@ -2,22 +2,30 @@ package dynamo
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func newScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = kubeairunwayv1alpha1.AddToScheme(s)
+	_ = corev1.AddToScheme(s)
+	_ = batchv1.AddToScheme(s)
 	return s
 }
 
@@ -26,6 +34,7 @@ func newMDForController(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
+			UID:       types.UID("test-uid"),
 		},
 		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
 			Model:     kubeairunwayv1alpha1.ModelSpec{ID: "test-model", Source: kubeairunwayv1alpha1.ModelSourceHuggingFace},
@@ -174,7 +183,7 @@ func TestSetCondition(t *testing.T) {
 }
 
 func TestNewDynamoProviderReconciler(t *testing.T) {
-	r := NewDynamoProviderReconciler(nil, nil)
+	r := NewDynamoProviderReconciler(nil, nil, "")
 	if r == nil {
 		t.Fatal("expected non-nil reconciler")
 	}
@@ -198,7 +207,7 @@ func TestControllerConstants(t *testing.T) {
 func TestReconcileNotFound(t *testing.T) {
 	scheme := newScheme()
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "missing", Namespace: "default"},
@@ -217,7 +226,7 @@ func TestReconcileWrongProvider(t *testing.T) {
 	md.Status.Provider.Name = "other"
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -236,7 +245,7 @@ func TestReconcilePaused(t *testing.T) {
 	md.Annotations = map[string]string{"kubeairunway.ai/reconcile-paused": "true"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -254,7 +263,7 @@ func TestReconcileAddsFinalizer(t *testing.T) {
 	md := newMDForController("test", "default")
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -280,7 +289,7 @@ func TestReconcileIncompatibleEngine(t *testing.T) {
 	controllerutil.AddFinalizer(md, FinalizerName)
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -302,7 +311,7 @@ func TestReconcileNilProvider(t *testing.T) {
 	md.Status.Provider = nil
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -321,7 +330,7 @@ func TestReconcileSuccessfulCreate(t *testing.T) {
 	controllerutil.AddFinalizer(md, FinalizerName)
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -335,7 +344,7 @@ func TestReconcileSuccessfulCreate(t *testing.T) {
 
 	dgd := &unstructured.Unstructured{}
 	setDGDGVK(dgd)
-	err = c.Get(context.Background(), types.NamespacedName{Name: dynamoGraphDeploymentName("default", "test"), Namespace: DynamoNamespace}, dgd)
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, dgd)
 	if err != nil {
 		t.Fatalf("expected DynamoGraphDeployment to be created: %v", err)
 	}
@@ -349,7 +358,7 @@ func TestReconcileHandleDeletion(t *testing.T) {
 	md.DeletionTimestamp = &now
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -373,7 +382,7 @@ func TestReconcileDeletionNoFinalizer(t *testing.T) {
 	md.Finalizers = []string{"other-finalizer"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -395,15 +404,17 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 
 	dgd := &unstructured.Unstructured{}
 	setDGDGVK(dgd)
-	dgd.SetName(dynamoGraphDeploymentName("default", "test"))
-	dgd.SetNamespace(DynamoNamespace)
+	dgd.SetName("test")
+	dgd.SetNamespace("default")
 	dgd.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":           "kubeairunway",
-		"kubeairunway.ai/deployment-namespace": "default",
+		kubeairunwayv1alpha1.LabelManagedBy:           "kubeairunway",
+	})
+	dgd.SetOwnerReferences([]metav1.OwnerReference{
+		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, dgd).WithStatusSubresource(md).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
@@ -419,7 +430,7 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 func TestCreateOrUpdateResourceNew(t *testing.T) {
 	scheme := newScheme()
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	md.Name = "test"
@@ -445,17 +456,20 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":            "kubeairunway",
-		"kubeairunway.ai/deployment-namespace":  "default",
+		kubeairunwayv1alpha1.LabelManagedBy:            "kubeairunway",
+	})
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	md.Name = "test"
 	md.Namespace = "default"
+	md.UID = "test-uid"
 
 	updated := &unstructured.Unstructured{}
 	setDGDGVK(updated)
@@ -477,17 +491,20 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		"kubeairunway.ai/managed-by":            "kubeairunway",
-		"kubeairunway.ai/deployment-namespace":  "default",
+		kubeairunwayv1alpha1.LabelManagedBy:            "kubeairunway",
+	})
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	md.Name = "test"
 	md.Namespace = "default"
+	md.UID = "test-uid"
 
 	same := &unstructured.Unstructured{}
 	setDGDGVK(same)
@@ -504,7 +521,7 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 func TestSyncStatusNotFound(t *testing.T) {
 	scheme := newScheme()
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
@@ -528,7 +545,7 @@ func TestSyncStatusRunning(t *testing.T) {
 	dgd.Object["status"] = map[string]interface{}{"state": "successful"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dgd).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
@@ -555,7 +572,7 @@ func TestSyncStatusFailed(t *testing.T) {
 	dgd.Object["status"] = map[string]interface{}{"state": "failed", "message": "oom"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dgd).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
@@ -582,7 +599,7 @@ func TestSyncStatusDeploying(t *testing.T) {
 	dgd.Object["status"] = map[string]interface{}{"state": "deploying"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dgd).Build()
-	r := NewDynamoProviderReconciler(c, scheme)
+	r := NewDynamoProviderReconciler(c, scheme, "")
 
 	md := &kubeairunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
@@ -596,5 +613,537 @@ func TestSyncStatusDeploying(t *testing.T) {
 	}
 	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying, got %s", md.Status.Phase)
+	}
+}
+
+// --- 3-phase orchestration tests ---
+
+func newMDWithStorage(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
+	size := resource.MustParse("100Gi")
+	return &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
+				ID:     "meta-llama/Llama-2-7b-chat-hf",
+				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
+				Storage: &kubeairunwayv1alpha1.StorageSpec{
+					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						{
+							Name:       "model-cache",
+							MountPath:  "/model-cache",
+							Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+							Size:       &size,
+							AccessMode: corev1.ReadWriteMany,
+						},
+					},
+				},
+			},
+			Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+			Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
+		},
+		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: ProviderName},
+		},
+	}
+}
+
+func TestReconcilePVCNotBound(t *testing.T) {
+	scheme := newScheme()
+	md := newMDWithStorage("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
+	r := NewDynamoProviderReconciler(c, scheme, "")
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should requeue (PVC was just created, not yet Bound)
+	if result.RequeueAfter != 10*time.Second {
+		t.Errorf("expected requeue after 10s, got %v", result.RequeueAfter)
+	}
+
+	// Verify PVC was created
+	pvc := &corev1.PersistentVolumeClaim{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-cache", Namespace: "default"}, pvc)
+	if err != nil {
+		t.Fatalf("expected PVC to be created: %v", err)
+	}
+
+	// Verify DGD was NOT created (should not proceed past PVC phase)
+	dgd := &unstructured.Unstructured{}
+	setDGDGVK(dgd)
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, dgd)
+	if err == nil {
+		t.Error("DGD should NOT be created before PVCs are bound")
+	}
+}
+
+func TestReconcileDownloadNotComplete(t *testing.T) {
+	scheme := newScheme()
+	md := newMDWithStorage("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+
+	// Pre-create a bound PVC so we pass Phase 1
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-cache",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "kubeairunway.ai/v1alpha1",
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimBound,
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, pvc).WithStatusSubresource(md, pvc).Build()
+	r := NewDynamoProviderReconciler(c, scheme, "")
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should requeue (download Job was just created, not yet complete)
+	if result.RequeueAfter != 15*time.Second {
+		t.Errorf("expected requeue after 15s, got %v", result.RequeueAfter)
+	}
+
+	// Verify download Job was created
+	job := &batchv1.Job{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-download", Namespace: "default"}, job)
+	if err != nil {
+		t.Fatalf("expected download Job to be created: %v", err)
+	}
+
+	// Verify DGD was NOT created
+	dgd := &unstructured.Unstructured{}
+	setDGDGVK(dgd)
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, dgd)
+	if err == nil {
+		t.Error("DGD should NOT be created before download completes")
+	}
+}
+
+func TestReconcileFullPipeline(t *testing.T) {
+	scheme := newScheme()
+	md := newMDWithStorage("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+
+	// Pre-create bound PVC
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-cache",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "kubeairunway.ai/v1alpha1",
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimBound,
+		},
+	}
+
+	// Pre-create completed download Job
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-download",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "kubeairunway.ai/v1alpha1",
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+		Status: batchv1.JobStatus{
+			Succeeded: 1,
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, pvc, job).WithStatusSubresource(md, pvc, job).Build()
+	r := NewDynamoProviderReconciler(c, scheme, "")
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should complete and requeue for periodic sync
+	if result.RequeueAfter != RequeueInterval {
+		t.Errorf("expected requeue after %v, got %v", RequeueInterval, result.RequeueAfter)
+	}
+
+	// Verify DGD was created
+	dgd := &unstructured.Unstructured{}
+	setDGDGVK(dgd)
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, dgd)
+	if err != nil {
+		t.Fatalf("expected DGD to be created: %v", err)
+	}
+}
+
+func TestReconcileNoStorageSkipsPhases(t *testing.T) {
+	scheme := newScheme()
+	md := newMDForController("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
+	r := NewDynamoProviderReconciler(c, scheme, "")
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should go straight to DGD creation (no PVC or download phases)
+	if result.RequeueAfter != RequeueInterval {
+		t.Errorf("expected requeue after %v, got %v", RequeueInterval, result.RequeueAfter)
+	}
+
+	// Verify DGD was created
+	dgd := &unstructured.Unstructured{}
+	setDGDGVK(dgd)
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, dgd)
+	if err != nil {
+		t.Fatalf("expected DGD to be created: %v", err)
+	}
+}
+
+func TestReconcileDeletionCleansUpResources(t *testing.T) {
+	scheme := newScheme()
+	md := newMDWithStorage("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+	now := metav1.Now()
+	md.DeletionTimestamp = &now
+
+	// Create managed PVC with OwnerReference matching the ModelDeployment UID
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-cache",
+			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+	}
+
+	// Create managed Job with OwnerReference matching the ModelDeployment UID
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-download",
+			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, pvc, job).WithStatusSubresource(md).Build()
+	r := NewDynamoProviderReconciler(c, scheme, "")
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify managed PVC was deleted
+	pvcCheck := &corev1.PersistentVolumeClaim{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-cache", Namespace: "default"}, pvcCheck)
+	if err == nil {
+		t.Error("expected managed PVC to be deleted during cleanup")
+	}
+
+	// Verify managed Job was deleted
+	jobCheck := &batchv1.Job{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-download", Namespace: "default"}, jobCheck)
+	if err == nil {
+		t.Error("expected managed Job to be deleted during cleanup")
+	}
+}
+
+func TestReconcileDeletionRetriesOnCleanupFailure(t *testing.T) {
+	scheme := newScheme()
+	md := newMDForController("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+	now := metav1.Now()
+	md.DeletionTimestamp = &now
+
+	// Create a managed Job that will fail to delete
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-download",
+			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+	}
+
+	// Intercept Delete calls for Job resources to simulate API server failure
+	interceptorFuncs := interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			if _, ok := obj.(*batchv1.Job); ok {
+				return fmt.Errorf("simulated API server error")
+			}
+			return c.Delete(ctx, obj, opts...)
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(md, job).
+		WithStatusSubresource(md).
+		WithInterceptorFuncs(interceptorFuncs).
+		Build()
+	r := NewDynamoProviderReconciler(c, scheme, "")
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should requeue after 10s due to cleanup failure (not immediate requeue)
+	if result.RequeueAfter != 10*time.Second {
+		t.Errorf("expected requeue after 10s, got %v", result.RequeueAfter)
+	}
+
+	// Verify the finalizer is still present (cleanup failure should prevent removal)
+	var updated kubeairunwayv1alpha1.ModelDeployment
+	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
+	if !controllerutil.ContainsFinalizer(&updated, FinalizerName) {
+		t.Error("expected finalizer to still be present after cleanup failure")
+	}
+}
+
+func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
+	scheme := newScheme()
+	md := newMDWithStorage("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+	now := metav1.Now()
+	md.DeletionTimestamp = &now
+
+	// Create a DGD owned by this ModelDeployment
+	dgd := &unstructured.Unstructured{}
+	setDGDGVK(dgd)
+	dgd.SetName("test")
+	dgd.SetNamespace("default")
+	dgd.SetLabels(map[string]string{
+		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+	})
+	dgd.SetOwnerReferences([]metav1.OwnerReference{
+		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
+	})
+
+	// Create managed PVC with OwnerReference matching the ModelDeployment UID
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-cache",
+			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+	}
+
+	// Create managed Job with OwnerReference matching the ModelDeployment UID
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-model-download",
+			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, dgd, pvc, job).WithStatusSubresource(md).Build()
+	r := NewDynamoProviderReconciler(c, scheme, "")
+
+	// --- First reconciliation: DGD exists, should delete DGD but NOT PVC/Job ---
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error on first reconcile: %v", err)
+	}
+	if result.RequeueAfter != 5*time.Second {
+		t.Errorf("expected requeue after 5s on first reconcile, got %v", result.RequeueAfter)
+	}
+
+	// Verify DGD was deleted
+	dgdCheck := &unstructured.Unstructured{}
+	setDGDGVK(dgdCheck)
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, dgdCheck)
+	if err == nil {
+		t.Error("expected DGD to be deleted after first reconcile")
+	}
+
+	// Verify PVC still exists (cleanup deferred until DGD is gone)
+	pvcCheck := &corev1.PersistentVolumeClaim{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-cache", Namespace: "default"}, pvcCheck)
+	if err != nil {
+		t.Errorf("expected PVC to still exist after first reconcile: %v", err)
+	}
+
+	// Verify Job still exists (cleanup deferred until DGD is gone)
+	jobCheck := &batchv1.Job{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-download", Namespace: "default"}, jobCheck)
+	if err != nil {
+		t.Errorf("expected Job to still exist after first reconcile: %v", err)
+	}
+
+	// Verify finalizer still present
+	var mdAfterFirst kubeairunwayv1alpha1.ModelDeployment
+	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &mdAfterFirst)
+	if !controllerutil.ContainsFinalizer(&mdAfterFirst, FinalizerName) {
+		t.Error("expected finalizer to still be present after first reconcile")
+	}
+
+	// --- Second reconciliation: DGD is gone, should clean up PVC/Job and remove finalizer ---
+	result, err = r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error on second reconcile: %v", err)
+	}
+
+	// Verify PVC was deleted
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-cache", Namespace: "default"}, pvcCheck)
+	if err == nil {
+		t.Error("expected PVC to be deleted after second reconcile")
+	}
+
+	// Verify Job was deleted
+	err = c.Get(context.Background(), types.NamespacedName{Name: "test-model-download", Namespace: "default"}, jobCheck)
+	if err == nil {
+		t.Error("expected Job to be deleted after second reconcile")
+	}
+
+	// Verify finalizer was removed
+	var mdAfterSecond kubeairunwayv1alpha1.ModelDeployment
+	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &mdAfterSecond)
+	if controllerutil.ContainsFinalizer(&mdAfterSecond, FinalizerName) {
+		t.Error("expected finalizer to be removed after second reconcile")
+	}
+}
+
+func TestVerifyDynamoOwnershipRejectsWrongUID(t *testing.T) {
+	existing := &unstructured.Unstructured{}
+	setDGDGVK(existing)
+	existing.SetName("test")
+	existing.SetNamespace("default")
+	existing.SetLabels(map[string]string{
+		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+	})
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "other-md", UID: "other-uid"},
+	})
+
+	err := verifyDynamoOwnership(existing, "test-uid")
+	if err == nil {
+		t.Fatal("expected error for wrong UID, got nil")
+	}
+	if !isResourceConflict(err) {
+		t.Errorf("expected resourceConflictError, got %T: %v", err, err)
+	}
+}
+
+func TestVerifyDynamoOwnershipRejectsNoOwnerRef(t *testing.T) {
+	existing := &unstructured.Unstructured{}
+	setDGDGVK(existing)
+	existing.SetName("test")
+	existing.SetNamespace("default")
+	existing.SetLabels(map[string]string{
+		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+	})
+	// No OwnerReferences set — simulates a manually created resource with the label
+
+	err := verifyDynamoOwnership(existing, "test-uid")
+	if err == nil {
+		t.Fatal("expected error for missing OwnerReference, got nil")
+	}
+	if !isResourceConflict(err) {
+		t.Errorf("expected resourceConflictError, got %T: %v", err, err)
 	}
 }

@@ -19,7 +19,10 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -103,6 +106,37 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeair
 		}
 	}
 
+	// Default storage volume fields
+	if spec.Model.Storage != nil {
+		for i := range spec.Model.Storage.Volumes {
+			vol := &spec.Model.Storage.Volumes[i]
+			// Default purpose to custom if empty
+			if vol.Purpose == "" {
+				vol.Purpose = kubeairunwayv1alpha1.VolumePurposeCustom
+			}
+			// Default mountPath based on purpose
+			if vol.MountPath == "" {
+				switch vol.Purpose {
+				case kubeairunwayv1alpha1.VolumePurposeModelCache:
+					vol.MountPath = "/model-cache"
+				case kubeairunwayv1alpha1.VolumePurposeCompilationCache:
+					vol.MountPath = "/compilation-cache"
+				}
+			}
+			// When size is set (controller-created PVC mode):
+			if vol.Size != nil {
+				// Default claimName to <md-name>-<volume-name>
+				if vol.ClaimName == "" {
+					vol.ClaimName = fmt.Sprintf("%s-%s", obj.Name, vol.Name)
+				}
+				// Default accessMode to ReadWriteMany
+				if vol.AccessMode == "" {
+					vol.AccessMode = corev1.ReadWriteMany
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -118,6 +152,15 @@ func (v *ModelDeploymentCustomValidator) ValidateCreate(_ context.Context, obj *
 
 	var warnings admission.Warnings
 	var allErrs field.ErrorList
+
+	// Validate name does not contain dots (derived volume/service names prohibit dots)
+	if strings.Contains(obj.Name, ".") {
+		allErrs = append(allErrs, field.Invalid(
+			field.NewPath("metadata", "name"),
+			obj.Name,
+			"name must not contain dots (dots are invalid in derived Kubernetes volume and service names)",
+		))
+	}
 
 	// Validate the spec
 	allErrs = append(allErrs, v.validateSpec(obj)...)
@@ -253,6 +296,9 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.
 		}
 	}
 
+	// Validate storage configuration
+	allErrs = append(allErrs, v.validateStorage(obj)...)
+
 	return allErrs
 }
 
@@ -326,6 +372,60 @@ func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj 
 		))
 	}
 
+	// Storage volumes are immutable once a managed PVC is created.
+	// Only applies to managed volumes (size != nil) that existed in the old spec.
+	// Two bypass scenarios are prevented:
+	// 1. Dropping a managed volume from the list (would orphan its PVC)
+	// 2. Setting model.storage to nil (would orphan all managed PVCs)
+	oldManagedVolumes := make(map[string]kubeairunwayv1alpha1.StorageVolume)
+	if oldSpec.Model.Storage != nil {
+		for _, vol := range oldSpec.Model.Storage.Volumes {
+			if vol.Size != nil {
+				oldManagedVolumes[vol.Name] = vol
+			}
+		}
+	}
+
+	if len(oldManagedVolumes) > 0 {
+		storagePath := specPath.Child("model", "storage", "volumes")
+
+		// Build a set of new volume names for quick lookup
+		newVolumeNames := make(map[string]bool)
+		if newSpec.Model.Storage != nil {
+			for _, vol := range newSpec.Model.Storage.Volumes {
+				newVolumeNames[vol.Name] = true
+			}
+		}
+
+		// Pass 1 — detect removals: reject any old managed volume not present in the new spec
+		for _, oldVol := range oldManagedVolumes {
+			if !newVolumeNames[oldVol.Name] {
+				allErrs = append(allErrs, field.Forbidden(
+					storagePath,
+					fmt.Sprintf("managed storage volume %q cannot be removed (it has an associated PVC; delete the ModelDeployment to clean up managed storage)", oldVol.Name),
+				))
+			}
+		}
+
+		// Pass 2 — detect modifications: reject any change to an existing managed volume
+		if newSpec.Model.Storage != nil {
+			for i, newVol := range newSpec.Model.Storage.Volumes {
+				oldVol, exists := oldManagedVolumes[newVol.Name]
+				if !exists {
+					continue
+				}
+				if !reflect.DeepEqual(oldVol, newVol) {
+					volPath := storagePath.Index(i)
+					allErrs = append(allErrs, field.Invalid(
+						volPath,
+						newVol.Name,
+						"managed storage volume is immutable once created (delete the ModelDeployment to change managed storage configuration)",
+					))
+				}
+			}
+		}
+	}
+
 	return allErrs
 }
 
@@ -349,5 +449,213 @@ func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubeairunwayv1alpha1
 		warnings = append(warnings, "contextLength is ignored for TensorRT-LLM (must be configured at engine build time)")
 	}
 
+	// Warn if readOnly is true on a compilationCache volume
+	if spec.Model.Storage != nil {
+		for _, vol := range spec.Model.Storage.Volumes {
+			if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeCompilationCache && vol.ReadOnly {
+				warnings = append(warnings, fmt.Sprintf(
+					"storage volume %q has purpose=compilationCache with readOnly=true; compilation cache requires write access",
+					vol.Name,
+				))
+			}
+		}
+	}
+
+	// Warn if readOnly is true on a modelCache volume with huggingface source (download will be skipped)
+	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceHuggingFace && spec.Model.Storage != nil {
+		for _, vol := range spec.Model.Storage.Volumes {
+			if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeModelCache && vol.ReadOnly {
+				warnings = append(warnings, fmt.Sprintf(
+					"storage volume %q has purpose=modelCache with readOnly=true; model download will be skipped (ensure the PVC already contains the model data)",
+					vol.Name,
+				))
+			}
+		}
+	}
+
 	return warnings
+}
+
+// validateStorage validates the model storage configuration
+func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alpha1.ModelDeployment) field.ErrorList {
+	var allErrs field.ErrorList
+	storage := obj.Spec.Model.Storage
+
+	if storage == nil || len(storage.Volumes) == 0 {
+		return allErrs
+	}
+
+	storagePath := field.NewPath("spec", "model", "storage", "volumes")
+
+	// System paths that cannot be used as mount points
+	systemPaths := []string{"/dev", "/proc", "/sys", "/etc", "/var/run"}
+
+	namesSeen := map[string]bool{}
+	mountPathsSeen := map[string]bool{}
+	claimNamesSeen := map[string]bool{}
+	modelCacheCount := 0
+	compilationCacheCount := 0
+
+	for i, vol := range storage.Volumes {
+		volPath := storagePath.Index(i)
+
+		// When size is NOT set, claimName is required (pre-existing PVC reference mode)
+		if vol.Size == nil && vol.ClaimName == "" {
+			allErrs = append(allErrs, field.Required(
+				volPath.Child("claimName"),
+				"claimName is required when size is not set (must reference a pre-existing PVC)",
+			))
+		}
+
+		// Reject readOnly with size set (controller-created PVC shouldn't be read-only from the start)
+		if vol.Size != nil && vol.ReadOnly {
+			allErrs = append(allErrs, field.Invalid(
+				volPath.Child("readOnly"),
+				vol.ReadOnly,
+				"readOnly must not be true when size is set (controller-created PVCs need write access)",
+			))
+		}
+
+		// When size is set, claimName must match the auto-generated pattern <md-name>-<vol-name>.
+		// The mutating webhook defaults claimName when empty, so by validation time it's always populated.
+		// An arbitrary claimName with size could cause the reconciler to delete an unrelated PVC.
+		if vol.Size != nil && vol.ClaimName != "" {
+			expectedClaimName := fmt.Sprintf("%s-%s", obj.Name, vol.Name)
+			if vol.ClaimName != expectedClaimName {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("claimName"),
+					vol.ClaimName,
+					fmt.Sprintf("claimName must not be set when size is set (auto-generated as %q)", expectedClaimName),
+				))
+			}
+		}
+
+		// Validate accessMode if set
+		if vol.AccessMode != "" {
+			switch vol.AccessMode {
+			case corev1.ReadWriteOnce, corev1.ReadWriteMany, corev1.ReadOnlyMany, corev1.ReadWriteOncePod:
+				// valid
+			default:
+				allErrs = append(allErrs, field.NotSupported(
+					volPath.Child("accessMode"),
+					vol.AccessMode,
+					[]string{
+						string(corev1.ReadWriteOnce),
+						string(corev1.ReadWriteMany),
+						string(corev1.ReadOnlyMany),
+						string(corev1.ReadWriteOncePod),
+					},
+				))
+			}
+
+			// accessMode is only meaningful when size is set
+			if vol.Size == nil {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("accessMode"),
+					vol.AccessMode,
+					"accessMode is only applicable when size is set (controller-created PVCs)",
+				))
+			}
+		}
+
+		// storageClassName is only meaningful when size is set
+		if vol.StorageClassName != nil && vol.Size == nil {
+			allErrs = append(allErrs, field.Invalid(
+				volPath.Child("storageClassName"),
+				*vol.StorageClassName,
+				"storageClassName is only applicable when size is set (controller-created PVCs)",
+			))
+		}
+
+		// Check duplicate names
+		if namesSeen[vol.Name] {
+			allErrs = append(allErrs, field.Invalid(
+				volPath.Child("name"),
+				vol.Name,
+				"duplicate volume name",
+			))
+		}
+		namesSeen[vol.Name] = true
+
+		// Check duplicate mountPaths
+		if vol.MountPath != "" {
+			if mountPathsSeen[vol.MountPath] {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("mountPath"),
+					vol.MountPath,
+					"duplicate mount path",
+				))
+			}
+			mountPathsSeen[vol.MountPath] = true
+		}
+
+		// Check duplicate claimNames (only if claimName is set)
+		if vol.ClaimName != "" {
+			if claimNamesSeen[vol.ClaimName] {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("claimName"),
+					vol.ClaimName,
+					"duplicate claim name",
+				))
+			}
+			claimNamesSeen[vol.ClaimName] = true
+		}
+
+		// mountPath must be absolute
+		if vol.MountPath != "" && !strings.HasPrefix(vol.MountPath, "/") {
+			allErrs = append(allErrs, field.Invalid(
+				volPath.Child("mountPath"),
+				vol.MountPath,
+				"mountPath must be an absolute path (start with /)",
+			))
+		}
+
+		// custom purpose requires explicit mountPath
+		if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeCustom && vol.MountPath == "" {
+			allErrs = append(allErrs, field.Required(
+				volPath.Child("mountPath"),
+				"mountPath is required when purpose is custom",
+			))
+		}
+
+		// Reject system paths
+		for _, sysPath := range systemPaths {
+			if vol.MountPath == sysPath || strings.HasPrefix(vol.MountPath, sysPath+"/") {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("mountPath"),
+					vol.MountPath,
+					fmt.Sprintf("mountPath must not overlap with system path %s", sysPath),
+				))
+				break
+			}
+		}
+
+		// Count purposes
+		switch vol.Purpose {
+		case kubeairunwayv1alpha1.VolumePurposeModelCache:
+			modelCacheCount++
+		case kubeairunwayv1alpha1.VolumePurposeCompilationCache:
+			compilationCacheCount++
+		}
+	}
+
+	// At most one modelCache volume
+	if modelCacheCount > 1 {
+		allErrs = append(allErrs, field.Invalid(
+			storagePath,
+			modelCacheCount,
+			"at most one volume with purpose=modelCache is allowed",
+		))
+	}
+
+	// At most one compilationCache volume
+	if compilationCacheCount > 1 {
+		allErrs = append(allErrs, field.Invalid(
+			storagePath,
+			compilationCacheCount,
+			"at most one volume with purpose=compilationCache is allowed",
+		))
+	}
+
+	return allErrs
 }
