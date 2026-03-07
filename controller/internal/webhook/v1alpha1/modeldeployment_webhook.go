@@ -516,6 +516,20 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 			))
 		}
 
+		// When size is set, claimName must match the auto-generated pattern <md-name>-<vol-name>.
+		// The mutating webhook defaults claimName when empty, so by validation time it's always populated.
+		// An arbitrary claimName with size could cause the reconciler to delete an unrelated PVC.
+		if vol.Size != nil && vol.ClaimName != "" {
+			expectedClaimName := fmt.Sprintf("%s-%s", obj.Name, vol.Name)
+			if vol.ClaimName != expectedClaimName {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("claimName"),
+					vol.ClaimName,
+					fmt.Sprintf("claimName must not be set when size is set (auto-generated as %q)", expectedClaimName),
+				))
+			}
+		}
+
 		// Validate accessMode if set
 		if vol.AccessMode != "" {
 			switch vol.AccessMode {

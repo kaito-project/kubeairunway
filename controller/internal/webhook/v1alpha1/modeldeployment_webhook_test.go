@@ -503,7 +503,7 @@ var _ = Describe("ModelDeployment Webhook", func() {
 				Volumes: []kubeairunwayv1alpha1.StorageVolume{
 					{
 						Name:             "model-data",
-						ClaimName:        "custom-pvc",
+						ClaimName:        "my-deployment-model-data",
 						MountPath:        "/model-cache",
 						Purpose:          kubeairunwayv1alpha1.VolumePurposeModelCache,
 						Size:             &size,
@@ -514,6 +514,26 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			warnings, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(warnings).To(BeEmpty())
+		})
+
+		It("Should reject claimName that doesn't match auto-generated pattern when size is set", func() {
+			obj.Name = "my-deployment"
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			size := resource.MustParse("100Gi")
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:      "model-data",
+						ClaimName: "arbitrary-pvc",
+						MountPath: "/model-cache",
+						Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:      &size,
+					},
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("claimName must not be set when size is set"))
 		})
 
 		It("Should reject volume without size and without claimName", func() {
@@ -898,6 +918,7 @@ var _ = Describe("ModelDeployment Webhook", func() {
 		It("Should allow adding new managed volume", func() {
 			oldObj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
 			// Old spec has no storage
+			obj.Name = "my-deployment"
 			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
 			size := resource.MustParse("100Gi")
 			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{

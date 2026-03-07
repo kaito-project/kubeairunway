@@ -18,6 +18,7 @@ package dynamo
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
@@ -589,6 +590,10 @@ func TestEnsurePVCsStaleBound(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model-model-cache",
 			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: "kubeairunway.ai/v1alpha1",
@@ -653,6 +658,10 @@ func TestEnsurePVCsStalePending(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model-model-cache",
 			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: "kubeairunway.ai/v1alpha1",
@@ -712,11 +721,15 @@ func TestEnsurePVCsStaleNoOwnerRef(t *testing.T) {
 		},
 	}
 
-	// Pre-create a PVC with no OwnerReferences
+	// Pre-create a PVC with no OwnerReferences but with managed-by labels
 	existingPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model-model-cache",
 			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+			},
 		},
 		Status: corev1.PersistentVolumeClaimStatus{
 			Phase: corev1.ClaimBound,
@@ -738,6 +751,75 @@ func TestEnsurePVCsStaleNoOwnerRef(t *testing.T) {
 	err = c.Get(context.Background(), types.NamespacedName{Name: "my-model-model-cache", Namespace: "default"}, pvc)
 	if err == nil {
 		t.Error("expected stale PVC with no OwnerReferences to be deleted")
+	}
+}
+
+func TestEnsurePVCsRefusesToDeleteUnmanagedPVC(t *testing.T) {
+	scheme := newScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	size := resource.MustParse("100Gi")
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
+				ID: "test-model",
+				Storage: &kubeairunwayv1alpha1.StorageSpec{
+					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						{
+							Name:       "model-cache",
+							Size:       &size,
+							AccessMode: corev1.ReadWriteMany,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Pre-create an unmanaged PVC (no kubeairunway labels, different UID)
+	unmanagedPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model-model-cache",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "something-else",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "apps/v1",
+					Kind:       "StatefulSet",
+					Name:       "other-workload",
+					UID:        "other-uid",
+				},
+			},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimBound,
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(unmanagedPVC).WithStatusSubresource(unmanagedPVC).Build()
+
+	_, err := EnsurePVCs(context.Background(), c, md)
+	if err == nil {
+		t.Fatal("expected error when PVC exists without kubeairunway managed-by label")
+	}
+
+	// Verify the error message is actionable
+	if !strings.Contains(err.Error(), "was not created by kubeairunway") {
+		t.Errorf("expected error to mention 'was not created by kubeairunway', got: %s", err.Error())
+	}
+
+	// Verify the unmanaged PVC was NOT deleted
+	pvc := &corev1.PersistentVolumeClaim{}
+	getErr := c.Get(context.Background(), types.NamespacedName{Name: "my-model-model-cache", Namespace: "default"}, pvc)
+	if getErr != nil {
+		t.Error("expected unmanaged PVC to still exist after refusal")
 	}
 }
 

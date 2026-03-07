@@ -92,6 +92,16 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 		// race window where the old PVC still exists. Delete it and requeue so the
 		// next reconcile creates a fresh PVC.
 		if !isOwnedByMD(existing, md.UID) {
+			// Safety guard: only delete PVCs that were created by kubeairunway.
+			// A PVC without the managed-by label was created by another controller
+			// or manually — deleting it would be destructive and unintended.
+			if existing.Labels[kubeairunwayv1alpha1.LabelManagedBy] != "kubeairunway" {
+				return false, fmt.Errorf(
+					"PVC %s exists but was not created by kubeairunway (missing %s label); "+
+						"refusing to delete — remove the PVC manually or change the volume claimName",
+					claimName, kubeairunwayv1alpha1.LabelManagedBy,
+				)
+			}
 			if err := deleteStalePVC(ctx, c, existing); err != nil {
 				return false, err
 			}
