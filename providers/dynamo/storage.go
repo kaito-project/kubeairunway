@@ -43,6 +43,11 @@ func HasManagedPVCs(md *kubeairunwayv1alpha1.ModelDeployment) bool {
 	return false
 }
 
+// HasStorageVolumes returns true if the ModelDeployment has any storage volumes configured.
+func HasStorageVolumes(md *kubeairunwayv1alpha1.ModelDeployment) bool {
+	return md.Spec.Model.Storage != nil && len(md.Spec.Model.Storage.Volumes) > 0
+}
+
 // EnsurePVCs ensures that all managed PVCs exist and are bound.
 // Returns allReady=true only when ALL managed PVCs are in Bound phase.
 func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment) (bool, error) {
@@ -55,7 +60,32 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 	allReady := true
 	for _, vol := range md.Spec.Model.Storage.Volumes {
 		if vol.Size == nil {
-			continue // pre-existing PVC, not managed by us
+			// Pre-existing PVC: verify it exists and is usable before proceeding
+			claimName := vol.ResolvedClaimName(md.Name)
+			existing := &corev1.PersistentVolumeClaim{}
+			err := c.Get(ctx, types.NamespacedName{Name: claimName, Namespace: md.Namespace}, existing)
+			if errors.IsNotFound(err) {
+				return false, fmt.Errorf(
+					"pre-existing PVC %q not found in namespace %q (referenced by volume %q); "+
+						"ensure the PVC exists before creating the ModelDeployment",
+					claimName, md.Namespace, vol.Name,
+				)
+			}
+			if err != nil {
+				return false, fmt.Errorf("failed to get pre-existing PVC %s: %w", claimName, err)
+			}
+			switch existing.Status.Phase {
+			case corev1.ClaimBound:
+				logger.V(1).Info("Pre-existing PVC is Bound", "name", claimName)
+			case corev1.ClaimPending:
+				logger.Info("Pre-existing PVC is Pending", "name", claimName)
+				allReady = false
+			case corev1.ClaimLost:
+				return false, fmt.Errorf("pre-existing PVC %q is in Lost phase", claimName)
+			default:
+				allReady = false
+			}
+			continue
 		}
 
 		claimName := vol.ResolvedClaimName(md.Name)

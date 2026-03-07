@@ -140,7 +140,7 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with Dynamo")
 
 	// --- Phase 1: Ensure PVCs ---
-	if HasManagedPVCs(&md) {
+	if HasStorageVolumes(&md) {
 		allReady, err := EnsurePVCs(ctx, r.Client, &md)
 		if err != nil {
 			logger.Error(err, "Failed to ensure PVCs", "name", md.Name)

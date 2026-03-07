@@ -823,3 +823,188 @@ func TestEnsurePVCsRefusesToDeleteUnmanagedPVC(t *testing.T) {
 	}
 }
 
+func TestEnsurePVCsPreExistingBound(t *testing.T) {
+	scheme := newScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
+				ID: "test-model",
+				Storage: &kubeairunwayv1alpha1.StorageSpec{
+					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						{
+							Name:      "model-cache",
+							ClaimName: "existing-pvc",
+							// Size is nil — pre-existing PVC
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Pre-create the PVC in Bound phase
+	existingPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "existing-pvc",
+			Namespace: "default",
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimBound,
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingPVC).WithStatusSubresource(existingPVC).Build()
+
+	allReady, err := EnsurePVCs(context.Background(), c, md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allReady {
+		t.Error("expected allReady=true for Bound pre-existing PVC")
+	}
+}
+
+func TestEnsurePVCsPreExistingPending(t *testing.T) {
+	scheme := newScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
+				ID: "test-model",
+				Storage: &kubeairunwayv1alpha1.StorageSpec{
+					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						{
+							Name:      "model-cache",
+							ClaimName: "existing-pvc",
+							// Size is nil — pre-existing PVC
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Pre-create the PVC in Pending phase
+	existingPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "existing-pvc",
+			Namespace: "default",
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimPending,
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingPVC).WithStatusSubresource(existingPVC).Build()
+
+	allReady, err := EnsurePVCs(context.Background(), c, md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allReady {
+		t.Error("expected allReady=false for Pending pre-existing PVC")
+	}
+}
+
+func TestEnsurePVCsPreExistingNotFound(t *testing.T) {
+	scheme := newScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
+				ID: "test-model",
+				Storage: &kubeairunwayv1alpha1.StorageSpec{
+					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						{
+							Name:      "model-cache",
+							ClaimName: "nonexistent-pvc",
+							// Size is nil — pre-existing PVC
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// No PVC created — simulate a typo or missing PVC
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	_, err := EnsurePVCs(context.Background(), c, md)
+	if err == nil {
+		t.Fatal("expected error when pre-existing PVC does not exist")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected error to contain 'not found', got: %s", err.Error())
+	}
+	if !strings.Contains(err.Error(), "model-cache") {
+		t.Errorf("expected error to mention volume name 'model-cache', got: %s", err.Error())
+	}
+}
+
+func TestEnsurePVCsPreExistingLost(t *testing.T) {
+	scheme := newScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("test-uid"),
+		},
+		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
+			Model: kubeairunwayv1alpha1.ModelSpec{
+				ID: "test-model",
+				Storage: &kubeairunwayv1alpha1.StorageSpec{
+					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						{
+							Name:      "model-cache",
+							ClaimName: "lost-pvc",
+							// Size is nil — pre-existing PVC
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Pre-create the PVC in Lost phase
+	existingPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "lost-pvc",
+			Namespace: "default",
+		},
+		Status: corev1.PersistentVolumeClaimStatus{
+			Phase: corev1.ClaimLost,
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingPVC).WithStatusSubresource(existingPVC).Build()
+
+	_, err := EnsurePVCs(context.Background(), c, md)
+	if err == nil {
+		t.Fatal("expected error when pre-existing PVC is in Lost phase")
+	}
+	if !strings.Contains(err.Error(), "Lost phase") {
+		t.Errorf("expected error to contain 'Lost phase', got: %s", err.Error())
+	}
+}
+
