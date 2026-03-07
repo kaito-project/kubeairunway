@@ -22,11 +22,11 @@
   },
   "dependencies": {
     "@hono/zod-validator": "^0.7.5",
-    "@kubernetes/client-node": "^0.21.0",
+    "@kubernetes/client-node": "^1.4.0",
     "hono": "^4.10.7",
     "js-yaml": "^4.1.1",
     "pino": "^10.1.0",
-    "zod": "^3.22.4",
+    "zod": "^4.3.6",
     "@kubeairunway/shared": "workspace:*"
   },
   "devDependencies": {
