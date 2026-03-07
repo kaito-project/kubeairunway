@@ -176,6 +176,8 @@ func deleteStalePVC(ctx context.Context, c client.Client, pvc *corev1.Persistent
 }
 
 // DeleteManagedPVCs deletes all PVCs managed by the given ModelDeployment.
+// Only PVCs whose OwnerReference UID matches the ModelDeployment's UID are deleted,
+// preventing accidental deletion of PVCs adopted by a recreated ModelDeployment.
 func DeleteManagedPVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
@@ -192,6 +194,10 @@ func DeleteManagedPVCs(ctx context.Context, c client.Client, md *kubeairunwayv1a
 
 	for i := range pvcList.Items {
 		pvc := &pvcList.Items[i]
+		if !isOwnedByMD(pvc, md.UID) {
+			logger.Info("Skipping PVC not owned by this ModelDeployment", "name", pvc.Name, "mdUID", md.UID)
+			continue
+		}
 		logger.Info("Deleting managed PVC", "name", pvc.Name)
 		if err := c.Delete(ctx, pvc); err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete PVC %s: %w", pvc.Name, err)

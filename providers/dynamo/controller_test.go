@@ -848,7 +848,7 @@ func TestReconcileDeletionCleansUpResources(t *testing.T) {
 	now := metav1.Now()
 	md.DeletionTimestamp = &now
 
-	// Create managed PVC
+	// Create managed PVC with OwnerReference matching the ModelDeployment UID
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-model-cache",
@@ -857,10 +857,18 @@ func TestReconcileDeletionCleansUpResources(t *testing.T) {
 				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 				kubeairunwayv1alpha1.LabelModelDeployment: "test",
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
 		},
 	}
 
-	// Create managed Job
+	// Create managed Job with OwnerReference matching the ModelDeployment UID
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-model-download",
@@ -868,6 +876,14 @@ func TestReconcileDeletionCleansUpResources(t *testing.T) {
 			Labels: map[string]string{
 				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
 			},
 		},
 	}
@@ -912,6 +928,14 @@ func TestReconcileDeletionRetriesOnCleanupFailure(t *testing.T) {
 			Labels: map[string]string{
 				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
 			},
 		},
 	}
@@ -973,7 +997,7 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 
-	// Create managed PVC
+	// Create managed PVC with OwnerReference matching the ModelDeployment UID
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-model-cache",
@@ -982,10 +1006,18 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 				kubeairunwayv1alpha1.LabelModelDeployment: "test",
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
+			},
 		},
 	}
 
-	// Create managed Job
+	// Create managed Job with OwnerReference matching the ModelDeployment UID
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-model-download",
@@ -993,6 +1025,14 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 			Labels: map[string]string{
 				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "test",
+					UID:        "test-uid",
+				},
 			},
 		},
 	}

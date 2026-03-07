@@ -273,6 +273,8 @@ func downloadJobName(mdName string) string {
 }
 
 // DeleteManagedJobs deletes all Jobs managed by the given ModelDeployment.
+// Only Jobs whose OwnerReference UID matches the ModelDeployment's UID are deleted,
+// preventing accidental deletion of Jobs adopted by a recreated ModelDeployment.
 func DeleteManagedJobs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
@@ -290,6 +292,10 @@ func DeleteManagedJobs(ctx context.Context, c client.Client, md *kubeairunwayv1a
 	propagation := metav1.DeletePropagationBackground
 	for i := range jobList.Items {
 		job := &jobList.Items[i]
+		if !isOwnedByMD(job, md.UID) {
+			logger.Info("Skipping Job not owned by this ModelDeployment", "name", job.Name, "mdUID", md.UID)
+			continue
+		}
 		logger.Info("Deleting managed Job", "name", job.Name)
 		if err := c.Delete(ctx, job, &client.DeleteOptions{
 			PropagationPolicy: &propagation,

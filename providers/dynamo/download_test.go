@@ -421,10 +421,11 @@ func TestDeleteManagedJobs(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
+			UID:       types.UID("test-uid"),
 		},
 	}
 
-	// Create a managed Job
+	// Create a managed Job with matching OwnerReference
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model-model-download",
@@ -432,6 +433,14 @@ func TestDeleteManagedJobs(t *testing.T) {
 			Labels: map[string]string{
 				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "my-model",
+					UID:        "test-uid",
+				},
 			},
 		},
 	}
@@ -465,6 +474,53 @@ func TestDeleteManagedJobs(t *testing.T) {
 	err = c.Get(context.Background(), types.NamespacedName{Name: "other-model-download", Namespace: "default"}, got)
 	if err != nil {
 		t.Error("expected unrelated Job to still exist")
+	}
+}
+
+func TestDeleteManagedJobsSkipsNonOwned(t *testing.T) {
+	scheme := newScheme()
+	_ = batchv1.AddToScheme(scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("new-uid"),
+		},
+	}
+
+	// Create a Job with correct labels but OwnerReference pointing to a different UID
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model-model-download",
+			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "my-model",
+					UID:        "old-uid",
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(job).Build()
+
+	err := DeleteManagedJobs(context.Background(), c, md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify Job was NOT deleted (UID mismatch)
+	got := &batchv1.Job{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "my-model-model-download", Namespace: "default"}, got)
+	if err != nil {
+		t.Error("expected Job with mismatched UID to NOT be deleted")
 	}
 }
 

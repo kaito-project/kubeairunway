@@ -378,10 +378,11 @@ func TestDeleteManagedPVCs(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
+			UID:       types.UID("test-uid"),
 		},
 	}
 
-	// Create PVCs with matching labels
+	// Create PVCs with matching labels and OwnerReference
 	pvc1 := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model-cache",
@@ -389,6 +390,14 @@ func TestDeleteManagedPVCs(t *testing.T) {
 			Labels: map[string]string{
 				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
 				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "my-model",
+					UID:        "test-uid",
+				},
 			},
 		},
 	}
@@ -422,6 +431,53 @@ func TestDeleteManagedPVCs(t *testing.T) {
 	err = c.Get(context.Background(), types.NamespacedName{Name: "unrelated-pvc", Namespace: "default"}, pvc)
 	if err != nil {
 		t.Error("expected unrelated PVC to still exist")
+	}
+}
+
+func TestDeleteManagedPVCsSkipsNonOwned(t *testing.T) {
+	scheme := newScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	md := &kubeairunwayv1alpha1.ModelDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model",
+			Namespace: "default",
+			UID:       types.UID("new-uid"),
+		},
+	}
+
+	// Create a PVC with correct labels but OwnerReference pointing to a different UID
+	pvc1 := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model-cache",
+			Namespace: "default",
+			Labels: map[string]string{
+				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
+				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					Kind:       "ModelDeployment",
+					Name:       "my-model",
+					UID:        "old-uid",
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pvc1).Build()
+
+	err := DeleteManagedPVCs(context.Background(), c, md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify PVC was NOT deleted (UID mismatch)
+	pvc := &corev1.PersistentVolumeClaim{}
+	err = c.Get(context.Background(), types.NamespacedName{Name: "my-model-cache", Namespace: "default"}, pvc)
+	if err != nil {
+		t.Error("expected PVC with mismatched UID to NOT be deleted")
 	}
 }
 
