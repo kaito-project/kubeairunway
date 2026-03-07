@@ -65,24 +65,34 @@ func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) 
 		Phase:        kubeairunwayv1alpha1.DeploymentPhasePending,
 	}
 
-	conditions, found, err := unstructured.NestedSlice(upstream.Object, "status", "conditions")
+	// Try status.state first (KAITO 0.9.0+)
+	state, stateFound, _ := unstructured.NestedString(upstream.Object, "status", "state")
+
+	// Always parse conditions when present (needed for replicas regardless of phase source)
+	var condMap map[string]conditionInfo
+	conditions, condFound, err := unstructured.NestedSlice(upstream.Object, "status", "conditions")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get status conditions: %w", err)
 	}
-	if !found || len(conditions) == 0 {
+	if condFound && len(conditions) > 0 {
+		condMap = t.parseConditions(conditions)
+	}
+
+	// Determine phase: prefer state field, fall back to conditions
+	if stateFound && state != "" {
+		result.Phase, result.Message = t.mapStateToPhase(state)
+	} else if condMap != nil {
+		result.Phase, result.Message = t.mapConditionsToPhase(condMap)
+	} else {
+		// No state and no conditions — stay at default Pending
 		return result, nil
 	}
 
-	// Parse conditions into a map for easy lookup
-	condMap := t.parseConditions(conditions)
-
-	// Determine phase from conditions
-	result.Phase, result.Message = t.mapConditionsToPhase(condMap)
-
-	// Extract replica information
+	// Always extract replicas and endpoint (independent of phase source)
+	if condMap == nil {
+		condMap = make(map[string]conditionInfo)
+	}
 	result.Replicas = t.extractReplicas(upstream, condMap)
-
-	// Extract endpoint information
 	result.Endpoint = t.extractEndpoint(upstream)
 
 	return result, nil
@@ -137,6 +147,26 @@ func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo
 	}
 
 	return kubeairunwayv1alpha1.DeploymentPhasePending, ""
+}
+
+// mapStateToPhase maps the KAITO 0.9.0+ status.state field to a ModelDeployment phase
+func (t *StatusTranslator) mapStateToPhase(state string) (kubeairunwayv1alpha1.DeploymentPhase, string) {
+	switch state {
+	case "Ready":
+		return kubeairunwayv1alpha1.DeploymentPhaseRunning, ""
+	case "Succeeded":
+		return kubeairunwayv1alpha1.DeploymentPhaseRunning, ""
+	case "NotReady":
+		return kubeairunwayv1alpha1.DeploymentPhaseDeploying, ""
+	case "Running":
+		return kubeairunwayv1alpha1.DeploymentPhaseDeploying, "fine-tuning in progress"
+	case "Failed":
+		return kubeairunwayv1alpha1.DeploymentPhaseFailed, ""
+	case "Pending":
+		return kubeairunwayv1alpha1.DeploymentPhasePending, ""
+	default:
+		return kubeairunwayv1alpha1.DeploymentPhasePending, fmt.Sprintf("unknown state: %s", state)
+	}
 }
 
 // extractReplicas extracts replica information from the Workspace spec and conditions
