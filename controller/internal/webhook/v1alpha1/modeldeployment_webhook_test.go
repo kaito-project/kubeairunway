@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -1065,6 +1067,87 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
 			// Storage is nil
 			warnings, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
+
+		It("Should reject managed volume when derived PVC claim name exceeds 253 chars", func() {
+			// 240-char MD name + 1 dash + 20-char volume name = 261 > 253
+			obj.Name = strings.Repeat("a", 240)
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			size := resource.MustParse("100Gi")
+			volName := strings.Repeat("v", 20)
+			claimName := obj.Name + "-" + volName
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:      volName,
+						ClaimName: claimName,
+						MountPath: "/model-cache",
+						Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:      &size,
+					},
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("253-character"))
+		})
+
+		It("Should admit managed volume when derived PVC claim name is within limit", func() {
+			// 200-char MD name + 1 dash + 5-char volume name = 206 <= 253
+			obj.Name = strings.Repeat("a", 200)
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			size := resource.MustParse("100Gi")
+			volName := "cache"
+			claimName := obj.Name + "-" + volName
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:      volName,
+						ClaimName: claimName,
+						MountPath: "/model-cache",
+						Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:      &size,
+					},
+				},
+			}
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
+
+		It("Should reject when download job name exceeds 253 chars", func() {
+			// 250-char MD name + "-model-download" (15 chars) = 265 > 253
+			obj.Name = strings.Repeat("a", 250)
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			size := resource.MustParse("100Gi")
+			volName := "mc"
+			claimName := obj.Name + "-" + volName
+			obj.Spec.Model.Storage = &kubeairunwayv1alpha1.StorageSpec{
+				Volumes: []kubeairunwayv1alpha1.StorageVolume{
+					{
+						Name:      volName,
+						ClaimName: claimName,
+						MountPath: "/model-cache",
+						Purpose:   kubeairunwayv1alpha1.VolumePurposeModelCache,
+						Size:      &size,
+					},
+				},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("download Job name"))
+			Expect(err.Error()).To(ContainSubstring("253-character"))
+		})
+
+		It("Should not validate download job name when no managed modelCache volume exists", func() {
+			// 250-char MD name would trigger download job name validation
+			// but only if a managed modelCache volume exists
+			obj.Name = strings.Repeat("a", 250)
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			// No storage at all
+			warnings, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(warnings).To(BeEmpty())
 		})

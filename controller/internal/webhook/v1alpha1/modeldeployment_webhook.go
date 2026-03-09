@@ -495,6 +495,7 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 	claimNamesSeen := map[string]bool{}
 	modelCacheCount := 0
 	compilationCacheCount := 0
+	hasManagedModelCache := false
 
 	for i, vol := range storage.Volumes {
 		volPath := storagePath.Index(i)
@@ -526,6 +527,21 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 					volPath.Child("claimName"),
 					vol.ClaimName,
 					fmt.Sprintf("claimName must not be set when size is set (auto-generated as %q)", expectedClaimName),
+				))
+			}
+		}
+
+		// Validate that the auto-generated claim name does not exceed the
+		// Kubernetes DNS subdomain limit (253 chars).
+		if vol.Size != nil {
+			claimName := vol.ResolvedClaimName(obj.Name)
+			if len(claimName) > 253 {
+				allErrs = append(allErrs, field.Invalid(
+					volPath.Child("name"),
+					vol.Name,
+					fmt.Sprintf(
+						"auto-generated PVC claim name %q exceeds the 253-character Kubernetes name limit (got %d characters); use a shorter ModelDeployment or volume name",
+						claimName, len(claimName)),
 				))
 			}
 		}
@@ -634,6 +650,9 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 		switch vol.Purpose {
 		case kubeairunwayv1alpha1.VolumePurposeModelCache:
 			modelCacheCount++
+			if vol.Size != nil && !vol.ReadOnly {
+				hasManagedModelCache = true
+			}
 		case kubeairunwayv1alpha1.VolumePurposeCompilationCache:
 			compilationCacheCount++
 		}
@@ -654,6 +673,20 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 			storagePath,
 			compilationCacheCount,
 			"at most one volume with purpose=compilationCache is allowed",
+		))
+	}
+
+	// Validate that the auto-generated download job name fits within
+	// the 253-character Kubernetes name limit.
+	// The download job name is <md-name>-model-download (15-char suffix).
+	downloadJobName := obj.Name + "-model-download"
+	if hasManagedModelCache && len(downloadJobName) > 253 {
+		allErrs = append(allErrs, field.Invalid(
+			field.NewPath("metadata", "name"),
+			obj.Name,
+			fmt.Sprintf(
+				"auto-generated download Job name %q exceeds the 253-character Kubernetes name limit (got %d characters); use a shorter ModelDeployment name",
+				downloadJobName, len(downloadJobName)),
 		))
 	}
 
