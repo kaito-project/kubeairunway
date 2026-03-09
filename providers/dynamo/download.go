@@ -153,9 +153,25 @@ func EnsureDownloadJob(ctx context.Context, c client.Client, md *kubeairunwayv1a
 		return false, nil // requeue → next reconcile creates fresh Job
 	}
 
-	// Job exists, check status
+	// Job exists — check conditions (authoritative) then counters (fallback).
+	for _, cond := range existing.Status.Conditions {
+		if cond.Status != corev1.ConditionTrue {
+			continue
+		}
+		switch cond.Type {
+		case batchv1.JobComplete:
+			logger.Info("Model download Job completed", "name", jobName)
+			return true, nil
+		case batchv1.JobFailed:
+			return false, fmt.Errorf("model download Job %s failed permanently: %s",
+				jobName, cond.Message)
+		}
+	}
+
+	// Fallback: counter-based detection for older clusters or edge cases
+	// where conditions haven't been set yet.
 	if existing.Status.Succeeded >= 1 {
-		logger.Info("Model download Job completed", "name", jobName)
+		logger.Info("Model download Job completed (counter)", "name", jobName)
 		return true, nil
 	}
 
@@ -163,7 +179,7 @@ func EnsureDownloadJob(ctx context.Context, c client.Client, md *kubeairunwayv1a
 	if existing.Spec.BackoffLimit != nil {
 		backoffLimit = *existing.Spec.BackoffLimit
 	}
-	if existing.Status.Failed > backoffLimit {
+	if existing.Status.Failed >= backoffLimit {
 		return false, fmt.Errorf("model download Job %s failed permanently (failed=%d, backoffLimit=%d)",
 			jobName, existing.Status.Failed, backoffLimit)
 	}

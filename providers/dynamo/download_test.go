@@ -321,6 +321,13 @@ func TestEnsureDownloadJobCompleted(t *testing.T) {
 		},
 		Status: batchv1.JobStatus{
 			Succeeded: 1,
+			Conditions: []batchv1.JobCondition{
+				{
+					Type:    batchv1.JobComplete,
+					Status:  corev1.ConditionTrue,
+					Message: "Job completed successfully",
+				},
+			},
 		},
 	}
 
@@ -402,6 +409,13 @@ func TestEnsureDownloadJobFailed(t *testing.T) {
 		},
 		Status: batchv1.JobStatus{
 			Failed: 4, // exceeds backoffLimit of 3
+			Conditions: []batchv1.JobCondition{
+				{
+					Type:    batchv1.JobFailed,
+					Status:  corev1.ConditionTrue,
+					Message: "Job has reached the specified backoff limit",
+				},
+			},
 		},
 	}
 
@@ -410,6 +424,98 @@ func TestEnsureDownloadJobFailed(t *testing.T) {
 	_, err := EnsureDownloadJob(context.Background(), c, md, DefaultDownloadJobImage)
 	if err == nil {
 		t.Fatal("expected error for permanently failed Job")
+	}
+	if !strings.Contains(err.Error(), "failed permanently") {
+		t.Errorf("expected permanent failure error, got: %v", err)
+	}
+}
+
+func TestEnsureDownloadJobFailedByConditionOnly(t *testing.T) {
+	scheme := newScheme()
+	_ = batchv1.AddToScheme(scheme)
+
+	md := newDownloadMD("my-model", "default")
+
+	// Job failed via activeDeadlineSeconds: JobFailed condition is set,
+	// but Failed count is below the backoff limit.
+	backoffLimit := int32(3)
+	existingJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model-model-download",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "kubeairunway.ai/v1alpha1",
+					Kind:       "ModelDeployment",
+					Name:       "my-model",
+					UID:        "test-uid",
+				},
+			},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: &backoffLimit,
+		},
+		Status: batchv1.JobStatus{
+			Failed: 1, // below backoffLimit
+			Conditions: []batchv1.JobCondition{
+				{
+					Type:    batchv1.JobFailed,
+					Status:  corev1.ConditionTrue,
+					Message: "Job was active longer than specified deadline",
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingJob).WithStatusSubresource(existingJob).Build()
+
+	_, err := EnsureDownloadJob(context.Background(), c, md, DefaultDownloadJobImage)
+	if err == nil {
+		t.Fatal("expected error for Job failed by condition (activeDeadlineSeconds)")
+	}
+	if !strings.Contains(err.Error(), "failed permanently") {
+		t.Errorf("expected permanent failure error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "active longer than specified deadline") {
+		t.Errorf("expected condition message in error, got: %v", err)
+	}
+}
+
+func TestEnsureDownloadJobFailedAtBackoffLimit(t *testing.T) {
+	scheme := newScheme()
+	_ = batchv1.AddToScheme(scheme)
+
+	md := newDownloadMD("my-model", "default")
+
+	// Job with Failed == BackoffLimit but no condition set yet.
+	// The >= fallback should catch this.
+	backoffLimit := int32(3)
+	existingJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-model-model-download",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "kubeairunway.ai/v1alpha1",
+					Kind:       "ModelDeployment",
+					Name:       "my-model",
+					UID:        "test-uid",
+				},
+			},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: &backoffLimit,
+		},
+		Status: batchv1.JobStatus{
+			Failed: 3, // exactly at backoffLimit, no conditions
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingJob).WithStatusSubresource(existingJob).Build()
+
+	_, err := EnsureDownloadJob(context.Background(), c, md, DefaultDownloadJobImage)
+	if err == nil {
+		t.Fatal("expected error when Failed == BackoffLimit (fallback detection)")
 	}
 	if !strings.Contains(err.Error(), "failed permanently") {
 		t.Errorf("expected permanent failure error, got: %v", err)
