@@ -12,37 +12,37 @@ interface DeploymentStatusBadgeProps {
 }
 
 const statusConfig: Record<DeploymentStatus['phase'], {
-  variant: 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info'
+  className: string
   icon: typeof Clock
   pulse: boolean
   label: string
 }> = {
   Pending: {
-    variant: 'warning',
+    className: 'bg-amber-400/10 text-amber-400',
     icon: Clock,
     pulse: true,
     label: 'Pending',
   },
   Deploying: {
-    variant: 'info',
+    className: 'bg-blue-500/10 text-blue-500',
     icon: Loader2,
     pulse: true,
     label: 'Deploying',
   },
   Running: {
-    variant: 'success',
+    className: 'bg-green-500/10 text-green-500',
     icon: CheckCircle2,
     pulse: false,
     label: 'Running',
   },
   Failed: {
-    variant: 'destructive',
+    className: 'bg-red-400/10 text-red-400',
     icon: XCircle,
     pulse: false,
     label: 'Failed',
   },
   Terminating: {
-    variant: 'secondary',
+    className: 'bg-slate-400/10 text-slate-400',
     icon: Power,
     pulse: true,
     label: 'Terminating',
@@ -59,10 +59,11 @@ export function DeploymentStatusBadge({
 
   return (
     <Badge 
-      variant={config.variant} 
+      variant="outline"
       pulse={config.pulse}
       className={cn(
-        'gap-1.5',
+        'gap-1.5 border-0',
+        config.className,
         compact && 'px-1.5'
       )}
     >

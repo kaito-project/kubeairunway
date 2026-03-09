@@ -1,7 +1,7 @@
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useDeployment, useDeleteDeployment } from '@/hooks/useDeployments'
 import { useToast } from '@/hooks/useToast'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DeploymentStatusBadge } from '@/components/deployments/DeploymentStatusBadge'
@@ -24,10 +24,10 @@ import { ManifestViewer } from '@/components/deployments/ManifestViewer'
 
 function getProviderBadgeClass(provider: string): string {
   switch (provider) {
-    case 'kuberay': return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-    case 'kaito':   return 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
-    case 'llmd':    return 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
-    default:        return 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+    case 'kuberay': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+    case 'kaito':   return 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+    case 'llmd':    return 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
+    default:        return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
   }
 }
 
@@ -152,7 +152,7 @@ export function DeploymentDetailsPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{deployment.name}</h1>
+            <h1 className="text-3xl font-heading">{deployment.name}</h1>
             <p className="text-muted-foreground">
               Created {formatRelativeTime(deployment.createdAt)}
             </p>
@@ -166,50 +166,44 @@ export function DeploymentDetailsPage() {
       </div>
 
       {/* Status Overview */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-5">
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Phase</p>
-              <DeploymentStatusBadge phase={deployment.phase} />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Runtime</p>
-              <Badge
-                variant="secondary"
-                className={getProviderBadgeClass(deployment.provider)}
-              >
-                {getProviderDisplayName(deployment.provider)}
-              </Badge>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Replicas</p>
-              <p className="font-medium">
-                {deployment.replicas.ready}/{deployment.replicas.desired} Ready
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Engine</p>
-              <Badge variant="outline">{deployment.engine?.toUpperCase() ?? 'Pending'}</Badge>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground mb-1">Mode</p>
-              <p className="font-medium capitalize">{deployment.mode}</p>
-            </div>
+      <div className="glass-panel">
+        <h2 className="text-lg font-heading mb-4">Status</h2>
+        <div className="grid gap-4 sm:grid-cols-5">
+          <div>
+            <p className="text-label text-slate-500 mb-1">Phase</p>
+            <DeploymentStatusBadge phase={deployment.phase} />
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <p className="text-label text-slate-500 mb-1">Runtime</p>
+            <Badge
+              variant="secondary"
+              className={getProviderBadgeClass(deployment.provider)}
+            >
+              {getProviderDisplayName(deployment.provider)}
+            </Badge>
+          </div>
+          <div>
+            <p className="text-label text-slate-500 mb-1">Replicas</p>
+            <p className="font-medium">
+              {deployment.replicas.ready}/{deployment.replicas.desired} Ready
+            </p>
+          </div>
+          <div>
+            <p className="text-label text-slate-500 mb-1">Engine</p>
+            <Badge variant="outline">{deployment.engine?.toUpperCase() ?? 'Pending'}</Badge>
+          </div>
+          <div>
+            <p className="text-label text-slate-500 mb-1">Mode</p>
+            <p className="font-medium capitalize">{deployment.mode}</p>
+          </div>
+        </div>
+      </div>
 
       {/* Model Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Model</CardTitle>
-          <CardDescription>{deployment.modelId}</CardDescription>
-        </CardHeader>
-      </Card>
+      <div className="glass-panel">
+        <h2 className="text-lg font-heading">Model</h2>
+        <p className="text-sm text-muted-foreground mt-1">{deployment.modelId}</p>
+      </div>
 
       {/* Pending Explanation - shown when deployment is Pending */}
       {deployment.phase === 'Pending' && (
@@ -221,17 +215,15 @@ export function DeploymentDetailsPage() {
       )}
 
       {/* Access Model */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Terminal className="h-5 w-5" />
-            <CardTitle>Access Model</CardTitle>
-          </div>
-          <CardDescription>
-            {hasGateway ? 'Access the deployed model through the gateway endpoint' : 'Run this command to access the deployed model locally'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="glass-panel">
+        <div className="flex items-center gap-2 mb-1">
+          <Terminal className="h-5 w-5" />
+          <h2 className="text-lg font-heading">Access Model</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          {hasGateway ? 'Access the deployed model through the gateway endpoint' : 'Run this command to access the deployed model locally'}
+        </p>
+        <div className="space-y-4">
           {hasGateway && gatewayBaseUrl ? (
             <>
               {/* Gateway Endpoint - Primary */}
@@ -241,7 +233,7 @@ export function DeploymentDetailsPage() {
                   Gateway Endpoint
                 </div>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 rounded-lg bg-muted p-3 text-sm font-mono overflow-x-auto">
+                  <code className="flex-1 rounded-xl bg-[#0A0A0A] p-3 text-sm font-mono-code overflow-x-auto">
                     {gatewayBaseUrl}
                   </code>
                   <Button variant="outline" size="icon" onClick={() => {
@@ -257,7 +249,7 @@ export function DeploymentDetailsPage() {
               <div className="space-y-2">
                 <span className="text-sm font-medium">Example Request</span>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 rounded-lg bg-muted p-3 text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+                  <code className="flex-1 rounded-xl bg-[#0A0A0A] p-3 text-xs font-mono-code overflow-x-auto whitespace-pre-wrap">
                     {`curl ${gatewayBaseUrl}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${gatewayModelName}", "messages": [{"role": "user", "content": "Hello"}]}'`}
                   </code>
                   <Button variant="outline" size="icon" onClick={() => {
@@ -291,7 +283,7 @@ export function DeploymentDetailsPage() {
                 </summary>
                 <div className="mt-2 space-y-2">
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 rounded-lg bg-muted p-3 text-sm font-mono overflow-x-auto">
+                    <code className="flex-1 rounded-xl bg-[#0A0A0A] p-3 text-sm font-mono-code overflow-x-auto">
                       {portForwardCommand}
                     </code>
                     <Button variant="outline" size="icon" onClick={copyPortForwardCommand}>
@@ -307,7 +299,7 @@ export function DeploymentDetailsPage() {
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-lg bg-muted p-3 text-sm font-mono overflow-x-auto">
+                <code className="flex-1 rounded-xl bg-[#0A0A0A] p-3 text-sm font-mono-code overflow-x-auto">
                   {portForwardCommand}
                 </code>
                 <Button variant="outline" size="icon" onClick={copyPortForwardCommand}>
@@ -334,8 +326,8 @@ export function DeploymentDetailsPage() {
               </div>
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Metrics */}
       <MetricsTab

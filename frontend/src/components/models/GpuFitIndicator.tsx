@@ -1,5 +1,4 @@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, AlertTriangle, XCircle, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type GpuFitStatus = 'fits' | 'warning' | 'exceeds' | 'unknown';
@@ -62,9 +61,16 @@ function getTooltipMessage(
   }
 }
 
+const gradientMap: Record<GpuFitStatus, string> = {
+  fits: 'from-cyan-400 to-green-400',
+  warning: 'from-cyan-400 to-amber-400',
+  exceeds: 'from-cyan-400 to-red-400',
+  unknown: 'from-slate-600 to-slate-500',
+};
+
 /**
- * GPU Fit Indicator component
- * Shows icon with tooltip indicating whether model fits cluster GPU capacity
+ * GPU Fit Indicator component — bar-based
+ * Shows a gradient progress bar indicating whether model fits cluster GPU capacity
  */
 export function GpuFitIndicator({ 
   estimatedGpuMemoryGb, 
@@ -73,28 +79,42 @@ export function GpuFitIndicator({
 }: GpuFitIndicatorProps) {
   const status = getGpuFitStatus(estimatedGpuMemoryGb, clusterCapacityGb);
   const message = getTooltipMessage(status, estimatedGpuMemoryGb, clusterCapacityGb);
-  
-  const Icon = {
-    fits: CheckCircle2,
-    warning: AlertTriangle,
-    exceeds: XCircle,
-    unknown: HelpCircle,
-  }[status];
-  
-  const colorClass = {
-    fits: 'text-green-500',
-    warning: 'text-yellow-500',
-    exceeds: 'text-red-500',
-    unknown: 'text-muted-foreground',
-  }[status];
+
+  // Calculate fill percentage (cap at 100%)
+  const fillPercent =
+    estimatedGpuMemoryGb !== undefined && clusterCapacityGb !== undefined && clusterCapacityGb > 0
+      ? Math.min((estimatedGpuMemoryGb / clusterCapacityGb) * 100, 100)
+      : 0;
+
+  const label =
+    estimatedGpuMemoryGb !== undefined && clusterCapacityGb !== undefined
+      ? `${estimatedGpuMemoryGb.toFixed(1)} GB / ${clusterCapacityGb} GB`
+      : estimatedGpuMemoryGb !== undefined
+        ? `~${estimatedGpuMemoryGb.toFixed(1)} GB`
+        : undefined;
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className={cn('inline-flex', className)}>
-            <Icon className={cn('h-4 w-4', colorClass)} />
-          </span>
+          <div className={cn('w-full', className)}>
+            {label && (
+              <div className="flex justify-end mb-1">
+                <span className="text-xs text-slate-400">{label}</span>
+              </div>
+            )}
+            <div className="w-full h-1.5 rounded-full bg-white/5">
+              {fillPercent > 0 && (
+                <div
+                  className={cn(
+                    'h-full rounded-full bg-gradient-to-r transition-all duration-300',
+                    gradientMap[status]
+                  )}
+                  style={{ width: `${fillPercent}%` }}
+                />
+              )}
+            </div>
+          </div>
         </TooltipTrigger>
         <TooltipContent>
           <p className="max-w-xs">{message}</p>

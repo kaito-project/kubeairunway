@@ -1,4 +1,3 @@
-import { Card, CardContent } from '@/components/ui/card'
 import { AlertCircle, Cloud, Loader2, Server } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,33 +14,33 @@ interface MetricsUnavailableProps {
 export function MetricsUnavailable({ error, isLoading, runningOffCluster, className }: MetricsUnavailableProps) {
   if (isLoading) {
     return (
-      <Card className={cn("", className)}>
-        <CardContent className="flex flex-col items-center justify-center py-12">
+      <div className={cn("glass-panel", className)}>
+        <div className="flex flex-col items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
           <p className="text-sm text-muted-foreground">
             Loading metrics...
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   // Check if running off-cluster first (explicit flag from backend)
   if (runningOffCluster) {
     return (
-      <Card className={cn("", className)}>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+      <div className={cn("glass-panel", className)}>
+        <div className="flex flex-col items-center justify-center py-12 text-center">
           <Server className="h-8 w-8 text-blue-500 mb-4" />
           <h3 className="font-semibold mb-1">Running in Local Mode</h3>
           <p className="text-sm text-muted-foreground max-w-md">
             KubeAIRunway is running in local mode.
           </p>
-          <p className="text-xs text-muted-foreground mt-4 max-w-md bg-muted p-3 rounded-md">
+          <p className="text-xs text-muted-foreground mt-4 max-w-md bg-[#0A0A0A] p-3 rounded-xl">
             💡 <strong>To enable metrics:</strong> Deploy KubeAIRunway in production to enable metrics. 
             Metrics are available when running in production mode.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
@@ -70,19 +69,19 @@ export function MetricsUnavailable({ error, isLoading, runningOffCluster, classN
   }
 
   return (
-    <Card className={cn("", className)}>
-      <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+    <div className={cn("glass-panel", className)}>
+      <div className="flex flex-col items-center justify-center py-12 text-center">
         {icon}
         <h3 className="font-semibold mb-1">{title}</h3>
         <p className="text-sm text-muted-foreground max-w-md">
           {description}
         </p>
         {hint && (
-          <p className="text-xs text-muted-foreground mt-4 max-w-md bg-muted p-3 rounded-md">
+          <p className="text-xs text-muted-foreground mt-4 max-w-md bg-[#0A0A0A] p-3 rounded-xl">
             💡 {hint}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

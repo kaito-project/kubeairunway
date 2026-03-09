@@ -1,4 +1,3 @@
-import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { ComputedMetric } from '@/hooks/useMetrics'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
@@ -25,23 +24,21 @@ export function MetricCard({ metric, className }: MetricCardProps) {
       : 'text-muted-foreground'
 
   return (
-    <Card className={cn("", className)}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">
-              {metric.displayName}
-            </p>
-            <p className="text-2xl font-bold tabular-nums">
-              {metric.formattedValue}
-            </p>
-          </div>
-          {metric.trend && (
-            <TrendIcon className={cn("h-4 w-4", trendColor)} />
-          )}
+    <div className={cn("glass-panel border-l-[3px] border-l-primary", className)}>
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <p className="text-label text-slate-500">
+            {metric.displayName}
+          </p>
+          <p className="text-3xl font-bold tabular-nums">
+            {metric.formattedValue}
+          </p>
         </div>
-      </CardContent>
-    </Card>
+        {metric.trend && (
+          <TrendIcon className={cn("h-4 w-4", trendColor)} />
+        )}
+      </div>
+    </div>
   )
 }
 

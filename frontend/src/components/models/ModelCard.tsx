@@ -1,9 +1,8 @@
 import { useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { type Model } from '@/lib/api'
-import { Cpu, HardDrive, Layers, Rocket } from 'lucide-react'
+import { Cpu, HardDrive, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ModelCardProps {
@@ -18,47 +17,47 @@ export function ModelCard({ model }: ModelCardProps) {
   }
 
   return (
-    <Card
-      interactive
+    <div
       className={cn(
-        "flex flex-col h-full group",
-        "hover:border-nvidia/50 hover:shadow-glow",
-        "[--glow-color:theme(colors.nvidia.DEFAULT/0.15)]"
+        "flex flex-col h-full group rounded-2xl p-5",
+        "bg-white/[0.03] border border-white/5",
+        "transition-all duration-200 ease-out",
+        "hover:border-cyan-500/30 hover:shadow-glow-card hover:-translate-y-0.5"
       )}
     >
-      <CardHeader className="pb-3">
+      <div className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-lg leading-tight group-hover:text-nvidia transition-colors duration-200">
+          <h3 className="text-lg font-semibold text-white leading-tight truncate group-hover:text-cyan-400 transition-colors duration-200">
             {model.name}
-          </CardTitle>
+          </h3>
           <Badge variant="outline" className="shrink-0 font-mono text-xs">
             {model.size}
           </Badge>
         </div>
-        <CardDescription className="text-xs text-muted-foreground font-mono truncate">
+        <p className="text-xs text-slate-500 font-mono truncate mt-1">
           {model.id}
-        </CardDescription>
-      </CardHeader>
+        </p>
+      </div>
 
-      <CardContent className="flex-1 pt-0">
-        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+      <div className="flex-1">
+        <p className="text-sm text-slate-500 mb-4 line-clamp-2">
           {model.description}
         </p>
 
         <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-slate-400">
             <Cpu className="h-4 w-4 shrink-0" />
             <span className="truncate">GPU: {model.minGpuMemory || 'N/A'}</span>
           </div>
 
           {model.contextLength && (
-            <div className="flex items-center gap-2 text-muted-foreground">
+            <div className="flex items-center gap-2 text-slate-400">
               <Layers className="h-4 w-4 shrink-0" />
               <span>Context: {model.contextLength.toLocaleString()}</span>
             </div>
           )}
 
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-slate-400">
             <HardDrive className="h-4 w-4 shrink-0" />
             <span className="capitalize">{model.task.replace('-', ' ')}</span>
           </div>
@@ -69,23 +68,23 @@ export function ModelCard({ model }: ModelCardProps) {
             <Badge
               key={engine}
               variant="secondary"
-              className="text-xs font-medium"
+              className="text-xs font-medium rounded-full"
             >
               {engine.toUpperCase()}
             </Badge>
           ))}
         </div>
-      </CardContent>
+      </div>
 
-      <CardFooter className="pt-4">
+      <div className="pt-4">
         <Button
+          variant="ghost"
           onClick={handleDeploy}
-          className="w-full group/btn"
+          className="w-full text-cyan-400 hover:text-cyan-300 hover:bg-cyan-400/10 rounded-xl"
         >
-          <Rocket className="mr-2 h-4 w-4 transition-transform duration-200 group-hover/btn:-translate-y-0.5" />
-          Deploy Model
+          Deploy →
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   )
 }

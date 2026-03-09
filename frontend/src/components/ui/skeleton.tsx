@@ -29,7 +29,7 @@ const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(
       <div
         ref={ref}
         className={cn(
-          "bg-muted",
+          "bg-white/[0.06]",
           animate && "shimmer",
           variantStyles[variant],
           className
@@ -61,7 +61,7 @@ const SkeletonCard = React.forwardRef<HTMLDivElement, SkeletonCardProps>(
       <div
         ref={ref}
         className={cn(
-          "rounded-lg border bg-card p-6 shadow-soft-sm",
+          "rounded-2xl border border-white/5 bg-white/[0.03] p-6 shadow-soft-sm",
           className
         )}
         {...props}
@@ -111,7 +111,7 @@ const SkeletonTable = React.forwardRef<HTMLDivElement, SkeletonTableProps>(
     return (
       <div ref={ref} className={cn("space-y-2", className)} {...props}>
         {/* Header row */}
-        <div className="flex gap-4 p-3 bg-muted/50 rounded-t-lg">
+        <div className="flex gap-4 p-3 bg-white/[0.04] rounded-t-lg">
           {Array.from({ length: columns }).map((_, i) => (
             <Skeleton
               key={`header-${i}`}

@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GpuFitIndicator, getGpuFitStatus } from './GpuFitIndicator';
+import { GpuFitIndicator } from './GpuFitIndicator';
 import type { HfModelSearchResult } from '@kubeairunway/shared';
-import { Cpu, Download, Heart, Lock } from 'lucide-react';
+import { Download, Heart, Lock } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface HfModelCardProps {
   model: HfModelSearchResult;
@@ -32,20 +32,22 @@ export function HfModelCard({ model, gpuCapacityGb }: HfModelCardProps) {
     navigate(`/deploy/${encodeURIComponent(model.id)}?source=hf`);
   };
 
-  // Get GPU fit status for styling
-  const gpuFitStatus = getGpuFitStatus(model.estimatedGpuMemoryGb, gpuCapacityGb);
-  const exceedsCapacity = gpuFitStatus === 'exceeds';
-  const isWarning = gpuFitStatus === 'warning';
-
   return (
-    <Card className="flex flex-col transition-colors hover:border-nvidia/50">
-      <CardHeader className="pb-2">
+    <div
+      className={cn(
+        "flex flex-col rounded-2xl p-5 group",
+        "bg-white/[0.03] border border-white/5",
+        "transition-all duration-200 ease-out",
+        "hover:border-cyan-500/30 hover:shadow-glow-card hover:-translate-y-0.5"
+      )}
+    >
+      <div className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-lg leading-tight truncate">{model.name}</CardTitle>
-            <CardDescription className="text-xs text-muted-foreground truncate">
+            <h3 className="text-lg font-semibold text-white leading-tight truncate group-hover:text-cyan-400 transition-colors duration-200">{model.name}</h3>
+            <p className="text-xs text-slate-500 truncate mt-0.5">
               {model.author}
-            </CardDescription>
+            </p>
           </div>
           {model.gated && (
             <Badge variant="outline" className="shrink-0 gap-1">
@@ -54,11 +56,11 @@ export function HfModelCard({ model, gpuCapacityGb }: HfModelCardProps) {
             </Badge>
           )}
         </div>
-      </CardHeader>
+      </div>
 
-      <CardContent className="flex-1 pt-2">
+      <div className="flex-1 pt-2">
         {/* Stats row */}
-        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
+        <div className="flex items-center gap-4 text-sm text-slate-400 mb-3">
           <div className="flex items-center gap-1">
             <Download className="h-4 w-4" />
             <span>{formatCount(model.downloads)}</span>
@@ -69,50 +71,33 @@ export function HfModelCard({ model, gpuCapacityGb }: HfModelCardProps) {
           </div>
         </div>
 
-        {/* GPU Memory estimate */}
-        {model.estimatedGpuMemory && (
-          <div className="flex items-center gap-2 text-sm mb-3">
-            <Cpu className="h-4 w-4 text-muted-foreground" />
-            <span className={exceedsCapacity ? 'text-destructive' : isWarning ? 'text-yellow-600' : 'text-muted-foreground'}>
-              ~{model.estimatedGpuMemory} VRAM
-            </span>
-            <GpuFitIndicator 
-              estimatedGpuMemoryGb={model.estimatedGpuMemoryGb} 
-              clusterCapacityGb={gpuCapacityGb} 
-            />
-          </div>
-        )}
-
-        {!model.estimatedGpuMemory && (
-          <div className="flex items-center gap-2 text-sm mb-3">
-            <Cpu className="h-4 w-4 text-muted-foreground" />
-            <span className="text-amber-500">Unknown size</span>
-            <GpuFitIndicator 
-              estimatedGpuMemoryGb={undefined} 
-              clusterCapacityGb={gpuCapacityGb} 
-            />
-          </div>
-        )}
+        {/* GPU Memory bar indicator */}
+        <div className="mb-3">
+          <GpuFitIndicator 
+            estimatedGpuMemoryGb={model.estimatedGpuMemoryGb} 
+            clusterCapacityGb={gpuCapacityGb} 
+          />
+        </div>
 
         {/* Supported engines */}
         <div className="flex flex-wrap gap-1">
           {model.supportedEngines.map((engine) => (
-            <Badge key={engine} variant="secondary" className="text-xs">
+            <Badge key={engine} variant="secondary" className="text-xs rounded-full">
               {engine.toUpperCase()}
             </Badge>
           ))}
         </div>
-      </CardContent>
+      </div>
 
-      <CardFooter>
+      <div className="pt-4">
         <Button 
+          variant="ghost"
           onClick={handleDeploy} 
-          className="w-full"
-          variant={exceedsCapacity ? 'destructive' : isWarning ? 'outline' : 'default'}
+          className="w-full text-cyan-400 hover:text-cyan-300 hover:bg-cyan-400/10 rounded-xl"
         >
-          {exceedsCapacity ? 'Deploy (May Fail)' : isWarning ? 'Deploy (Tight Fit)' : 'Deploy Model'}
+          Deploy →
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   );
 }

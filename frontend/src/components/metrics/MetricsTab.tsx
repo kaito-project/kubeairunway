@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MetricGrid } from './MetricCard'
@@ -101,12 +100,12 @@ export function MetricsTab({ deploymentName, namespace, provider, className }: M
   }
 
   return (
-    <Card className={cn("", className)}>
-      <CardHeader>
+    <div className={cn("glass-panel", className)}>
+      <div className="mb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className="h-5 w-5" />
-            <CardTitle>Metrics</CardTitle>
+            <h2 className="text-lg font-heading">Metrics</h2>
           </div>
           <div className="flex items-center gap-2">
             {metrics?.available && (
@@ -144,11 +143,11 @@ export function MetricsTab({ deploymentName, namespace, provider, className }: M
             </Button>
           </div>
         </div>
-        <CardDescription>
+        <p className="text-sm text-muted-foreground mt-1">
           Real-time inference metrics from the deployment
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         {/* Show unavailable state */}
         {(isLoading && !metrics) && (
           <MetricsUnavailable isLoading />
@@ -195,7 +194,7 @@ export function MetricsTab({ deploymentName, namespace, provider, className }: M
             ))}
           </Tabs>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

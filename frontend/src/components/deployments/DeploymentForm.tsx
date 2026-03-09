@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfetti } from '@/components/ui/confetti'
@@ -673,111 +672,107 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
       {/* Runtime Selection */}
       {runtimes && runtimes.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Server className="h-5 w-5" />
-              Runtime
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {runtimes.map((runtime) => {
-                const info = RUNTIME_INFO[runtime.id as RuntimeId]
-                if (!info) return null
+        <div className="glass-panel">
+          <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+            <Server className="h-5 w-5" />
+            Runtime
+          </h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {runtimes.map((runtime) => {
+              const info = RUNTIME_INFO[runtime.id as RuntimeId]
+              if (!info) return null
 
-                const isCompatible = isRuntimeCompatible(runtime.id as RuntimeId, model.supportedEngines)
-                const isSelected = selectedRuntime === runtime.id
+              const isCompatible = isRuntimeCompatible(runtime.id as RuntimeId, model.supportedEngines)
+              const isSelected = selectedRuntime === runtime.id
 
-                return (
+              return (
+                <div
+                  key={runtime.id}
+                  role="radio"
+                  aria-checked={isSelected}
+                  tabIndex={isCompatible ? 0 : -1}
+                  onClick={() => {
+                    if (isCompatible) {
+                      handleRuntimeChange(runtime.id as RuntimeId)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (isCompatible && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault()
+                      handleRuntimeChange(runtime.id as RuntimeId)
+                    }
+                  }}
+                  className={cn(
+                    "relative flex items-start space-x-3 rounded-xl border p-4 transition-all duration-200 bg-white/[0.02]",
+                    !isCompatible && "opacity-50 cursor-not-allowed",
+                    isCompatible && "cursor-pointer",
+                    isCompatible && isSelected
+                      ? "border-cyan-400/50 bg-cyan-500/5 shadow-[0_0_15px_rgba(0,217,255,0.15)]"
+                      : "border-white/5",
+                    isCompatible && !isSelected && "hover:border-white/10 hover:bg-white/[0.03]",
+                    isCompatible && !runtime.installed && "opacity-75"
+                  )}
+                >
+                  {/* Custom radio indicator */}
                   <div
-                    key={runtime.id}
-                    role="radio"
-                    aria-checked={isSelected}
-                    tabIndex={isCompatible ? 0 : -1}
-                    onClick={() => {
-                      if (isCompatible) {
-                        handleRuntimeChange(runtime.id as RuntimeId)
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (isCompatible && (e.key === 'Enter' || e.key === ' ')) {
-                        e.preventDefault()
-                        handleRuntimeChange(runtime.id as RuntimeId)
-                      }
-                    }}
                     className={cn(
-                      "relative flex items-start space-x-3 rounded-lg border p-4 transition-colors",
-                      !isCompatible && "opacity-50 cursor-not-allowed",
-                      isCompatible && "cursor-pointer",
-                      isCompatible && isSelected
-                        ? "border-primary bg-primary/5"
-                        : "border-border",
-                      isCompatible && !isSelected && "hover:border-muted-foreground/50",
-                      isCompatible && !runtime.installed && "opacity-75"
+                      "mt-1 h-4 w-4 rounded-full border flex items-center justify-center shrink-0",
+                      isSelected ? "border-cyan-400" : "border-muted-foreground/50",
+                      !isCompatible && "opacity-50"
                     )}
                   >
-                    {/* Custom radio indicator */}
-                    <div
-                      className={cn(
-                        "mt-1 h-4 w-4 rounded-full border flex items-center justify-center shrink-0",
-                        isSelected ? "border-primary" : "border-muted-foreground/50",
-                        !isCompatible && "opacity-50"
-                      )}
-                    >
-                      {isSelected && (
-                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            "font-medium text-sm",
-                            isCompatible ? "cursor-pointer" : "cursor-not-allowed"
-                          )}
-                        >
-                          {info.name}
-                        </span>
-                        {!isCompatible ? (
-                          <Badge variant="outline" className="text-muted-foreground border-muted text-xs">
-                            Not Compatible
-                          </Badge>
-                        ) : runtime.installed ? (
-                          <Badge variant="outline" className="text-green-600 border-green-500 text-xs">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                            Installed
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-yellow-600 border-yellow-500 text-xs">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            Not Installed
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {info.description}
-                      </p>
-                      {!isCompatible && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          This model requires {model.supportedEngines.includes('llamacpp') ? 'llama.cpp' : model.supportedEngines.join('/')} which is not supported by this runtime.
-                        </p>
-                      )}
-                      {isCompatible && !runtime.installed && isSelected && (
-                        <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
-                          <Link to="/installation" className="underline hover:no-underline">
-                            Install {info.name}
-                          </Link>{' '}
-                          before deploying.
-                        </p>
-                      )}
-                    </div>
+                    {isSelected && (
+                      <div className="h-2.5 w-2.5 rounded-full bg-cyan-400" />
+                    )}
                   </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "font-medium text-sm",
+                          isCompatible ? "cursor-pointer" : "cursor-not-allowed"
+                        )}
+                      >
+                        {info.name}
+                      </span>
+                      {!isCompatible ? (
+                        <Badge variant="outline" className="text-muted-foreground border-muted text-xs">
+                          Not Compatible
+                        </Badge>
+                      ) : runtime.installed ? (
+                        <Badge variant="outline" className="text-green-400 border-green-500/50 bg-green-500/10 text-xs">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Installed
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-yellow-400 border-yellow-500/50 bg-yellow-500/10 text-xs">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Not Installed
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {info.description}
+                    </p>
+                    {!isCompatible && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This model requires {model.supportedEngines.includes('llamacpp') ? 'llama.cpp' : model.supportedEngines.join('/')} which is not supported by this runtime.
+                      </p>
+                    )}
+                    {isCompatible && !runtime.installed && isSelected && (
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                        <Link to="/installation" className="underline hover:no-underline">
+                          Install {info.name}
+                        </Link>{' '}
+                        before deploying.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {/* AI Configurator Panel - only show for Dynamo runtime */}
@@ -797,11 +792,9 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       )}
 
       {/* Basic Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Basic Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="glass-panel">
+        <h3 className="text-lg font-semibold mb-4">Basic Configuration</h3>
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Deployment Name</Label>
             <Input
@@ -832,16 +825,14 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               />
             </div>
           </details>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Engine Selection - show for non-KAITO runtimes OR KAITO with vLLM models */}
       {(selectedRuntime !== 'kaito' || isVllmModel) && (
-      <Card>
-        <CardHeader>
-          <CardTitle>Inference Engine</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="glass-panel">
+        <h3 className="text-lg font-semibold mb-4">Inference Engine</h3>
+        <div>
           {selectedRuntime === 'kaito' && isVllmModel ? (
             // KAITO vLLM - only vLLM option
             <RadioGroup value="vllm" className="flex gap-4">
@@ -913,20 +904,18 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               )}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       )}
 
       {/* KAITO Resource Type Selection - show for KAITO runtime with vLLM models */}
       {selectedRuntime === 'kaito' && isVllmModel && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Box className="h-5 w-5" />
-            KAITO Resource Type
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="glass-panel">
+        <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+          <Box className="h-5 w-5" />
+          KAITO Resource Type
+        </h3>
+        <div>
           <RadioGroup
             value={kaitoResourceType}
             onValueChange={(value) => setKaitoResourceType(value as KaitoResourceType)}
@@ -970,20 +959,18 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               </div>
             </label>
           </RadioGroup>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       )}
 
       {/* KAITO Model Configuration - only show for KAITO runtime with non-vLLM models */}
       {selectedRuntime === 'kaito' && !isVllmModel && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Box className="h-5 w-5" />
-              KAITO Model Configuration
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <div className="glass-panel">
+          <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
+            <Box className="h-5 w-5" />
+            KAITO Model Configuration
+          </h3>
+          <div className="space-y-6">
             {/* Compute Type Selection - only for non-vLLM models (vLLM always requires GPU) */}
             <div className="space-y-3">
               <Label>Compute Type</Label>
@@ -1144,17 +1131,15 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                 </p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Deployment Mode - show for non-KAITO runtimes OR KAITO with vLLM models */}
       {(selectedRuntime !== 'kaito' || isVllmModel) && (
-      <Card>
-        <CardHeader>
-          <CardTitle>Deployment Mode</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="glass-panel">
+        <h3 className="text-lg font-semibold mb-4">Deployment Mode</h3>
+        <div>
           <RadioGroup
             value={config.mode}
             onValueChange={(value) => {
@@ -1210,17 +1195,15 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               </div>
             </div>
           </RadioGroup>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       )}
 
       {/* Deployment Options - show for all runtimes with vLLM/GPU */}
       {(selectedRuntime !== 'kaito' || isVllmModel || kaitoComputeType === 'gpu') && (
-      <Card>
-        <CardHeader>
-          <CardTitle>Deployment Options</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="glass-panel">
+        <h3 className="text-lg font-semibold mb-4">Deployment Options</h3>
+        <div className="space-y-4">
           {config.mode === 'aggregated' || selectedRuntime === 'kaito' ? (
             /* Aggregated mode: single replica count (KAITO always uses aggregated) */
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1369,19 +1352,19 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
       )}
 
       {/* Advanced Options - show for non-KAITO runtimes OR KAITO with vLLM models */}
       {(selectedRuntime !== 'kaito' || isVllmModel) && (
-      <Card>
-        <CardHeader
-          className="cursor-pointer select-none"
+      <div className="glass-panel !p-0 overflow-hidden">
+        <div
+          className="cursor-pointer select-none px-6 py-4"
           onClick={() => setShowAdvanced(!showAdvanced)}
         >
           <div className="flex items-center justify-between">
-            <CardTitle>Advanced Options</CardTitle>
+            <h3 className="text-lg font-semibold">Advanced Options</h3>
               <ChevronDown
               className={cn(
                 "h-5 w-5 text-muted-foreground transition-transform duration-200 ease-out",
@@ -1389,7 +1372,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                 )}
             />
           </div>
-        </CardHeader>
+        </div>
 
         {/* Smooth accordion animation */}
           <div
@@ -1399,7 +1382,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
           )}
         >
           <div className="overflow-hidden">
-            <CardContent className="space-y-4 pt-0">
+            <div className="space-y-4 px-6 pb-6 pt-0">
             {/* These options only apply to non-KAITO runtimes */}
             {selectedRuntime !== 'kaito' && (
               <>
@@ -1462,10 +1445,10 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                 }}
               />
             </div>
-            </CardContent>
+            </div>
           </div>
         </div>
-      </Card>
+      </div>
       )}
 
         {/* Capacity Warning - only show for non-KAITO or KAITO with GPU/vLLM */}
@@ -1557,6 +1540,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         <Button
           type="button"
           variant="outline"
+          className="rounded-2xl"
           onClick={() => navigate('/')}
         >
           Cancel
@@ -1566,7 +1550,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
           disabled={createDeployment.isProcessing || needsHfAuth || !isRuntimeInstalled || !isKaitoConfigValid}
           loading={createDeployment.isProcessing}
           className={cn(
-            "flex-1 gap-2",
+            "flex-1 h-14 rounded-2xl bg-primary text-primary-foreground font-bold shadow-glow-button gap-2",
             createDeployment.status === 'success' && "bg-green-600 hover:bg-green-600"
           )}
         >

@@ -14,6 +14,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['Satoshi', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -47,6 +51,19 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        cyan: {
+          DEFAULT: "#00D9FF",
+          50: "#ECFEFF",
+          100: "#CFFAFE",
+          200: "#A5F3FC",
+          300: "#67E8F9",
+          400: "#22D3EE",
+          500: "#00D9FF",
+          600: "#00B8D9",
+          700: "#0097B2",
+          800: "#00758C",
+          900: "#005466",
         },
         nvidia: {
           DEFAULT: "#76B900",
@@ -82,6 +99,9 @@ export default {
         "lifted": "0 8px 30px rgb(0 0 0 / 0.12)",
         "glow": "0 0 20px rgb(var(--glow-color) / 0.15)",
         "glow-sm": "0 0 10px rgb(var(--glow-color) / 0.10)",
+        "glow-cyan": "0 0 20px -4px rgba(0, 217, 255, 0.25)",
+        "glow-card": "0 0 30px -8px rgba(0, 217, 255, 0.12)",
+        "glow-button": "0 0 20px -4px rgba(0, 217, 255, 0.25)",
         "inner-soft": "inset 0 2px 4px 0 rgb(0 0 0 / 0.04)",
       },
       backdropBlur: {
