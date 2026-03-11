@@ -1,0 +1,27 @@
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen3-0-6b
+  namespace: default
+spec:
+  model:
+    id: Qwen/Qwen3-0.6B
+    source: huggingface
+    storage:
+      volumes:
+      - name: model-cache
+        purpose: modelCache
+        size: "2Gi"
+        storageClassName: azurefile-premium
+  provider:
+    name: dynamo
+  engine:
+    type: vllm
+    contextLength: 4096
+    trustRemoteCode: false
+  resources:
+    gpu:
+      count: 1
+      type: nvidia.com/gpu
+  scaling:
+    replicas: 1
