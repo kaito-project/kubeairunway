@@ -57,7 +57,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center border-b border-white/5 px-4 shrink-0">
+      <div className="flex h-14 items-center border-b border-white/5 px-4 shrink-0">
         <Link
           to="/"
           className="flex items-center gap-2 min-w-0"
@@ -102,9 +102,14 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground active:scale-[0.98]'
               )}
             >
-              {isActive && (
-                <span className="absolute left-0 w-1 h-8 rounded-full bg-primary" />
-              )}
+              <span
+                className={cn(
+                  'absolute left-0 w-1 h-8 rounded-full bg-primary transition-all duration-200 ease-out origin-center',
+                  isActive
+                    ? 'opacity-100 scale-y-100'
+                    : 'opacity-0 scale-y-0'
+                )}
+              />
               <item.icon
                 className={cn(
                   'h-5 w-5 shrink-0 transition-transform duration-150',

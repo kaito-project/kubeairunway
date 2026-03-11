@@ -222,28 +222,3 @@
     /* intentionally empty — clean dark background */
   }
 }
-
-/* Provider-specific theme accents */
-[data-provider="dynamo"] {
-  --primary: 79 100% 36%; /* NVIDIA Green #76B900 */
-  --ring: 79 100% 36%;
-  --glow-color: 118 185 0;
-}
-
-[data-provider="kuberay"] {
-  --primary: 217 91% 60%; /* Blue-500 #3B82F6 */
-  --ring: 217 91% 60%;
-  --glow-color: 59 130 246;
-}
-
-[data-provider="kaito"] {
-  --primary: 43 96% 56%; /* Amber-400 #FBBF24 */
-  --ring: 43 96% 56%;
-  --glow-color: 251 191 36;
-}
-
-[data-provider="llmd"] {
-  --primary: 217 91% 60%; /* Blue-500 #3B82F6 */
-  --ring: 217 91% 60%;
-  --glow-color: 59 130 246;
-}

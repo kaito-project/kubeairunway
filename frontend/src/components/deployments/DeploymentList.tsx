@@ -21,16 +21,6 @@ interface DeploymentListProps {
   isLoading?: boolean
 }
 
-function getProviderBadgeClass(provider: string): string {
-  switch (provider) {
-    case 'kuberay': return 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-    case 'kaito':   return 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-    case 'llmd':    return 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-    case 'dynamo':  return 'bg-teal-500/10 text-teal-400 border-teal-500/20'
-    default:        return 'bg-green-500/10 text-green-400 border-green-500/20'
-  }
-}
-
 function getStatusDotColor(phase: DeploymentStatus['phase']): string {
   switch (phase) {
     case 'Running':     return 'bg-green-500'
@@ -49,16 +39,6 @@ function getReplicaColorClass(deployment: DeploymentStatus): string {
     return allReady ? 'text-green-400' : 'text-amber-400'
   }
   return deployment.replicas.ready === deployment.replicas.desired ? 'text-green-400' : 'text-amber-400'
-}
-
-function getProviderDisplayName(provider: string): string {
-  switch (provider) {
-    case 'kuberay': return 'KubeRay'
-    case 'kaito':   return 'KAITO'
-    case 'llmd':    return 'llm-d'
-    case 'dynamo':  return 'Dynamo'
-    default:        return provider
-  }
 }
 
 /**
@@ -134,8 +114,8 @@ export function DeploymentList({ deployments, isLoading }: DeploymentListProps) 
         {deployments.map((deployment, index) => (
           <div
             key={deployment.name}
-            className="glass-panel !p-4 flex items-center gap-4 group hover:bg-white/5 hover:border-white/10 transition-all duration-200"
-            style={{ animationDelay: `${index * 50}ms` }}
+            className="glass-panel !p-4 flex items-center gap-4 group hover:bg-white/5 hover:border-white/10 transition-all duration-200 animate-slide-up"
+            style={{ animationDelay: `${Math.min(index, 12) * 50}ms`, animationFillMode: 'both' }}
           >
             {/* Status dot */}
             <div className="shrink-0">
@@ -159,9 +139,8 @@ export function DeploymentList({ deployments, isLoading }: DeploymentListProps) 
             <div className="hidden md:flex items-center gap-2">
               <Badge
                 variant="secondary"
-                className={getProviderBadgeClass(deployment.provider)}
               >
-                {getProviderDisplayName(deployment.provider)}
+                {deployment.provider}
               </Badge>
               <Badge variant="outline">
                 {deployment.engine ? (deployment.engine === 'llamacpp' ? 'Llama.cpp' : deployment.engine.toUpperCase()) : 'Pending'}

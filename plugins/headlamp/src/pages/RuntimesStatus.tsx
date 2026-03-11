@@ -31,19 +31,6 @@ function getStatusText(runtime: RuntimeStatus): string {
   return 'Not Installed';
 }
 
-function getRuntimeDescription(runtimeId: string): string {
-  switch (runtimeId) {
-    case 'kaito':
-      return 'Kubernetes AI Toolchain Operator - Deploy AI models with GPU node provisioning';
-    case 'kuberay':
-      return 'KubeRay - Run Ray distributed computing workloads on Kubernetes';
-    case 'dynamo':
-      return 'NVIDIA Dynamo - Deploy and serve AI models with NVIDIA optimizations';
-    default:
-      return '';
-  }
-}
-
 export function RuntimesStatus() {
   const api = useApiClient();
 
@@ -162,9 +149,6 @@ export function RuntimesStatus() {
                 <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', textTransform: 'uppercase' }}>
                   {runtime.name}
                 </h3>
-                <p style={{ margin: 0, fontSize: '14px', opacity: 0.7 }}>
-                  {getRuntimeDescription(runtime.id)}
-                </p>
               </div>
               <StatusLabel status={getStatusColor(runtime)}>
                 {getStatusText(runtime)}

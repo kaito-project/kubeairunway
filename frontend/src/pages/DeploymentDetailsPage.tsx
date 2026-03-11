@@ -22,24 +22,7 @@ import { PendingExplanation } from '@/components/deployments/PendingExplanation'
 import { DeploymentLogs } from '@/components/deployments/DeploymentLogs'
 import { ManifestViewer } from '@/components/deployments/ManifestViewer'
 
-function getProviderBadgeClass(provider: string): string {
-  switch (provider) {
-    case 'kuberay': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-    case 'kaito':   return 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-    case 'llmd':    return 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
-    default:        return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-  }
-}
 
-function getProviderDisplayName(provider: string): string {
-  switch (provider) {
-    case 'kuberay': return 'KubeRay'
-    case 'kaito':   return 'KAITO'
-    case 'llmd':    return 'llm-d'
-    case 'dynamo':  return 'Dynamo'
-    default:        return provider
-  }
-}
 
 export function DeploymentDetailsPage() {
   const { name } = useParams<{ name: string }>()
@@ -145,7 +128,7 @@ export function DeploymentDetailsPage() {
     : undefined
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto animate-slide-up">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/deployments')}>
@@ -166,7 +149,7 @@ export function DeploymentDetailsPage() {
       </div>
 
       {/* Status Overview */}
-      <div className="glass-panel">
+      <div className="glass-panel animate-slide-up" style={{ animationDelay: '50ms', animationFillMode: 'both' }}>
         <h2 className="text-lg font-heading mb-4">Status</h2>
         <div className="grid gap-4 sm:grid-cols-5">
           <div>
@@ -177,9 +160,8 @@ export function DeploymentDetailsPage() {
             <p className="text-label text-slate-500 mb-1">Runtime</p>
             <Badge
               variant="secondary"
-              className={getProviderBadgeClass(deployment.provider)}
             >
-              {getProviderDisplayName(deployment.provider)}
+              {deployment.provider}
             </Badge>
           </div>
           <div>
@@ -200,7 +182,7 @@ export function DeploymentDetailsPage() {
       </div>
 
       {/* Model Info */}
-      <div className="glass-panel">
+      <div className="glass-panel animate-slide-up" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
         <h2 className="text-lg font-heading">Model</h2>
         <p className="text-sm text-muted-foreground mt-1">{deployment.modelId}</p>
       </div>
@@ -215,7 +197,7 @@ export function DeploymentDetailsPage() {
       )}
 
       {/* Access Model */}
-      <div className="glass-panel">
+      <div className="glass-panel animate-slide-up" style={{ animationDelay: '150ms', animationFillMode: 'both' }}>
         <div className="flex items-center gap-2 mb-1">
           <Terminal className="h-5 w-5" />
           <h2 className="text-lg font-heading">Access Model</h2>
@@ -330,25 +312,31 @@ export function DeploymentDetailsPage() {
       </div>
 
       {/* Metrics */}
-      <MetricsTab
-        deploymentName={deployment.name}
-        namespace={deployment.namespace}
-        provider={deployment.provider}
-      />
+      <div className="animate-slide-up" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
+        <MetricsTab
+          deploymentName={deployment.name}
+          namespace={deployment.namespace}
+          provider={deployment.provider}
+        />
+      </div>
 
       {/* Manifest */}
-      <ManifestViewer
-        mode="deployed"
-        deploymentName={deployment.name}
-        namespace={deployment.namespace}
-        provider={deployment.provider}
-      />
+      <div className="animate-slide-up" style={{ animationDelay: '250ms', animationFillMode: 'both' }}>
+        <ManifestViewer
+          mode="deployed"
+          deploymentName={deployment.name}
+          namespace={deployment.namespace}
+          provider={deployment.provider}
+        />
+      </div>
 
       {/* Logs */}
-      <DeploymentLogs
-        deploymentName={deployment.name}
-        namespace={deployment.namespace}
-      />
+      <div className="animate-slide-up" style={{ animationDelay: '300ms', animationFillMode: 'both' }}>
+        <DeploymentLogs
+          deploymentName={deployment.name}
+          namespace={deployment.namespace}
+        />
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

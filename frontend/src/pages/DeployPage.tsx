@@ -51,7 +51,7 @@ export function DeployPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto animate-slide-up">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
@@ -65,7 +65,7 @@ export function DeployPage() {
       </div>
 
       {/* Model Summary Card */}
-      <div className="glass-panel">
+      <div className="glass-panel animate-slide-up" style={{ animationDelay: '50ms', animationFillMode: 'both' }}>
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <div className="flex items-center gap-2">
@@ -136,12 +136,14 @@ export function DeployPage() {
       </div>
 
       {/* Deployment Form */}
-      <DeploymentForm
-        model={model}
-        detailedCapacity={detailedCapacity}
-        autoscaler={autoscaler}
-        runtimes={runtimesData?.runtimes}
-      />
+      <div className="animate-slide-up" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
+        <DeploymentForm
+          model={model}
+          detailedCapacity={detailedCapacity}
+          autoscaler={autoscaler}
+          runtimes={runtimesData?.runtimes}
+        />
+      </div>
     </div>
   )
 }

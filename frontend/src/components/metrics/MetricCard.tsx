@@ -61,8 +61,14 @@ export function MetricGrid({ metrics, className }: MetricGridProps) {
 
   return (
     <div className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-3", className)}>
-      {metrics.map((metric) => (
-        <MetricCard key={metric.name} metric={metric} />
+      {metrics.map((metric, index) => (
+        <div
+          key={metric.name}
+          className="animate-slide-up"
+          style={{ animationDelay: `${Math.min(index, 12) * 50}ms`, animationFillMode: 'both' }}
+        >
+          <MetricCard metric={metric} />
+        </div>
       ))}
     </div>
   )

@@ -10,11 +10,6 @@ export interface BadgeColors {
   color: string;
 }
 
-export interface RuntimeColors {
-  bg: string;
-  text: string;
-}
-
 /**
  * Get badge colors based on type/status
  */
@@ -36,21 +31,5 @@ export function getBadgeColors(type: string): BadgeColors {
       return { bg: 'rgba(0, 150, 136, 0.15)', color: '#26a69a' };
     default:
       return { bg: 'rgba(128, 128, 128, 0.15)', color: 'inherit' };
-  }
-}
-
-/**
- * Get colors for runtime/provider badges
- */
-export function getRuntimeColors(provider: string): RuntimeColors {
-  switch (provider?.toLowerCase()) {
-    case 'kaito':
-      return { bg: 'rgba(25, 118, 210, 0.15)', text: '#1976d2' };
-    case 'kuberay':
-      return { bg: 'rgba(156, 39, 176, 0.15)', text: '#9c27b0' };
-    case 'dynamo':
-      return { bg: 'rgba(46, 125, 50, 0.15)', text: '#2e7d32' };
-    default:
-      return { bg: 'rgba(128, 128, 128, 0.15)', text: '#666' };
   }
 }

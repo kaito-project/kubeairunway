@@ -1,7 +1,6 @@
 import { ReactNode, useState, useCallback, useEffect, createContext, useContext } from 'react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
-import { useProviderTheme } from '@/hooks/useProviderTheme'
 
 interface SidebarContextValue {
   isOpen: boolean
@@ -25,8 +24,6 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  useProviderTheme()
-
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const toggle = useCallback(() => {

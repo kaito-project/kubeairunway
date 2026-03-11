@@ -195,7 +195,7 @@ export function SettingsPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       <div>
         <h1 className="text-3xl font-heading font-bold tracking-tight flex items-center gap-2">
           <Cog className="h-7 w-7 text-muted-foreground" />
@@ -230,7 +230,7 @@ export function SettingsPage() {
 
       {/* General Tab */}
       {activeTab === 'general' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-slide-up">
           {/* Cluster Status */}
           <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
             <div className="mb-4">
@@ -280,7 +280,7 @@ export function SettingsPage() {
 
       {/* Runtimes Tab */}
       {activeTab === 'runtimes' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-slide-up">
           {/* Prerequisites */}
           <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
             <div className="mb-4">
@@ -659,7 +659,7 @@ export function SettingsPage() {
 
       {/* Integrations Tab */}
       {activeTab === 'integrations' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-slide-up">
           {/* GPU Operator */}
           <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
             <div className="mb-4">

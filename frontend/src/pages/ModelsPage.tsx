@@ -75,7 +75,7 @@ export function ModelsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       {/* Hero section */}
       <div className="text-center py-8">
         <h1 className="font-heading text-4xl flex items-center justify-center gap-3">

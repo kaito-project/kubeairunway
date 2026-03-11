@@ -31,8 +31,8 @@ export function ModelGrid({ models }: ModelGridProps) {
       {models.map((model, index) => (
         <div
           key={model.id}
-          className="animate-fade-in"
-          style={{ animationDelay: `${index * 50}ms` }}
+          className="animate-slide-up"
+          style={{ animationDelay: `${Math.min(index, 12) * 50}ms`, animationFillMode: 'both' }}
         >
           <ModelCard model={model} />
         </div>
