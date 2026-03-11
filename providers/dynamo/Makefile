@@ -1,7 +1,7 @@
 KUSTOMIZE ?= ../../controller/bin/kustomize
 IMG ?= ghcr.io/kaito-project/kubeairunway/dynamo-provider:latest
 
-.PHONY: build docker-build deploy generate-deploy-manifests
+.PHONY: build docker-build deploy generate-deploy-manifests test-e2e
 
 ## Build the provider binary
 build:
@@ -27,3 +27,7 @@ generate-deploy-manifests:
 	$(KUSTOMIZE) build config/default > deploy/dynamo.yaml
 	@git checkout config/manager/kustomization.yaml 2>/dev/null || true
 	@echo "✅ Generated deploy/dynamo.yaml"
+
+## Run e2e tests (requires DYNAMO_INSTALLED=true and a cluster with dynamo provider deployed)
+test-e2e:
+	DYNAMO_INSTALLED=true go test -tags=e2e -v -timeout 45m ./test/e2e/

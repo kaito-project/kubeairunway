@@ -24,11 +24,11 @@ export function DeploymentsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Layers className="h-7 w-7 text-primary" />
+          <h1 className="text-3xl font-heading tracking-tight flex items-center gap-2">
+            <Layers className="h-7 w-7 text-cyan-500" />
             Deployments
           </h1>
           <p className="text-muted-foreground mt-1">

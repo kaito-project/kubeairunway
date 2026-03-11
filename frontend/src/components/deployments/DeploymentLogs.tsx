@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -88,29 +87,25 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
 
   if (!pods || pods.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <ScrollText className="h-5 w-5" />
-            <CardTitle>Logs</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            No instances available. Logs will appear once instances are running.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="glass-panel">
+        <div className="flex items-center gap-2 mb-4">
+          <ScrollText className="h-5 w-5" />
+          <h2 className="text-lg font-heading">Logs</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          No instances available. Logs will appear once instances are running.
+        </p>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
+    <div className="glass-panel">
+      <div className="mb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ScrollText className="h-5 w-5" />
-            <CardTitle>Logs</CardTitle>
+            <h2 className="text-lg font-heading">Logs</h2>
           </div>
           <div className="flex items-center gap-2">
             {/* Instance Selector */}
@@ -122,7 +117,7 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
                 <SelectContent>
                   {pods.map((pod) => (
                     <SelectItem key={pod.name} value={pod.name}>
-                      <span className="font-mono text-xs">{pod.name}</span>
+                      <span className="font-mono-code text-xs">{pod.name}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -176,15 +171,15 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
             </Button>
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div>
         <div className="relative">
           {isLoading || !selectedPod ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : error ? (
-            <div className="rounded-lg bg-zinc-950 text-red-400 p-4 text-xs font-mono min-h-[200px]">
+            <div className="rounded-lg bg-[#0A0A0A] text-red-400 p-4 text-xs font-mono-code min-h-[200px]">
               <p className="font-semibold mb-2">Error fetching logs:</p>
               <p>{error instanceof Error ? error.message : 'Unknown error'}</p>
               <Button
@@ -202,7 +197,7 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
               <pre
                 ref={logsContainerRef}
                 onScroll={handleScroll}
-                className="rounded-lg bg-zinc-950 text-zinc-100 p-4 text-xs font-mono overflow-auto max-h-[500px] min-h-[200px] whitespace-pre-wrap break-all"
+                className="rounded-lg bg-[#0A0A0A] text-zinc-100 p-4 text-xs font-mono-code overflow-auto max-h-[500px] min-h-[200px] whitespace-pre-wrap break-all"
               >
                 {logsData?.logs || 'No logs available'}
               </pre>
@@ -225,11 +220,11 @@ export function DeploymentLogs({ deploymentName, namespace }: DeploymentLogsProp
         {/* Instance info */}
         {logsData?.podName && (
           <p className="text-xs text-muted-foreground mt-2">
-            Showing logs from instance: <span className="font-mono">{logsData.podName}</span>
-            {logsData.container && <> (container: <span className="font-mono">{logsData.container}</span>)</>}
+            Showing logs from instance: <span className="font-mono-code">{logsData.podName}</span>
+            {logsData.container && <> (container: <span className="font-mono-code">{logsData.container}</span>)</>}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

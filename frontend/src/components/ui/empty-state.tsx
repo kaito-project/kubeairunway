@@ -52,8 +52,8 @@ const presetIcons: Record<Exclude<EmptyStateProps["preset"], "custom" | undefine
 }
 
 const presetColors: Record<Exclude<EmptyStateProps["preset"], "custom" | undefined>, string> = {
-  "no-data": "text-muted-foreground",
-  "no-results": "text-muted-foreground",
+  "no-data": "text-primary/70",
+  "no-results": "text-primary/70",
   "no-deployments": "text-primary/60",
   "error": "text-destructive/60",
 }
@@ -90,9 +90,9 @@ const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
       >
         {/* Decorative background circle */}
         <div className="relative mb-6">
-          <div className="absolute inset-0 bg-muted/50 rounded-full blur-2xl scale-150" />
-          <div className="relative p-4 bg-muted/30 rounded-full">
-            <div className="p-3 bg-background rounded-full shadow-soft border">
+          <div className="absolute inset-0 bg-primary/5 rounded-full blur-2xl scale-150" />
+          <div className="relative p-4 bg-white/[0.03] rounded-full">
+            <div className="p-3 bg-white/[0.05] rounded-full shadow-soft border border-white/10">
               {Icon && <Icon className={cn("h-8 w-8", iconColor)} strokeWidth={1.5} />}
             </div>
           </div>

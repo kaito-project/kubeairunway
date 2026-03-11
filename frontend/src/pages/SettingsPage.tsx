@@ -12,7 +12,7 @@ import { useAutoscalerDetection } from '@/hooks/useAutoscaler'
 import { useGpuOperatorStatus, useInstallGpuOperator } from '@/hooks/useGpuOperator'
 import { useGatewayCRDStatus, useInstallGatewayCRDs } from '@/hooks/useGateway'
 import { useHuggingFaceStatus, useHuggingFaceOAuth, useDeleteHuggingFaceSecret } from '@/hooks/useHuggingFace'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -51,6 +51,13 @@ import { useSearchParams } from 'react-router-dom'
 
 type SettingsTab = 'general' | 'runtimes' | 'integrations'
 type RuntimeId = 'dynamo' | 'kuberay' | 'kaito'| 'llmd'
+
+const providerColors: Record<string, string> = {
+  dynamo: '#76B900',
+  kuberay: '#3B82F6',
+  kaito: '#FBBF24',
+  llmd: '#3B82F6',
+}
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -164,7 +171,7 @@ export function SettingsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="text-3xl font-heading font-bold tracking-tight flex items-center gap-2">
             <Cog className="h-7 w-7 text-muted-foreground" />
             Settings
           </h1>
@@ -188,9 +195,9 @@ export function SettingsPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="text-3xl font-heading font-bold tracking-tight flex items-center gap-2">
           <Cog className="h-7 w-7 text-muted-foreground" />
           Settings
         </h1>
@@ -200,16 +207,16 @@ export function SettingsPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b border-white/5">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px rounded-t-md',
+              'flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px',
               activeTab === tab.id
-                ? 'border-primary text-primary bg-primary/5'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                ? 'border-cyan-400 text-cyan-400'
+                : 'border-transparent text-slate-500 hover:text-foreground'
             )}
           >
             <tab.icon className={cn(
@@ -223,31 +230,31 @@ export function SettingsPage() {
 
       {/* General Tab */}
       {activeTab === 'general' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-slide-up">
           {/* Cluster Status */}
-          <Card variant="elevated">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <div className="mb-4">
+              <h3 className="font-heading text-lg font-semibold flex items-center gap-2">
                 <Server className="h-5 w-5" />
                 Cluster Status
-              </CardTitle>
-              <CardDescription>
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Current connection status
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Connection</span>
                 <div className="flex items-center gap-2">
                   {clusterStatus?.connected ? (
                     <>
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-green-600">Connected</span>
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <span className="text-sm text-green-400">Connected</span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 text-red-500" />
-                      <span className="text-sm text-red-600">Disconnected</span>
+                      <span className="text-sm text-red-500">Disconnected</span>
                     </>
                   )}
                 </div>
@@ -266,26 +273,26 @@ export function SettingsPage() {
                   {installedCount} of {runtimes.length}
                 </Badge>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Runtimes Tab */}
       {activeTab === 'runtimes' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-slide-up">
           {/* Prerequisites */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <div className="mb-4">
+              <h3 className="font-heading text-lg font-semibold flex items-center gap-2">
                 <Server className="h-5 w-5" />
                 Prerequisites
-              </CardTitle>
-              <CardDescription>
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Required components for runtime installation
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Environment</span>
                 <div className="flex items-center gap-2">
@@ -332,13 +339,13 @@ export function SettingsPage() {
                   {helmStatus.error}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Cluster Autoscaling Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+          <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <div className="mb-4">
+              <h3 className="font-heading text-lg font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Zap className="h-5 w-5" />
                   Cluster Autoscaling
@@ -352,12 +359,12 @@ export function SettingsPage() {
                 ) : (
                   <Badge variant="secondary">Not Detected</Badge>
                 )}
-              </CardTitle>
-              <CardDescription>
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Automatically provision GPU compute resources when deployments require more resources
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               {autoscalerLoading ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -414,32 +421,39 @@ export function SettingsPage() {
                   )}
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Runtimes Overview */}
           <div>
-            <h2 className="text-xl font-semibold mb-4">Available Runtimes</h2>
+            <h2 className="text-xl font-heading font-semibold mb-4">Available Runtimes</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {runtimes.map((runtime) => (
-                <Card
+                <div
                   key={runtime.id}
                   className={cn(
-                    'transition-all cursor-pointer',
+                    'bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm transition-all cursor-pointer',
                     effectiveRuntime === runtime.id
-                      ? 'ring-2 ring-primary'
-                      : 'hover:border-primary/50'
+                      ? 'ring-2 ring-cyan-400'
+                      : 'hover:border-white/10'
                   )}
+                  style={{ borderTopColor: providerColors[runtime.id] || undefined, borderTopWidth: providerColors[runtime.id] ? '2px' : undefined }}
                   onClick={() => setSelectedRuntime(runtime.id as RuntimeId)}
                 >
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center justify-between">
-                      <span>{runtime.name}</span>
-                      <Badge variant={runtime.installed ? (runtime.healthy ? 'default' : 'secondary') : 'destructive'}>
-                        {runtime.installed ? (runtime.healthy ? 'Healthy' : 'Unhealthy') : 'Not Installed'}
-                      </Badge>
-                    </CardTitle>
-                    <CardDescription>
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-heading font-bold">{runtime.name}</span>
+                      {runtime.installed ? (
+                        <span className="text-green-400 text-sm flex items-center gap-1">
+                          <CheckCircle className="h-4 w-4" /> Installed
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm flex items-center gap-1">
+                          <XCircle className="h-4 w-4" /> Not Installed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
                       {runtime.id === 'kaito'
                         ? 'KAITO for simplified model deployment'
                         : runtime.id === 'dynamo'
@@ -447,24 +461,24 @@ export function SettingsPage() {
                           : runtime.id === 'llmd'
                         ? 'LLM-D for distributed inference'
                           : 'Ray Serve via KubeRay for distributed Ray-based model serving with vLLM'}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                    </p>
+                  </div>
+                  <div>
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">CRD</span>
                         {runtime.installed ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
+                          <XCircle className="h-4 w-4 text-muted-foreground" />
                         )}
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Operator</span>
                         {runtime.healthy ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
+                          <XCircle className="h-4 w-4 text-muted-foreground" />
                         )}
                       </div>
                       {runtime.version && (
@@ -474,30 +488,36 @@ export function SettingsPage() {
                         </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
 
           {/* Selected Runtime Installation Details */}
           {runtimes.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+          <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <div className="mb-4">
+              <h3 className="font-heading text-lg font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Download className="h-5 w-5" />
                   {installationStatus?.providerName || runtimes.find(r => r.id === effectiveRuntime)?.name || 'Runtime'} Installation
                 </div>
-                <Badge variant={isInstalled ? 'default' : 'destructive'}>
-                  {isInstalled ? 'Installed' : 'Not Installed'}
-                </Badge>
-              </CardTitle>
-              <CardDescription>
+                {isInstalled ? (
+                  <span className="text-green-400 text-sm flex items-center gap-1">
+                    <CheckCircle className="h-4 w-4" /> Installed
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground text-sm flex items-center gap-1">
+                    <XCircle className="h-4 w-4" /> Not Installed
+                  </span>
+                )}
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 {installationStatus?.message || 'Checking installation status...'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               {installationLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -587,31 +607,31 @@ export function SettingsPage() {
                   )}
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
           )}
 
           {runtimes.length === 0 && !runtimesLoading && (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+              <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Download className="h-8 w-8 text-muted-foreground mb-3" />
                 <p className="text-sm text-muted-foreground">
                   No inference providers are registered. Deploy an InferenceProviderConfig to get started.
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           {/* Installation Steps */}
           {installationStatus?.installationSteps && installationStatus.installationSteps.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Manual Installation Steps</CardTitle>
-                <CardDescription>
+            <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+              <div className="mb-4">
+                <h3 className="font-heading text-lg font-semibold">Manual Installation Steps</h3>
+                <p className="text-sm text-muted-foreground mt-1">
                   Detailed steps for installing {installationStatus.providerName}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                </p>
+              </div>
+              <div className="space-y-4">
                 {installationStatus.installationSteps.map((step, index) => (
                   <div key={index} className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -631,27 +651,27 @@ export function SettingsPage() {
                     )}
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
         </div>
       )}
 
       {/* Integrations Tab */}
       {activeTab === 'integrations' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6 animate-slide-up">
           {/* GPU Operator */}
-          <Card variant="elevated">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <div className="mb-4">
+              <h3 className="font-heading text-lg font-semibold flex items-center gap-2">
                 <Cpu className="h-5 w-5" />
                 NVIDIA GPU Operator
-              </CardTitle>
-              <CardDescription>
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Install the NVIDIA GPU Operator to enable GPU support
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               {/* Prerequisites check */}
               {(!clusterStatus?.connected || !helmStatus?.available) && (
                 <div className="rounded-lg bg-yellow-50 dark:bg-yellow-950 p-3 text-sm text-yellow-800 dark:text-yellow-200">
@@ -792,13 +812,13 @@ export function SettingsPage() {
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Gateway API */}
-          <Card variant="elevated">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+          <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <div className="mb-4">
+              <h3 className="font-heading text-lg font-semibold flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Globe className="h-5 w-5" />
                   Gateway API
@@ -811,12 +831,12 @@ export function SettingsPage() {
                 >
                   <RefreshCw className={cn('h-4 w-4', gatewayStatusLoading && 'animate-spin')} />
                 </Button>
-              </CardTitle>
-              <CardDescription>
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Install Gateway API and Inference Extension CRDs for unified model access
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               {gatewayStatusLoading ? (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -956,21 +976,21 @@ export function SettingsPage() {
                   )}
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* HuggingFace Token */}
-          <Card variant="elevated">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <div className="mb-4">
+              <h3 className="font-heading text-lg font-semibold flex items-center gap-2">
                 <Key className="h-5 w-5" />
                 HuggingFace Token
-              </CardTitle>
-              <CardDescription>
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
                 Connect your HuggingFace account to access gated models like Llama
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4">
               {hfStatusLoading ? (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1105,8 +1125,8 @@ export function SettingsPage() {
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 

@@ -27,7 +27,6 @@ import { MetricsPanel } from '../components/MetricsPanel';
 import { LogsViewer } from '../components/LogsViewer';
 import { ConnectionError } from '../components/ConnectionBanner';
 import { DeleteDialog } from '../components/DeleteDialog';
-import { getRuntimeColors } from '../lib/theme';
 import { generateAynaUrl } from '../lib/utils';
 
 // Status color mapping
@@ -203,7 +202,6 @@ export function DeploymentDetails() {
   // Generate port-forward command
   const [serviceName, servicePort] = (deployment.frontendService || `${deployment.name}-frontend:8000`).split(':');
   const portForwardCommand = `kubectl port-forward svc/${serviceName} 8000:${servicePort || '8000'} -n ${deployment.namespace}`;
-  const runtimeColors = getRuntimeColors(deployment.provider);
 
   // Tab content components
   const OverviewContent = (
@@ -331,12 +329,11 @@ export function DeploymentDetails() {
             <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Runtime</div>
             <span style={{
               padding: '2px 8px',
-              backgroundColor: runtimeColors.bg,
-              color: runtimeColors.text,
+              backgroundColor: 'rgba(128, 128, 128, 0.15)',
               borderRadius: '4px',
               fontSize: '12px',
             }}>
-              {deployment.provider === 'kuberay' ? 'KubeRay' : deployment.provider === 'kaito' ? 'KAITO' : 'Dynamo'}
+              {deployment.provider}
             </span>
           </div>
           <div>

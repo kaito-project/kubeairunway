@@ -46,37 +46,41 @@
   }
 
   .dark {
-    --glow-color: 255 255 255;
-    
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 224 71% 8%;
-    --card-foreground: 210 40% 98%;
-    --popover: 224 71% 8%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 20%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 217 91% 60%;
-    
+    /* Midnight Cyberpunk theme */
+    --glow-color: 0 217 255; /* Electric Cyan RGB */
+
+    /* Primary Background: #0F1419 (Dark Navy Black) */
+    --background: 210 25% 7.8%;
+    --foreground: 214 32% 91.4%; /* slate-200 #E2E8F0 */
+    --card: 210 22% 10%;
+    --card-foreground: 214 32% 91.4%;
+    --popover: 210 22% 10%;
+    --popover-foreground: 214 32% 91.4%;
+
+    /* Accent: #00D9FF Electric Cyan */
+    --primary: 189 100% 50%;
+    --primary-foreground: 210 25% 7.8%; /* dark text on cyan buttons */
+    --secondary: 210 20% 14%;
+    --secondary-foreground: 214 32% 91.4%;
+    --muted: 210 20% 14%;
+    --muted-foreground: 215 20% 65.1%; /* slate-400 #94A3B8 */
+    --accent: 210 20% 14%;
+    --accent-foreground: 214 32% 91.4%;
+    --destructive: 0 84% 60%; /* red-400 #EF4444 */
+    --destructive-foreground: 214 32% 91.4%;
+    --border: 210 15% 16%;
+    --input: 210 20% 14%;
+    --ring: 189 100% 50%; /* Electric Cyan */
+
     /* Semantic status colors (dark mode) */
-    --success: 142 69% 45%;
-    --success-foreground: 222.2 84% 4.9%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 222.2 84% 4.9%;
-    
+    --success: 142 71% 45%; /* green-500 #22C55E */
+    --success-foreground: 210 25% 7.8%;
+    --warning: 43 96% 56%; /* amber-400 #FBBF24 */
+    --warning-foreground: 210 25% 7.8%;
+
     /* Gradient backgrounds (dark mode) */
-    --gradient-subtle: linear-gradient(180deg, hsl(222.2 84% 4.9%) 0%, hsl(224 71% 6%) 100%);
-    --gradient-card: linear-gradient(135deg, hsl(224 71% 8%) 0%, hsl(224 71% 6%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(210 25% 7.8%) 0%, hsl(210 22% 9%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(210 22% 10%) 0%, hsl(210 22% 8%) 100%);
   }
 }
 
@@ -130,20 +134,37 @@
 }
 
 @layer components {
-  /* Glassmorphism utility */
+  /* Glassmorphism utilities */
   .glass {
-    @apply bg-white/70 dark:bg-gray-900/70 backdrop-blur-md border border-white/20 dark:border-white/10;
+    @apply bg-white/70 dark:bg-white/[0.03] backdrop-blur-md border border-white/20 dark:border-white/5;
   }
-  
+
   .glass-subtle {
-    @apply bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm border border-white/10 dark:border-white/5;
+    @apply bg-white/50 dark:bg-white/[0.02] backdrop-blur-sm border border-white/10 dark:border-white/5;
   }
-  
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 24px;
+  }
+
+  .glass-elevated {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+  }
+
   /* Gradient text utility */
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-primary;
   }
-  
+
   /* Shimmer skeleton effect */
   .shimmer {
     @apply relative overflow-hidden;
@@ -156,37 +177,48 @@
     background-size: 200% 100%;
     animation: shimmer 2s linear infinite;
   }
-  
-  /* Interactive card hover lift */
+
+  /* Interactive card hover lift with glow */
   .card-interactive {
-    @apply transition-all duration-normal ease-out-expo;
+    @apply transition-all ease-out;
+    transition-duration: 200ms;
   }
-  
+
   .card-interactive:hover {
-    @apply -translate-y-0.5 shadow-soft-md;
+    transform: translateY(-2px);
+    border-color: rgba(0, 217, 255, 0.3);
+    @apply shadow-glow-card;
   }
-  
+
   .card-interactive:active {
     @apply translate-y-0 shadow-soft;
   }
-  
-  /* Focus ring with better visibility */
+
+  /* Focus ring — cyan/40 with 2px offset */
   .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
-}
 
-/* Provider-specific theme accents */
-[data-provider="dynamo"] {
-  --primary: 79 100% 36%;
-  /* NVIDIA Green */
-  --ring: 79 100% 36%;
-  --glow-color: 118 185 0; /* RGB for nvidia green glow */
-}
+  /* Typography utilities */
+  .font-heading {
+    font-family: 'Satoshi', 'Inter', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
 
-[data-provider="kuberay"] {
-  --primary: 217 91% 60%;
-  /* Ray Blue */
-  --ring: 217 91% 60%;
-  --glow-color: 59 130 246; /* RGB for ray blue glow */
+  .font-mono-code {
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  }
+
+  .text-label {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  /* Background decor — kept minimal, no radial gradients */
+  .bg-decor {
+    /* intentionally empty — clean dark background */
+  }
 }

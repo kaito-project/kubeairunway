@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -48,21 +47,21 @@ type ManifestViewerProps = ManifestViewerPreviewProps | ManifestViewerDeployedPr
 function getResourceBadgeStyle(kind: string): string {
   switch (kind.toLowerCase()) {
     case 'inferenceset':
-      return 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300';
+      return 'bg-purple-500/10 text-purple-400 border border-purple-500/20';
     case 'rayservice':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300';
+      return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
     case 'dynamographdeployment':
-      return 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300';
+      return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
     case 'deployment':
-      return 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300';
+      return 'bg-orange-500/10 text-orange-400 border border-orange-500/20';
     case 'service':
-      return 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300';
+      return 'bg-orange-500/10 text-orange-400 border border-orange-500/20';
     case 'configmap':
-      return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300';
+      return 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20';
     case 'secret':
-      return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300';
+      return 'bg-red-500/10 text-red-400 border border-red-500/20';
     default:
-      return 'bg-gray-100 text-gray-700 dark:bg-gray-950 dark:text-gray-300';
+      return 'bg-gray-500/10 text-gray-400 border border-gray-500/20';
   }
 }
 
@@ -226,47 +225,41 @@ const deployedQuery = useDeploymentManifest(
   // Error state for deployed mode
   if (props.mode === 'deployed' && error) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-destructive">
-            Failed to load manifest: {error}
-          </p>
-        </CardContent>
-      </Card>
+      <div className="glass-panel">
+        <h2 className="text-lg font-heading mb-4">{title}</h2>
+        <p className="text-sm text-destructive">
+          Failed to load manifest: {error}
+        </p>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader
-        className={isCollapsible ? "cursor-pointer select-none" : ""}
+    <div className="glass-panel">
+      <div
+        className={isCollapsible ? "cursor-pointer select-none mb-4" : "mb-4"}
         onClick={isCollapsible ? () => setIsExpanded(!isExpanded) : undefined}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                {title}
-                {resources.length > 0 && (
-                  <Badge variant="outline" className="ml-1">
-                    {resources.length}
-                  </Badge>
-                )}
-              </CardTitle>
-            </div>
+            <h2 className="text-lg font-heading flex items-center gap-2">
+              {title}
+              {resources.length > 0 && (
+                <Badge variant="outline" className="ml-1">
+                  {resources.length}
+                </Badge>
+              )}
+            </h2>
           </div>
 
           {isCollapsible && (
             <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
           )}
         </div>
-      </CardHeader>
+      </div>
 
       {(isExpanded || !isCollapsible) && (
-        <CardContent>
+        <div>
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -368,7 +361,7 @@ const deployedQuery = useDeploymentManifest(
                 </TabsContent>
 
                 <TabsContent value="tree">
-                  <div className="overflow-auto max-h-[500px] rounded-lg bg-muted p-4 text-sm font-mono">
+                  <div className="overflow-auto max-h-[500px] rounded-lg bg-[#0A0A0A] p-4 text-sm font-mono-code">
                     {Object.entries(selectedResource.manifest).map(([key, value]) => (
                       <TreeNode
                         key={key}
@@ -384,9 +377,9 @@ const deployedQuery = useDeploymentManifest(
           ) : (
             <p className="text-sm text-muted-foreground">No manifest data available.</p>
           )}
-        </CardContent>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }
 

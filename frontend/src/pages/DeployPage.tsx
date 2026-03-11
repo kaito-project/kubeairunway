@@ -3,7 +3,6 @@ import { useModel, useHfModel } from '@/hooks/useModels'
 import { useAutoscalerDetection, useDetailedCapacity } from '@/hooks/useAutoscaler'
 import { useRuntimesStatus } from '@/hooks/useRuntimes'
 import { DeploymentForm } from '@/components/deployments/DeploymentForm'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loader2, ArrowLeft, Cpu, HardDrive, Layers, ExternalLink } from 'lucide-react'
@@ -52,13 +51,13 @@ export function DeployPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto animate-slide-up">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Deploy Model</h1>
+          <h1 className="text-3xl font-heading">Deploy Model</h1>
           <p className="text-muted-foreground mt-1">
             Configure and deploy {model.name}
           </p>
@@ -66,86 +65,85 @@ export function DeployPage() {
       </div>
 
       {/* Model Summary Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <CardTitle>{model.name}</CardTitle>
-                {model.fromHfSearch && (
-                  <a
-                    href={`https://huggingface.co/${model.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                )}
-              </div>
-              <CardDescription>{model.id}</CardDescription>
-              {model.gated && (
-                <Badge variant="outline" className="mt-2 text-yellow-600 border-yellow-500">
-                  Gated Model
-                </Badge>
+      <div className="glass-panel animate-slide-up" style={{ animationDelay: '50ms', animationFillMode: 'both' }}>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold">{model.name}</h2>
+              {model.fromHfSearch && (
+                <a
+                  href={`https://huggingface.co/${model.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
               )}
             </div>
-            <Badge variant="outline" className="text-lg px-3 py-1">
-              {model.size}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground mb-4">{model.description}</p>
-
-          <div className="flex flex-wrap gap-4 text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Cpu className="h-4 w-4" />
-              {model.estimatedGpuMemory ? (
-                  <div className="flex items-center gap-2">
-                    <span>GPU: ~{model.estimatedGpuMemory}</span>
-                    {detailedCapacity?.totalMemoryGb && model.estimatedGpuMemoryGb && (
-                      <GpuFitIndicator
-                        estimatedGpuMemoryGb={model.estimatedGpuMemoryGb}
-                        clusterCapacityGb={detailedCapacity.totalMemoryGb}
-                      />
-                    )}
-                  </div>
-              ) : (
-                <span>GPU: {model.minGpuMemory || 'N/A'}</span>
-              )}
-            </div>
-
-            {model.contextLength && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Layers className="h-4 w-4" />
-                <span>Context: {model.contextLength.toLocaleString()}</span>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <HardDrive className="h-4 w-4" />
-              <span className="capitalize">{model.task.replace('-', ' ')}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 mt-4">
-            {model.supportedEngines.map((engine) => (
-              <Badge key={engine} variant="secondary">
-                {engine.toUpperCase()}
+            <p className="text-sm text-muted-foreground">{model.id}</p>
+            {model.gated && (
+              <Badge variant="outline" className="mt-2 text-yellow-500 border-yellow-500/50 bg-yellow-500/10">
+                Gated Model
               </Badge>
-            ))}
+            )}
           </div>
-        </CardContent>
-      </Card>
+          <Badge variant="outline" className="text-lg px-3 py-1 border-white/10 bg-white/[0.03]">
+            {model.size}
+          </Badge>
+        </div>
+
+        <p className="text-muted-foreground mb-4">{model.description}</p>
+
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Cpu className="h-4 w-4" />
+            {model.estimatedGpuMemory ? (
+                <div className="flex items-center gap-2">
+                  <span>GPU: ~{model.estimatedGpuMemory}</span>
+                  {detailedCapacity?.totalMemoryGb && model.estimatedGpuMemoryGb && (
+                    <GpuFitIndicator
+                      estimatedGpuMemoryGb={model.estimatedGpuMemoryGb}
+                      clusterCapacityGb={detailedCapacity.totalMemoryGb}
+                    />
+                  )}
+                </div>
+            ) : (
+              <span>GPU: {model.minGpuMemory || 'N/A'}</span>
+            )}
+          </div>
+
+          {model.contextLength && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Layers className="h-4 w-4" />
+              <span>Context: {model.contextLength.toLocaleString()}</span>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <HardDrive className="h-4 w-4" />
+            <span className="capitalize">{model.task.replace('-', ' ')}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mt-4">
+          {model.supportedEngines.map((engine) => (
+            <Badge key={engine} variant="secondary" className="bg-white/[0.06] border-white/10">
+              {engine.toUpperCase()}
+            </Badge>
+          ))}
+        </div>
+      </div>
 
       {/* Deployment Form */}
-      <DeploymentForm
-        model={model}
-        detailedCapacity={detailedCapacity}
-        autoscaler={autoscaler}
-        runtimes={runtimesData?.runtimes}
-      />
+      <div className="animate-slide-up" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
+        <DeploymentForm
+          model={model}
+          detailedCapacity={detailedCapacity}
+          autoscaler={autoscaler}
+          runtimes={runtimesData?.runtimes}
+        />
+      </div>
     </div>
   )
 }

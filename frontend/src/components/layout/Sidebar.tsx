@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Box, Layers, Settings, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useClusterStatus } from '@/hooks/useClusterStatus'
 
 const navigation = [
   { name: 'Models', href: '/', icon: Box },
@@ -14,6 +15,33 @@ interface SidebarProps {
   onNavigate?: () => void
 }
 
+function ClusterStatusDot() {
+  const { data, isLoading } = useClusterStatus()
+
+  const connected = data?.connected ?? false
+  const connecting = isLoading
+
+  let dotClass: string
+  let label: string
+  if (connecting) {
+    dotClass = 'h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse'
+    label = 'Connecting…'
+  } else if (connected) {
+    dotClass = 'h-2.5 w-2.5 rounded-full bg-emerald-500'
+    label = 'Connected'
+  } else {
+    dotClass = 'h-2.5 w-2.5 rounded-full bg-red-500'
+    label = 'Disconnected'
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2">
+      <span className={dotClass} />
+      <span className="text-xs text-slate-400">{label}</span>
+    </div>
+  )
+}
+
 export function Sidebar({ onNavigate }: SidebarProps) {
   const location = useLocation()
 
@@ -22,20 +50,30 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   }
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-card overflow-hidden shadow-soft-sm md:shadow-none">
-      {/* Header with logo */}
-      <div className="flex h-16 items-center justify-between border-b px-4 md:px-6">
-        <Link to="/" className="flex items-center gap-2" onClick={handleNavClick}>
-          <img src="/logo.png" alt="KubeAIRunway" className="h-8 w-8" />
-          <span className="text-xl font-bold text-foreground">KubeAIRunway</span>
+    <div
+      className={cn(
+        'flex h-full w-60 flex-col bg-background border-r border-white/5 overflow-hidden',
+        onNavigate && 'shadow-soft-sm'
+      )}
+    >
+      {/* Logo */}
+      <div className="flex h-14 items-center border-b border-white/5 px-4 shrink-0">
+        <Link
+          to="/"
+          className="flex items-center gap-2 min-w-0"
+          onClick={handleNavClick}
+        >
+          <img src="/logo.png" alt="KubeAIRunway" className="h-8 w-8 shrink-0" />
+          <span className="text-xl font-bold text-foreground whitespace-nowrap">
+            KubeAIRunway
+          </span>
         </Link>
-        
-        {/* Close button - mobile only */}
+
         {onNavigate && (
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden -mr-2"
+            className="ml-auto -mr-2"
             onClick={onNavigate}
             aria-label="Close sidebar"
           >
@@ -45,9 +83,10 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-3 md:p-4">
+      <nav className="flex-1 flex flex-col items-stretch gap-1 px-2 py-4">
         {navigation.map((item) => {
-          const isActive = location.pathname === item.href ||
+          const isActive =
+            location.pathname === item.href ||
             (item.href !== '/' && location.pathname.startsWith(item.href))
 
           return (
@@ -56,22 +95,39 @@ export function Sidebar({ onNavigate }: SidebarProps) {
               to={item.href}
               onClick={handleNavClick}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
+                'relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
                 'transition-all duration-150 ease-out',
                 isActive
-                  ? 'bg-primary text-primary-foreground shadow-soft-sm'
+                  ? 'text-primary'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground active:scale-[0.98]'
               )}
             >
-              <item.icon className={cn(
-                'h-5 w-5 transition-transform duration-150',
-                isActive && 'scale-110'
-              )} />
-              {item.name}
+              <span
+                className={cn(
+                  'absolute left-0 w-1 h-8 rounded-full bg-primary transition-all duration-200 ease-out origin-center',
+                  isActive
+                    ? 'opacity-100 scale-y-100'
+                    : 'opacity-0 scale-y-0'
+                )}
+              />
+              <item.icon
+                className={cn(
+                  'h-5 w-5 shrink-0 transition-transform duration-150',
+                  isActive && 'scale-110'
+                )}
+              />
+              <span className="whitespace-nowrap text-slate-300">
+                {item.name}
+              </span>
             </Link>
           )
         })}
       </nav>
+
+      {/* Cluster status */}
+      <div className="shrink-0 border-t border-white/5 py-3 px-2">
+        <ClusterStatusDot />
+      </div>
     </div>
   )
 }

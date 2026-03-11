@@ -4,21 +4,21 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const cardVariants = cva(
-  "rounded-lg border bg-card text-card-foreground",
+  "rounded-2xl border text-card-foreground",
   {
     variants: {
       variant: {
-        default: "shadow-soft-sm",
-        elevated: "shadow-soft-md",
-        outline: "shadow-none",
-        glass: "glass shadow-soft-sm",
+        default: "bg-white/[0.03] border-white/5 shadow-soft-sm",
+        elevated: "bg-white/[0.05] border-white/10 shadow-soft-md",
+        outline: "bg-transparent border-white/10 shadow-none",
+        glass: "bg-white/[0.03] border-white/5 backdrop-blur-xl shadow-soft-sm",
       },
       interactive: {
         true: [
-          "transition-all duration-200 ease-out-expo",
-          "hover:-translate-y-0.5 hover:shadow-soft-md",
+          "transition-all duration-200 ease-out-expo cursor-pointer",
+          "hover:-translate-y-0.5 hover:border-cyan-500/30 hover:shadow-glow-card",
           "active:translate-y-0 active:shadow-soft-sm",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2",
         ],
         false: "",
       },

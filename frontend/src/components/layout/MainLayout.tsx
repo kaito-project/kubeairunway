@@ -1,7 +1,6 @@
 import { ReactNode, useState, useCallback, useEffect, createContext, useContext } from 'react'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
-import { useProviderTheme } from '@/hooks/useProviderTheme'
 
 interface SidebarContextValue {
   isOpen: boolean
@@ -25,28 +24,24 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  // Apply provider-specific theme colors
-  useProviderTheme()
-  
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  
+
   const toggle = useCallback(() => {
     setIsSidebarOpen(prev => !prev)
   }, [])
 
-  // Close sidebar on Escape key
+  // Close mobile drawer on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isSidebarOpen) {
         setIsSidebarOpen(false)
       }
     }
-    
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isSidebarOpen])
 
-  // Prevent body scroll when sidebar is open on mobile
+  // Prevent body scroll when mobile drawer is open
   useEffect(() => {
     if (isSidebarOpen) {
       document.body.style.overflow = 'hidden'
@@ -67,22 +62,22 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <SidebarContext.Provider value={contextValue}>
       <div className="flex h-screen bg-background">
-        {/* Desktop sidebar - always visible */}
-        <div className="hidden md:block">
+        {/* Desktop navigation rail — always visible */}
+        <div className="hidden md:flex h-full shrink-0">
           <Sidebar />
         </div>
-        
-        {/* Mobile sidebar overlay */}
+
+        {/* Mobile overlay */}
         {isSidebarOpen && (
-          <div 
+          <div
             className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden animate-fade-in"
             onClick={() => setIsSidebarOpen(false)}
             aria-hidden="true"
           />
         )}
-        
-        {/* Mobile sidebar drawer */}
-        <div 
+
+        {/* Mobile drawer */}
+        <div
           className={[
             'fixed inset-y-0 left-0 z-50 md:hidden',
             'transition-transform duration-300 ease-out-expo',
@@ -91,11 +86,14 @@ export function MainLayout({ children }: MainLayoutProps) {
         >
           <Sidebar onNavigate={() => setIsSidebarOpen(false)} />
         </div>
-        
+
+        {/* Main content */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-auto p-4 md:p-6">
-            {children}
+          <main className="flex-1 overflow-auto bg-decor">
+            <div className="max-w-[1400px] mx-auto p-4 md:p-6">
+              {children}
+            </div>
           </main>
         </div>
       </div>
