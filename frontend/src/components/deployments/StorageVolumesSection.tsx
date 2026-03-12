@@ -343,7 +343,9 @@ export function StorageVolumesSection({ volumes, onChange, deploymentName }: Sto
                   <div className="space-y-3 pl-4 border-l-2 border-white/5">
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
-                        <Label htmlFor={`vol-size-${index}`}>Disk Size</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor={`vol-size-${index}`}>Disk Size</Label>
+                        </div>
                         <Input
                           id={`vol-size-${index}`}
                           value={vol.size || ''}
