@@ -272,7 +272,13 @@ const deployments = new Hono()
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
       const userToken = c.get('token') as string | undefined;
 
-      const pods = await kubernetesService.getDeploymentPods(name, resolvedNamespace, userToken);
+      // Verify user has access to the parent ModelDeployment
+      const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
+      if (!deployment) {
+        throw new HTTPException(404, { message: 'Deployment not found' });
+      }
+
+      const pods = await kubernetesService.getDeploymentPods(name, resolvedNamespace);
       return c.json({ pods });
     }
   )
@@ -284,6 +290,13 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
+      const userToken = c.get('token') as string | undefined;
+
+      // Verify user has access to the parent ModelDeployment
+      const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
+      if (!deployment) {
+        throw new HTTPException(404, { message: 'Deployment not found' });
+      }
 
       const metricsResponse = await metricsService.getDeploymentMetrics(name, resolvedNamespace);
       return c.json(metricsResponse);
@@ -316,7 +329,7 @@ const deployments = new Hono()
 
         // Get failure reasons for the first pending pod (they're typically the same)
         const podName = pendingPods[0].name;
-        const reasons = await kubernetesService.getPodFailureReasons(podName, resolvedNamespace, userToken);
+        const reasons = await kubernetesService.getPodFailureReasons(podName, resolvedNamespace);
 
         return c.json({ reasons });
       } catch (error) {
@@ -356,8 +369,14 @@ const deployments = new Hono()
       const userToken = c.get('token') as string | undefined;
 
       try {
-        // Get pods for this deployment using label selectors
-        const pods = await kubernetesService.getDeploymentPods(name, resolvedNamespace, userToken);
+        // Verify user has access to the parent ModelDeployment
+        const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
+        if (!deployment) {
+          throw new HTTPException(404, { message: 'Deployment not found' });
+        }
+
+        // Use service account for pod listing and log fetching
+        const pods = await kubernetesService.getDeploymentPods(name, resolvedNamespace);
 
         if (pods.length === 0) {
           logger.debug({ name, namespace: resolvedNamespace }, 'No pods found for deployment');
@@ -381,7 +400,7 @@ const deployments = new Hono()
           container,
           tailLines: tailLines || 100,
           timestamps: timestamps || false,
-        }, userToken);
+        });
 
         return c.json({
           logs,
