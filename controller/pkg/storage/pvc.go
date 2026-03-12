@@ -76,7 +76,7 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 			}
 			switch existing.Status.Phase {
 			case corev1.ClaimBound:
-				logger.V(1).Info("Pre-existing PVC is Bound", "name", claimName)
+				logger.Info("Pre-existing PVC is Bound", "name", claimName)
 			case corev1.ClaimPending:
 				logger.Info("Pre-existing PVC is Pending", "name", claimName)
 				allReady = false
@@ -142,7 +142,7 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 		// PVC exists, check phase
 		switch existing.Status.Phase {
 		case corev1.ClaimBound:
-			logger.V(1).Info("PVC is Bound", "name", claimName)
+			logger.Info("PVC is Bound", "name", claimName)
 		case corev1.ClaimPending:
 			logger.Info("PVC is Pending", "name", claimName)
 			allReady = false

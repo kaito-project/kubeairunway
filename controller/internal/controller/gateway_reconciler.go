@@ -79,10 +79,11 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 	var poolName, poolNamespace string = md.Name, md.Namespace
 	// Resolve provider gateway capabilities
 	if gatewayCapabilities, err = r.resolveProviderGatewayCapabilities(ctx, md); err != nil {
-		logger.Info("Error resolving provider gateway capabilities, proceeding without provider-specific gateway capabilities", "error", err)
+		logger.V(1).Info("Error resolving provider gateway capabilities, proceeding without provider-specific gateway capabilities", "error", err)
 	}
 
-	if gatewayCapabilities != nil && gatewayCapabilities.ManagesInferencePool {
+	// Use provider managed inference pool if it exists, otherwise try to use the default inference pool.
+	if ok, err := r.providerInferencePoolExistsOrCreateDefault(ctx, md, gatewayCapabilities); ok && err == nil {
 		logger.Info("Skipping InferencePool creation, provider manages InferencePool", "provider", md.Spec.Provider.Name)
 
 		// Resolve the InferencePool name for the provider.
@@ -94,29 +95,8 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		if err := r.reconcileProviderManagedInferencePool(ctx, md.Namespace, poolName, poolNamespace); err != nil {
 			return fmt.Errorf("failed to reconcile provider-managed InferencePool: %w", err)
 		}
-	} else { // Use default InferencePool
-		// Determine target port for InferencePool (needs the pod/container port, not service port)
-		port := int32(8000) // sensible default
-		if md.Status.Endpoint != nil && md.Status.Endpoint.Service != "" {
-			// Look up the service's target port (the actual container port)
-			if targetPort := r.resolveTargetPort(ctx, md.Status.Endpoint.Service, md.Namespace); targetPort > 0 {
-				port = targetPort
-			} else if md.Status.Endpoint.Port > 0 {
-				port = md.Status.Endpoint.Port
-			}
-		}
-
-		// Ensure model pods have the selector label for InferencePool
-		if err := r.labelModelPods(ctx, md); err != nil {
-			logger.V(1).Info("Could not label model pods", "error", err)
-			// Non-fatal: pods may not exist yet or provider may handle labels
-		}
-
-		// Create or update InferencePool
-		if err := r.reconcileInferencePool(ctx, md, port); err != nil {
-			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
-			return fmt.Errorf("reconciling InferencePool: %w", err)
-		}
+	} else if err != nil {
+		return err
 	}
 
 	if gatewayCapabilities != nil && gatewayCapabilities.ManagesEPP {
@@ -851,4 +831,38 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayDisabled", "Gateway resources cleaned up")
 	logger.Info("Gateway resources cleaned up", "name", md.Name)
 	return nil
+}
+
+func (r *ModelDeploymentReconciler) providerInferencePoolExistsOrCreateDefault(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gatewayCapabilitities *kubeairunwayv1alpha1.GatewayCapabilities) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	if gatewayCapabilitities != nil || gatewayCapabilitities.ManagesInferencePool {
+		// Provider manages the pool.
+		return true, nil
+	}
+
+	// Traffic routed to the InferencePool will be forwarded to this port on selected pods (needs the pod/container port, not service port).
+	port := int32(8000) // sensible default
+	if md.Status.Endpoint != nil && md.Status.Endpoint.Service != "" {
+		// Look up the service's target port (the actual container port)
+		if targetPort := r.resolveTargetPort(ctx, md.Status.Endpoint.Service, md.Namespace); targetPort > 0 {
+			port = targetPort
+		} else if md.Status.Endpoint.Port > 0 {
+			port = md.Status.Endpoint.Port
+		}
+	}
+
+	// Ensure model pods have the selector label for InferencePool
+	if err := r.labelModelPods(ctx, md); err != nil {
+		logger.V(1).Info("Could not label model pods", "error", err)
+		// Non-fatal: pods may not exist yet or provider may handle labels
+	}
+
+	// Create or update InferencePool
+	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
+		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
+		return false, fmt.Errorf("reconciling InferencePool: %w", err)
+	}
+
+	return false, nil
 }
