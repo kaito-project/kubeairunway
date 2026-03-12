@@ -77,6 +77,7 @@ type FrontendOverrides struct {
 // EPPOverrides contains EPP component configuration
 type EPPOverrides struct {
 	Replicas *int32 `json:"replicas,omitempty"`
+	Image    string `json:"image,omitempty"`
 }
 
 // ResourceOverrides contains resource overrides
@@ -284,35 +285,63 @@ func (t *Transformer) buildEPP(md *kubeairunwayv1alpha1.ModelDeployment, overrid
 		replicas = int64(*overrides.Epp.Replicas)
 	}
 
+	// EPP image defaults to the frontend runtime image (per Dynamo docs, the
+	// frontend image can be used for the EPP) but can be overridden if you
+	// choose to build the EPP image.
+	eppImage := t.getImage(md)
+	if overrides.Epp != nil && overrides.Epp.Image != "" {
+		eppImage = overrides.Epp.Image
+	}
+
 	epp := map[string]interface{}{
 		"componentType": ComponentTypeEpp,
 		"replicas":      replicas,
+		"extraPodSpec": map[string]interface{}{
+			"mainContainer": map[string]interface{}{
+				"image": eppImage,
+			},
+		},
 		"eppConfig": map[string]interface{}{
 			"config": map[string]interface{}{
 				"plugins": []interface{}{
 					map[string]interface{}{
-						"type": "single-profile-handler",
+						"type": "disagg-profile-handler",
+					},
+					map[string]interface{}{
+						"name": "decode-filter",
+						"type": "label-filter",
+						"parameters": map[string]interface{}{
+							"label": "nvidia.com/dynamo-sub-component-type",
+							"validValues": []interface{}{
+								"decode",
+							},
+							"allowsNoLabel": true,
+						},
 					},
 					map[string]interface{}{
 						"name": "picker",
 						"type": "max-score-picker",
 					},
 					map[string]interface{}{
-						"name": "dyn-kv",
-						"type": "kv-aware-scorer",
+						"name": "dyn-decode",
+						"type": "dyn-decode-scorer",
 					},
 				},
 				"schedulingProfiles": []interface{}{
 					map[string]interface{}{
-						"name": "default",
+						"name": "decode",
 						"plugins": []interface{}{
 							map[string]interface{}{
-								"pluginRef": "dyn-kv",
+								"pluginRef": "decode-filter",
+								"weight":    int64(1),
+							},
+							map[string]interface{}{
+								"pluginRef": "dyn-decode",
 								"weight":    int64(1),
 							},
 							map[string]interface{}{
 								"pluginRef": "picker",
-								"weight":    int64(2),
+								"weight":    int64(1),
 							},
 						},
 					},
