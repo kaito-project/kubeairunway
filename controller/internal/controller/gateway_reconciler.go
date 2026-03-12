@@ -30,7 +30,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -208,6 +210,15 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 	}
 
 	log.FromContext(ctx).V(1).Info("InferencePool reconciled", "name", pool.Name, "result", result)
+
+	// When a new InferencePool is created, restart the BBR deployment (if present) so it
+	// discovers the new model. BBR watches ConfigMaps via controller-runtime and rebuilds
+	// its internal model registry on startup.
+	if result == controllerutil.OperationResultCreated {
+		if err := r.restartBBRIfPresent(ctx, md.Namespace); err != nil {
+			log.FromContext(ctx).Info("Could not restart BBR deployment (non-fatal)", "error", err)
+		}
+	}
 	return nil
 }
 
@@ -767,5 +778,21 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 	md.Status.Gateway = nil
 	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayDisabled", "Gateway resources cleaned up")
 	logger.Info("Gateway resources cleaned up", "name", md.Name)
+	return nil
+}
+
+// restartBBRIfPresent triggers a rolling restart of the body-based-router Deployment (if present
+// in the given namespace) by updating its restart annotation. This is necessary because BBR builds
+// its internal model registry on startup and does not dynamically watch InferencePools.
+func (r *ModelDeploymentReconciler) restartBBRIfPresent(ctx context.Context, namespace string) error {
+	var bbr appsv1.Deployment
+	if err := r.Get(ctx, client.ObjectKey{Name: "body-based-router", Namespace: namespace}, &bbr); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":{"kubeairunway.ai/restartedAt":"` + time.Now().UTC().Format(time.RFC3339) + `"}}}}}`)
+	if err := r.Patch(ctx, &bbr, client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
+		return fmt.Errorf("patching body-based-router: %w", err)
+	}
+	log.FromContext(ctx).Info("Triggered BBR rolling restart to discover new InferencePool", "namespace", namespace)
 	return nil
 }
