@@ -158,38 +158,47 @@ class HuggingFaceService {
     
     logger.debug({ query, limit, offset }, 'Searching HuggingFace models');
 
-    // Build search URL with filters
-    const searchParams = new URLSearchParams({
+    // Build base search params (shared across pipeline tag queries)
+    const baseParams = {
       search: query,
-      // Filter by pipeline tag (text generation models)
-      filter: 'text-generation',
-      // Request additional fields
       full: 'true',
       config: 'true',
-      // Pagination
-      limit: String(limit + offset + 10), // Fetch extra since we filter
-    });
-    
-    // Request safetensors expansion for parameter count info
-    // URLSearchParams doesn't handle array params well, so we append manually
-    const urlWithExpand = `${HF_MODELS_URL}?${searchParams.toString()}&expand[]=safetensors`;
+      limit: String(limit + offset + 10), // Fetch extra since we filter client-side
+    };
 
     const headers: Record<string, string> = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(urlWithExpand, {
-      headers,
-    });
+    // Search both text-generation and image-text-to-text pipeline tags in parallel.
+    // Many modern multimodal models (Llama 4, Gemma 3, Kimi K2.5, etc.) are tagged
+    // image-text-to-text on HuggingFace but work perfectly for text generation.
+    const pipelineTags = ['text-generation', 'image-text-to-text'];
+    const fetchResults = await Promise.all(
+      pipelineTags.map(async (tag) => {
+        const searchParams = new URLSearchParams({ ...baseParams, filter: tag });
+        const url = `${HF_MODELS_URL}?${searchParams.toString()}&expand[]=safetensors`;
+        const response = await fetch(url, { headers });
+        if (!response.ok) {
+          logger.warn({ status: response.status, tag }, 'HuggingFace search failed for pipeline tag');
+          return [] as HfApiModelResult[];
+        }
+        return (await response.json()) as HfApiModelResult[];
+      })
+    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error({ status: response.status, error: errorText }, 'HuggingFace model search failed');
-      throw new Error(`Model search failed: ${response.status} ${errorText}`);
+    // Merge and deduplicate results by model ID
+    const seen = new Set<string>();
+    const rawModels: HfApiModelResult[] = [];
+    for (const results of fetchResults) {
+      for (const model of results) {
+        if (!seen.has(model.id)) {
+          seen.add(model.id);
+          rawModels.push(model);
+        }
+      }
     }
-
-    const rawModels: HfApiModelResult[] = await response.json();
     
     // Filter for compatible models only
     const compatibleModels = filterCompatibleModels(rawModels);
