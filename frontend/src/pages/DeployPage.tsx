@@ -5,7 +5,7 @@ import { useRuntimesStatus } from '@/hooks/useRuntimes'
 import { DeploymentForm } from '@/components/deployments/DeploymentForm'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Loader2, ArrowLeft, Cpu, HardDrive, Layers, ExternalLink, MessageSquare } from 'lucide-react'
+import { Loader2, ArrowLeft, Cpu, HardDrive, Layers, ExternalLink } from 'lucide-react'
 import { GpuFitIndicator } from '@/components/models/GpuFitIndicator'
 
 export function DeployPage() {
@@ -118,13 +118,7 @@ export function DeployPage() {
 
           <div className="flex items-center gap-2 text-muted-foreground">
             <HardDrive className="h-4 w-4" />
-            <span>{model.task === 'image-text-to-text' ? 'Multimodal' : 'Text Generation'}</span>
-            {model.conversational && (
-              <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                <MessageSquare className="h-3 w-3" />
-                Chat
-              </span>
-            )}
+            <span>{model.conversational ? 'Chat' : model.task === 'image-text-to-text' ? 'Multimodal' : 'Text Generation'}</span>
           </div>
         </div>
 

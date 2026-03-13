@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { GpuFitIndicator } from './GpuFitIndicator'
 import { type Model } from '@/lib/api'
-import { Cpu, HardDrive, Layers, MessageSquare } from 'lucide-react'
+import { Cpu, HardDrive, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ModelCardProps {
@@ -117,13 +117,7 @@ export function ModelCard({ model, gpuCapacityGb, gpuCount }: ModelCardProps) {
 
           <div className="flex items-center gap-2 text-slate-400">
             <HardDrive className="h-4 w-4 shrink-0" />
-            <span>{formatTaskLabel(model.task)}</span>
-            {model.conversational && (
-              <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                <MessageSquare className="h-3 w-3" />
-                Chat
-              </span>
-            )}
+            <span>{model.conversational ? 'Chat' : formatTaskLabel(model.task)}</span>
           </div>
         </div>
 
