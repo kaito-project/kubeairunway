@@ -138,7 +138,7 @@ export function ModelsPage() {
             selectedEngines={selectedEngines}
             onEngineToggle={handleEngineToggle}
           />
-          <ModelGrid models={filteredModels} />
+          <ModelGrid models={filteredModels} gpuCapacityGb={gpuCapacity?.totalMemoryGb} gpuCount={maxContiguousAvailable} />
         </>
       )}
 

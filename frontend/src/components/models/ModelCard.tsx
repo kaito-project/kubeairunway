@@ -1,20 +1,34 @@
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { GpuFitIndicator } from './GpuFitIndicator'
 import { type Model } from '@/lib/api'
 import { Cpu, HardDrive, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ModelCardProps {
   model: Model
+  gpuCapacityGb?: number
+  gpuCount?: number
 }
 
-export function ModelCard({ model }: ModelCardProps) {
+/**
+ * Parse a GPU memory string like "8GB" or "16 GB" into a numeric GB value.
+ */
+function parseGpuMemoryGb(memoryStr?: string): number | undefined {
+  if (!memoryStr) return undefined
+  const match = memoryStr.match(/(\d+(?:\.\d+)?)\s*GB/i)
+  return match ? parseFloat(match[1]) : undefined
+}
+
+export function ModelCard({ model, gpuCapacityGb, gpuCount }: ModelCardProps) {
   const navigate = useNavigate()
 
   const handleDeploy = () => {
     navigate(`/deploy/${encodeURIComponent(model.id)}`)
   }
+
+  const estimatedGpuMemoryGb = model.estimatedGpuMemoryGb ?? parseGpuMemoryGb(model.minGpuMemory)
 
   return (
     <div
@@ -47,7 +61,15 @@ export function ModelCard({ model }: ModelCardProps) {
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2 text-slate-400">
             <Cpu className="h-4 w-4 shrink-0" />
-            <span className="truncate">GPU: {model.minGpuMemory || 'N/A'}</span>
+            {estimatedGpuMemoryGb && gpuCapacityGb ? (
+              <GpuFitIndicator
+                estimatedGpuMemoryGb={estimatedGpuMemoryGb}
+                clusterCapacityGb={gpuCapacityGb}
+                gpuCount={gpuCount}
+              />
+            ) : (
+              <span className="truncate">GPU: {model.minGpuMemory || 'N/A'}</span>
+            )}
           </div>
 
           {model.contextLength && (
