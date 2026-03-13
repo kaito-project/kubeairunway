@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 interface HfModelCardProps {
   model: HfModelSearchResult;
   gpuCapacityGb?: number;
+  gpuCount?: number;
 }
 
 /**
@@ -24,7 +25,7 @@ function formatCount(count: number): string {
   return count.toString();
 }
 
-export function HfModelCard({ model, gpuCapacityGb }: HfModelCardProps) {
+export function HfModelCard({ model, gpuCapacityGb, gpuCount }: HfModelCardProps) {
   const navigate = useNavigate();
 
   const handleDeploy = () => {
@@ -73,9 +74,10 @@ export function HfModelCard({ model, gpuCapacityGb }: HfModelCardProps) {
 
         {/* GPU Memory bar indicator */}
         <div className="mb-3">
-          <GpuFitIndicator 
-            estimatedGpuMemoryGb={model.estimatedGpuMemoryGb} 
-            clusterCapacityGb={gpuCapacityGb} 
+          <GpuFitIndicator
+            estimatedGpuMemoryGb={model.estimatedGpuMemoryGb}
+            clusterCapacityGb={gpuCapacityGb}
+            gpuCount={gpuCount}
           />
         </div>
 

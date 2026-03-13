@@ -11,9 +11,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 interface HfModelSearchProps {
   onLoginClick?: () => void;
   gpuCapacityGb?: number;
+  gpuCount?: number;
 }
 
-export function HfModelSearch({ onLoginClick, gpuCapacityGb }: HfModelSearchProps) {
+export function HfModelSearch({ onLoginClick, gpuCapacityGb, gpuCount }: HfModelSearchProps) {
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
   const limit = 20;
@@ -30,6 +31,10 @@ export function HfModelSearch({ onLoginClick, gpuCapacityGb }: HfModelSearchProp
 
   // Use provided GPU capacity or estimate from cluster
   const maxGpuMemoryGb = gpuCapacityGb ?? gpuCapacity?.totalMemoryGb;
+  const fallbackMaxNodeGpus = gpuCapacity?.nodes?.length
+    ? Math.max(...gpuCapacity.nodes.map(n => n.totalGpus))
+    : undefined;
+  const effectiveGpuCount = gpuCount ?? fallbackMaxNodeGpus;
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
@@ -124,10 +129,11 @@ export function HfModelSearch({ onLoginClick, gpuCapacityGb }: HfModelSearchProp
           
           <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {searchResults.models.map((model) => (
-              <HfModelCard 
-                key={model.id} 
-                model={model} 
+              <HfModelCard
+                key={model.id}
+                model={model}
                 gpuCapacityGb={maxGpuMemoryGb}
+                gpuCount={effectiveGpuCount}
               />
             ))}
           </div>

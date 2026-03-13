@@ -15,6 +15,8 @@ export type GpuFitLevel = 'perfect' | 'good' | 'marginal' | 'too-large' | 'unkno
 interface GpuFitIndicatorProps {
   estimatedGpuMemoryGb?: number;
   clusterCapacityGb?: number;
+  /** Number of GPUs available — capacity is multiplied by this (default 1) */
+  gpuCount?: number;
   className?: string;
 }
 
@@ -129,26 +131,30 @@ export function getUpgradeDelta(
 export function GpuFitIndicator({
   estimatedGpuMemoryGb,
   clusterCapacityGb,
+  gpuCount = 1,
   className
 }: GpuFitIndicatorProps) {
-  const level = getGpuFitLevel(estimatedGpuMemoryGb, clusterCapacityGb);
+  // Multiply per-GPU capacity by the number of available GPUs
+  const effectiveCapacityGb = clusterCapacityGb !== undefined ? clusterCapacityGb * Math.max(gpuCount, 1) : undefined;
+
+  const level = getGpuFitLevel(estimatedGpuMemoryGb, effectiveCapacityGb);
   const config = fitConfig[level];
   const Icon = config.icon;
-  const upgradeDelta = getUpgradeDelta(estimatedGpuMemoryGb, clusterCapacityGb);
+  const upgradeDelta = getUpgradeDelta(estimatedGpuMemoryGb, effectiveCapacityGb);
 
   const fillPercent =
-    estimatedGpuMemoryGb !== undefined && clusterCapacityGb !== undefined && clusterCapacityGb > 0
-      ? Math.min((estimatedGpuMemoryGb / clusterCapacityGb) * 100, 100)
+    estimatedGpuMemoryGb !== undefined && effectiveCapacityGb !== undefined && effectiveCapacityGb > 0
+      ? Math.min((estimatedGpuMemoryGb / effectiveCapacityGb) * 100, 100)
       : 0;
 
   const utilizationPct = Math.round(fillPercent);
 
   const tooltipDetail =
-    estimatedGpuMemoryGb !== undefined && clusterCapacityGb !== undefined && clusterCapacityGb > 0
-      ? config.detail(estimatedGpuMemoryGb, clusterCapacityGb, utilizationPct)
+    estimatedGpuMemoryGb !== undefined && effectiveCapacityGb !== undefined && effectiveCapacityGb > 0
+      ? config.detail(estimatedGpuMemoryGb, effectiveCapacityGb, utilizationPct)
       : estimatedGpuMemoryGb === undefined
         ? 'Model size unknown — deploy with caution'
-        : config.detail(estimatedGpuMemoryGb ?? 0, clusterCapacityGb ?? 0, utilizationPct);
+        : config.detail(estimatedGpuMemoryGb ?? 0, effectiveCapacityGb ?? 0, utilizationPct);
 
   return (
     <TooltipProvider>
@@ -161,9 +167,9 @@ export function GpuFitIndicator({
                 <Icon className="h-3 w-3" />
                 {config.label}
               </span>
-              {estimatedGpuMemoryGb !== undefined && clusterCapacityGb !== undefined && (
+              {estimatedGpuMemoryGb !== undefined && effectiveCapacityGb !== undefined && (
                 <span className="text-xs text-slate-400 tabular-nums">
-                  {estimatedGpuMemoryGb.toFixed(1)} / {clusterCapacityGb} GB
+                  {estimatedGpuMemoryGb.toFixed(1)} / {effectiveCapacityGb} GB{gpuCount > 1 ? ` (${gpuCount}×${clusterCapacityGb} GB)` : ''}
                 </span>
               )}
             </div>
