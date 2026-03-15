@@ -71,6 +71,29 @@ spec:
                       - llamacpp
                       type: string
                     type: array
+                  gateway:
+                    description: gateway defines the provider's gateway-related capabilities.
+                    properties:
+                      inferencePoolNamePattern:
+                        description: |-
+                          inferencePoolNamePattern is the naming pattern for provider-created pools.
+                          Supports {name} and {namespace} placeholders.
+                        type: string
+                      inferencePoolNamespace:
+                        description: |-
+                          inferencePoolNamespace is the namespace where the provider creates its InferencePool.
+                          When set, the controller creates a ReferenceGrant for cross-namespace HTTPRoute routing.
+                        type: string
+                      managesEPP:
+                        description: |-
+                          managesEPP indicates the provider creates its own EPP deployment.
+                          When true, the controller skips reconcileEPP().
+                        type: boolean
+                      managesInferencePool:
+                        description: managesInferencePool indicates the provider creates
+                          its own InferencePool.
+                        type: boolean
+                    type: object
                   gpuSupport:
                     description: gpuSupport indicates if the provider supports GPU
                       inference

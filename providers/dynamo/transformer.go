@@ -41,10 +41,12 @@ const (
 	DefaultFrontendCPU      = "2"
 	DefaultFrontendMemory   = "4Gi"
 	DefaultRouterMode       = "round-robin"
+	DefaultEppReplicas      = 1
 
 	// Component types
 	ComponentTypeFrontend = "frontend"
 	ComponentTypeWorker   = "worker"
+	ComponentTypeEpp      = "epp"
 
 	// Sub-component types for disaggregated mode
 	SubComponentTypePrefill = "prefill"
@@ -58,12 +60,21 @@ type DynamoOverrides struct {
 
 	// Frontend contains frontend/router component configuration
 	Frontend *FrontendOverrides `json:"frontend,omitempty"`
+
+	// Epp contains EPP component configuration
+	Epp *EPPOverrides `json:"epp,omitempty"`
 }
 
 // FrontendOverrides contains frontend component configuration
 type FrontendOverrides struct {
 	Replicas  *int32             `json:"replicas,omitempty"`
 	Resources *ResourceOverrides `json:"resources,omitempty"`
+}
+
+// EPPOverrides contains EPP component configuration
+type EPPOverrides struct {
+	Replicas *int32 `json:"replicas,omitempty"`
+	Image    string `json:"image,omitempty"`
 }
 
 // ResourceOverrides contains resource overrides
@@ -188,6 +199,9 @@ func (t *Transformer) buildServices(md *kubeairunwayv1alpha1.ModelDeployment, ov
 	// Add frontend service
 	services["Frontend"] = t.buildFrontendService(md, overrides)
 
+	// Add EPP service
+	services["Epp"] = t.buildEPP(md, overrides)
+
 	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
 		if md.Spec.Scaling == nil {
 			return nil, fmt.Errorf("spec.scaling is required for disaggregated serving mode")
@@ -274,6 +288,82 @@ func (t *Transformer) buildFrontendService(md *kubeairunwayv1alpha1.ModelDeploym
 	}
 
 	return frontend
+}
+
+// buildEPP creates the EPP service configuration
+func (t *Transformer) buildEPP(md *kubeairunwayv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
+	// Determine replicas
+	replicas := int64(DefaultEppReplicas)
+	if overrides.Epp != nil && overrides.Epp.Replicas != nil {
+		replicas = int64(*overrides.Epp.Replicas)
+	}
+
+	// EPP image defaults to the frontend runtime image (per Dynamo docs, the
+	// frontend image can be used for the EPP) but can be overridden if you
+	// choose to build the EPP image.
+	eppImage := t.getImage(md)
+	if overrides.Epp != nil && overrides.Epp.Image != "" {
+		eppImage = overrides.Epp.Image
+	}
+
+	epp := map[string]interface{}{
+		"componentType": ComponentTypeEpp,
+		"replicas":      replicas,
+		"extraPodSpec": map[string]interface{}{
+			"mainContainer": map[string]interface{}{
+				"image": eppImage,
+			},
+		},
+		"eppConfig": map[string]interface{}{
+			"config": map[string]interface{}{
+				"plugins": []interface{}{
+					map[string]interface{}{
+						"type": "disagg-profile-handler",
+					},
+					map[string]interface{}{
+						"name": "decode-filter",
+						"type": "label-filter",
+						"parameters": map[string]interface{}{
+							"label": "nvidia.com/dynamo-sub-component-type",
+							"validValues": []interface{}{
+								"decode",
+							},
+							"allowsNoLabel": true,
+						},
+					},
+					map[string]interface{}{
+						"name": "picker",
+						"type": "max-score-picker",
+					},
+					map[string]interface{}{
+						"name": "dyn-decode",
+						"type": "dyn-decode-scorer",
+					},
+				},
+				"schedulingProfiles": []interface{}{
+					map[string]interface{}{
+						"name": "decode",
+						"plugins": []interface{}{
+							map[string]interface{}{
+								"pluginRef": "decode-filter",
+								"weight":    int64(1),
+							},
+							map[string]interface{}{
+								"pluginRef": "dyn-decode",
+								"weight":    int64(1),
+							},
+							map[string]interface{}{
+								"pluginRef": "picker",
+								"weight":    int64(1),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return epp
 }
 
 // buildAggregatedWorker creates the worker service for aggregated mode

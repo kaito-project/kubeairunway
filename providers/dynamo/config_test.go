@@ -44,6 +44,19 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	if spec.Documentation != ProviderDocumentation {
 		t.Errorf("expected documentation %s, got %s", ProviderDocumentation, spec.Documentation)
 	}
+
+	if !spec.Capabilities.Gateway.ManagesInferencePool {
+		t.Error("expected provider to manage inference pool")
+	}
+	if !spec.Capabilities.Gateway.ManagesEPP {
+		t.Error("expected provider to manage EPP")
+	}
+	if spec.Capabilities.Gateway.InferencePoolNamePattern != "{namespace}-{name}-pool" {
+		t.Errorf("expected inference pool name pattern to be '{namespace}-{name}-pool', got %s", spec.Capabilities.Gateway.InferencePoolNamePattern)
+	}
+	if spec.Capabilities.Gateway.InferencePoolNamespace != "dynamo-system" {
+		t.Errorf("expected inference pool namespace to be 'dynamo-system', got %s", spec.Capabilities.Gateway.InferencePoolNamespace)
+	}
 }
 
 func TestNewProviderConfigManager(t *testing.T) {

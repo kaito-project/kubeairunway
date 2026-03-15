@@ -48,6 +48,11 @@ spec:
     servingModes: [aggregated, disaggregated]
     gpuSupport: true
     cpuSupport: false
+    gateway:                                         # Optional: provider gateway capabilities
+      managesInferencePool: true                     # Provider creates its own InferencePool
+      managesEPP: true                               # Provider creates its own EPP
+      inferencePoolNamePattern: "{namespace}-{name}-pool"  # Pool naming pattern ({name}, {namespace} accepted)
+      inferencePoolNamespace: "dynamo-system"         # Namespace for provider's InferencePool
   selectionRules:
     - condition: "spec.serving.mode == 'disaggregated'"
       priority: 100
