@@ -1392,27 +1392,6 @@ class KubernetesService {
       return { available: false };
     }
 
-    // List InferencePool resources across all namespaces
-    let poolCount = 0;
-    try {
-      const response = await withRetry(
-        () => this.customObjectsApi.listClusterCustomObject(
-          'inference.networking.k8s.io',
-          'v1',
-          'inferencepools'
-        ),
-        { operationName: 'listInferencePools', maxRetries: 1 }
-      );
-      const items = (response.body as { items?: unknown[] }).items || [];
-      poolCount = items.length;
-    } catch (error: any) {
-      logger.debug({ error: error?.message }, 'Could not list InferencePool resources');
-    }
-
-    if (poolCount === 0) {
-      return { available: false };
-    }
-
     // Try to find a Gateway endpoint
     let endpoint: string | undefined;
     const gatewayCrdExists = await this.checkCRDExists('gateways.gateway.networking.k8s.io');

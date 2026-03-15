@@ -564,6 +564,7 @@ const (
 )
 
 const (
+	HTTPRouteCreated     = "kubeairunway.ai/httproute-created"
 	LabelModelDeployment = "kubeairunway.ai/model-deployment"
 	LabelManagedBy       = "kubeairunway.ai/managed-by"
 	LabelJobType         = "kubeairunway.ai/job-type"

@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
 	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
@@ -60,6 +61,7 @@ type ModelDeploymentReconciler struct {
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=inference.networking.x-k8s.io,resources=inferenceobjectives;inferencemodelrewrites,verbs=get;list;watch
+// +kubebuilder:rbac:groups=networking.istio.io,resources=destinationrules,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles the reconciliation loop for ModelDeployment resources.
 //
@@ -574,10 +576,20 @@ func (r *ModelDeploymentReconciler) setCondition(md *kubeairunwayv1alpha1.ModelD
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModelDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&kubeairunwayv1alpha1.ModelDeployment{}).
-		Named("modeldeployment").
-		Complete(r)
+		Named("modeldeployment")
+
+	// Watch InferencePool so the controller reconciles when one is created/deleted.
+	// HTTPRoutes are not watched — they may be user-managed (BYO) and we don't
+	// want deletion of an HTTPRoute to trigger a reconcile that recreates it.
+	// Only add this watch if the gateway CRDs are actually installed.
+	if r.GatewayDetector != nil && r.GatewayDetector.IsAvailable(context.Background()) {
+		builder = builder.
+			Owns(&inferencev1.InferencePool{})
+	}
+
+	return builder.Complete(r)
 }
 
 // specToMap converts a ModelDeploymentSpec to a map for CEL evaluation

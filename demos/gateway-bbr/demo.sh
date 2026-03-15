@@ -371,29 +371,21 @@ wait_for_epp "${MODEL_A_NAME}"
 wait_for_epp "${MODEL_B_NAME}"
 
 # ---------------------------------------------------------------------------
-# Step 13: Configure Istio DestinationRules for EPPs
+# Step 13: Confirm Istio DestinationRules were created for EPPs
 # ---------------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo " Step 13: Configure Istio DestinationRules for EPPs"
+echo " Step 13: Confirm Istio DestinationRules were created for EPPs"
 echo "============================================================"
 
-for MODEL_NAME in "${MODEL_A_NAME}" "${MODEL_B_NAME}"; do
-  kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: ${MODEL_NAME}-epp
-  namespace: ${NAMESPACE}
-spec:
-  host: ${MODEL_NAME}-epp.${NAMESPACE}.svc.cluster.local
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-      insecureSkipVerify: true
-EOF
-  ok "DestinationRule created for ${MODEL_NAME}-epp"
-done
+wait_for_dr() {
+  local name="$1"
+  wait_for "DestinationRule '${name}-epp' to be ready" 30 10 \
+    kubectl get destinationrules "${name}-epp" -n "${NAMESPACE}" --timeout=5s
+}
+
+wait_for_dr "${MODEL_A_NAME}"
+wait_for_dr "${MODEL_B_NAME}"
 
 # ---------------------------------------------------------------------------
 # Step 14: Install Body-Based Router (BBR)

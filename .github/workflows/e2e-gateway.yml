@@ -232,23 +232,6 @@ jobs:
             sleep 10
           done
 
-      - name: Configure Istio DestinationRule for EPP
-        run: |
-          kubectl apply -f - <<'DREOF'
-          apiVersion: networking.istio.io/v1beta1
-          kind: DestinationRule
-          metadata:
-            name: llama-gw-e2e-epp
-            namespace: default
-          spec:
-            host: llama-gw-e2e-epp.default.svc.cluster.local
-            trafficPolicy:
-              tls:
-                mode: SIMPLE
-                insecureSkipVerify: true
-          DREOF
-          echo "✅ Istio DestinationRule created for EPP"
-
       - name: Install Body-Based Router (BBR)
         run: |
           helm install body-based-router \

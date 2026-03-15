@@ -21,7 +21,7 @@ over routing rules, which is important when multiple models share one gateway.
  │         │        │  │ (Istio) │     │  request body│                     │
  └────────┘        │  └─────────┘     │  → sets header│                    │
                     │                  └──────┬───────┘                     │
-                    │                         │ X-Gateway-Base-Model-Name   │
+                    │                         │ X-Gateway-Model-Name   │
                     │            ┌────────────┴────────────┐                │
                     │            ▼                         ▼                │
                     │   ┌──────────────┐          ┌──────────────┐         │
@@ -47,7 +47,7 @@ over routing rules, which is important when multiple models share one gateway.
 
 1. **Two ModelDeployments** running behind a single inference Gateway
 2. **BYO HTTPRoutes** — user-managed routes referenced via `spec.gateway.httpRouteRef`
-3. **Body-Based Routing** — BBR parses the `"model"` field from the request body and sets the `X-Gateway-Base-Model-Name` header so the correct HTTPRoute matches
+3. **Body-Based Routing** — BBR parses the `"model"` field from the request body and sets the `X-Gateway-Model-Name` header so the correct HTTPRoute matches
 4. **End-to-end inference** — curl requests with different model names are routed to the correct model
 
 ## Prerequisites
@@ -95,6 +95,15 @@ pods to pull images and start serving).
 | Deployment | `model-a-epp` | Endpoint Picker Proxy for model-a |
 | Deployment | `model-b-epp` | Endpoint Picker Proxy for model-b |
 
+## BYO Gateway Configurations
+If you are using Gateway API with AKS, you might also need add the following configuration to the Gateway resource: 
+```yaml
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/port_80_health-probe_protocol: tcp
+```
+For more information, see [Using Gateway API with Azure](https://istio.io/latest/docs/setup/platform-setup/azure/#using-gateway-api-with-azure)
+
 ## BYO HTTPRoute Explained
 
 By default, the KubeAIRunway controller auto-creates an HTTPRoute per
@@ -113,7 +122,7 @@ conflicts. The **BYO HTTPRoute** pattern solves this:
 3. The controller still creates the `InferencePool` and `EPP`, but skips HTTPRoute
    creation/deletion for that deployment
 
-Each BYO HTTPRoute matches on the `X-Gateway-Base-Model-Name` header (set by BBR)
+Each BYO HTTPRoute matches on the `X-Gateway-Model-Name` header (set by BBR)
 so only the correct model's route is matched:
 
 ```yaml
@@ -121,7 +130,7 @@ rules:
   - matches:
       - headers:
           - type: Exact
-            name: X-Gateway-Base-Model-Name
+            name: X-Gateway-Model-Name
             value: llama-3.2-1b-instruct          # ← BBR sets this from the request body
     backendRefs:
       - group: inference.networking.k8s.io
