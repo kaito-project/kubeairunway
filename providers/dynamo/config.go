@@ -34,8 +34,8 @@ const (
 	// ProviderConfigName is the name of the InferenceProviderConfig for Dynamo
 	ProviderConfigName = "dynamo"
 
-	// ProviderVersion is the version of the Dynamo provider
-	ProviderVersion = "dynamo-provider:v1.0.0"
+	// ProviderVersion is the version of the AIRunway Dynamo provider controller.
+	ProviderVersion = "dynamo-provider:v0.1.0"
 
 	// DynamoPlatformChartVersion is the upstream Dynamo platform chart version.
 	DynamoPlatformChartVersion = "1.0.0"

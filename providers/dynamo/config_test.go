@@ -7,6 +7,7 @@ import (
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -70,8 +71,8 @@ func TestProviderConstants(t *testing.T) {
 	if ProviderConfigName != "dynamo" {
 		t.Errorf("expected provider config name 'dynamo', got %s", ProviderConfigName)
 	}
-	if ProviderVersion != "dynamo-provider:v1.0.0" {
-		t.Errorf("expected provider version 'dynamo-provider:v1.0.0', got %s", ProviderVersion)
+	if ProviderVersion != "dynamo-provider:v0.1.0" {
+		t.Errorf("expected provider version 'dynamo-provider:v0.1.0', got %s", ProviderVersion)
 	}
 }
 
@@ -119,6 +120,21 @@ func TestUpdateStatus(t *testing.T) {
 	err := mgr.UpdateStatus(context.Background(), true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+
+	updated := &airunwayv1alpha1.InferenceProviderConfig{}
+	if err := c.Get(context.Background(), client.ObjectKey{Name: ProviderConfigName}, updated); err != nil {
+		t.Fatalf("failed to get updated provider config: %v", err)
+	}
+
+	if !updated.Status.Ready {
+		t.Fatal("expected provider status to be ready")
+	}
+	if updated.Status.Version != ProviderVersion {
+		t.Fatalf("expected provider status version %q, got %q", ProviderVersion, updated.Status.Version)
+	}
+	if updated.Status.LastHeartbeat == nil {
+		t.Fatal("expected provider status to include last heartbeat")
 	}
 }
 

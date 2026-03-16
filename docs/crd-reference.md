@@ -96,7 +96,7 @@ spec:
         description: Install the Dynamo platform operator and bundled CRDs
 status:
   ready: true
-  version: "dynamo-provider:v1.0.0"
+  version: "dynamo-provider:v0.1.0"
 ```
 
 ## See also

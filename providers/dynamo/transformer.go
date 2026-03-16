@@ -494,9 +494,10 @@ func (t *Transformer) buildResourceLimits(spec *airunwayv1alpha1.ResourceSpec) m
 func (t *Transformer) buildEngineArgs(md *airunwayv1alpha1.ModelDeployment) ([]string, error) {
 	var args []string
 
-	// SGLang expects --model-path while the other runtimes continue to use --model.
+	// SGLang and TRT-LLM expect --model-path while vLLM continues to use --model.
 	modelArg := "--model"
-	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeSGLang {
+	switch md.ResolvedEngineType() {
+	case airunwayv1alpha1.EngineTypeSGLang, airunwayv1alpha1.EngineTypeTRTLLM:
 		modelArg = "--model-path"
 	}
 	args = append(args, modelArg, md.Spec.Model.ID)

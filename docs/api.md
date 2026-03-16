@@ -347,7 +347,7 @@ Get provider installation status.
   "installed": true,
   "crdFound": true,
   "operatorRunning": true,
-  "version": "dynamo-provider:v1.0.0",
+  "version": "dynamo-provider:v0.1.0",
   "message": "Dynamo is installed and running"
 }
 ```
@@ -817,7 +817,7 @@ Get installation and health status of all runtimes.
       "name": "Dynamo",
       "installed": true,
       "healthy": true,
-      "version": "dynamo-provider:v1.0.0",
+      "version": "dynamo-provider:v0.1.0",
       "message": "Provider ready"
     },
     {

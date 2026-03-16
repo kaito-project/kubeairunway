@@ -272,7 +272,7 @@ func TestBuildEngineArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	expected = []string{"--model", "meta-llama/Llama-2-7b-chat-hf"}
+	expected = []string{"--model-path", "meta-llama/Llama-2-7b-chat-hf"}
 	if !sliceEqual(args, expected) {
 		t.Errorf("unexpected args: %v, expected %v", args, expected)
 	}
@@ -1059,6 +1059,26 @@ func TestTransformTRTLLMEngine(t *testing.T) {
 	spec, _, _ := unstructured.NestedMap(dgd.Object, "spec")
 	if spec["backendFramework"] != "trtllm" {
 		t.Errorf("expected backendFramework 'trtllm', got %v", spec["backendFramework"])
+	}
+
+	services, _ := spec["services"].(map[string]interface{})
+	worker, _ := services["VllmWorker"].(map[string]interface{})
+	eps, _ := worker["extraPodSpec"].(map[string]interface{})
+	mc, _ := eps["mainContainer"].(map[string]interface{})
+	cmdSlice, _ := mc["command"].([]interface{})
+	if len(cmdSlice) < 3 {
+		t.Fatal("expected engine command with at least 3 elements")
+	}
+	if cmdSlice[2] != "dynamo.trtllm" {
+		t.Errorf("expected trtllm runner in command, got %v", cmdSlice)
+	}
+
+	argsSlice, _ := mc["args"].([]interface{})
+	if len(argsSlice) < 2 {
+		t.Fatal("expected engine args with at least 2 elements")
+	}
+	if argsSlice[0] != "--model-path" || argsSlice[1] != "meta-llama/Llama-2-7b-chat-hf" {
+		t.Errorf("expected TRT-LLM args to start with --model-path and model ID, got %v", argsSlice)
 	}
 }
 
