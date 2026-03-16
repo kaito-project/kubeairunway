@@ -27,9 +27,14 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
@@ -206,6 +211,15 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 	}
 
 	log.FromContext(ctx).V(1).Info("InferencePool reconciled", "name", pool.Name, "result", result)
+
+	// When a new InferencePool is created, restart the BBR deployment (if present) so it
+	// discovers the new model. BBR watches ConfigMaps via controller-runtime and rebuilds
+	// its internal model registry on startup.
+	if result == controllerutil.OperationResultCreated {
+		if err := r.restartBBRIfPresent(ctx, md.Namespace); err != nil {
+			log.FromContext(ctx).Info("Could not restart BBR deployment (non-fatal)", "error", err)
+		}
+	}
 	return nil
 }
 
@@ -363,12 +377,14 @@ kind: EndpointPickerConfig
 							},
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler:        corev1.ProbeHandler{GRPC: &corev1.GRPCAction{Port: 9003, Service: strPtr("inference-extension")}},
-								InitialDelaySeconds: 5,
+								InitialDelaySeconds: 30,
 								PeriodSeconds:       10,
+								FailureThreshold:    5,
 							},
 							ReadinessProbe: &corev1.Probe{
-								ProbeHandler:  corev1.ProbeHandler{GRPC: &corev1.GRPCAction{Port: 9003, Service: strPtr("inference-extension")}},
-								PeriodSeconds: 2,
+								ProbeHandler:        corev1.ProbeHandler{GRPC: &corev1.GRPCAction{Port: 9003, Service: strPtr("inference-extension")}},
+								InitialDelaySeconds: 10,
+								PeriodSeconds:       5,
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "plugins-config", MountPath: "/config"},
@@ -414,31 +430,73 @@ kind: EndpointPickerConfig
 		return fmt.Errorf("failed to create/update EPP Service: %w", err)
 	}
 
+	if err := r.reconcileEPPDestinationRule(ctx, md, eppName); err != nil {
+		return fmt.Errorf("failed to create/update EPP DestinationRule: %w", err)
+	}
+
 	log.FromContext(ctx).V(1).Info("EPP reconciled", "name", eppName, "image", eppImage)
 	return nil
+}
+
+// reconcileEPPDestinationRule creates or updates the Istio DestinationRule for the EPP service,
+// but only if Istio is detected (i.e. the DestinationRule CRD is registered in the cluster).
+// DestinationRule: tell Istio to use SIMPLE TLS (insecureSkipVerify)
+// to skip cert validation.
+func (r *ModelDeploymentReconciler) reconcileEPPDestinationRule(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, eppName string) error {
+	gk := schema.GroupKind{Group: "networking.istio.io", Kind: "DestinationRule"}
+	if _, err := r.Client.RESTMapper().RESTMapping(gk); err != nil {
+		log.FromContext(ctx).V(1).Info("Istio not detected, skipping DestinationRule", "eppName", eppName)
+		return nil
+	}
+
+	dr := &unstructured.Unstructured{}
+	dr.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "networking.istio.io",
+		Version: "v1beta1",
+		Kind:    "DestinationRule",
+	})
+	dr.SetName(eppName)
+	dr.SetNamespace(md.Namespace)
+
+	_, err := ctrl.CreateOrUpdate(ctx, r.Client, dr, func() error {
+		if err := unstructured.SetNestedField(dr.Object, map[string]interface{}{
+			"host": fmt.Sprintf("%s.%s.svc.cluster.local", eppName, md.Namespace),
+			"trafficPolicy": map[string]interface{}{
+				"tls": map[string]interface{}{
+					"mode":               "SIMPLE",
+					"insecureSkipVerify": true,
+				},
+			},
+		}, "spec"); err != nil {
+			return err
+		}
+		return ctrl.SetControllerReference(md, dr, r.Scheme)
+	})
+	return err
 }
 
 func int64Ptr(i int64) *int64 { return &i }
 func strPtr(s string) *string { return &s }
 
-// reconcileHTTPRoute creates or updates the HTTPRoute for a ModelDeployment.
+// reconcileHTTPRoute creates the HTTPRoute for a ModelDeployment on first reconcile.
+// If the HTTPRoute is subsequently deleted by the user the controller will not recreate.
+// The deletion is treated as intentional (BYO / opt-out). The ModelDeployment is
+// annotated with HTTPRouteCreated after the initial creation so that future
+// reconciles will skip recreating a missing route.
 func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig, modelName string) error {
-	route := &gatewayv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      md.Name,
-			Namespace: md.Namespace,
-		},
-	}
+	logger := log.FromContext(ctx)
 
-	group := gatewayv1.Group("inference.networking.k8s.io")
-	kind := gatewayv1.Kind("InferencePool")
-	ns := gatewayv1.Namespace(gwConfig.GatewayNamespace)
-
-	result, err := ctrl.CreateOrUpdate(ctx, r.Client, route, func() error {
+	existing := &gatewayv1.HTTPRoute{}
+	err := r.Get(ctx, client.ObjectKey{Name: md.Name, Namespace: md.Namespace}, existing)
+	if err == nil {
+		// HTTPRoute exists — update it in case model name or gateway changed.
+		group := gatewayv1.Group("inference.networking.k8s.io")
+		kind := gatewayv1.Kind("InferencePool")
+		ns := gatewayv1.Namespace(gwConfig.GatewayNamespace)
 		pathPrefix := gatewayv1.PathMatchPathPrefix
 		headerExact := gatewayv1.HeaderMatchExact
 		timeout := gatewayv1.Duration("300s")
-		route.Spec = gatewayv1.HTTPRouteSpec{
+		existing.Spec = gatewayv1.HTTPRouteSpec{
 			CommonRouteSpec: gatewayv1.CommonRouteSpec{
 				ParentRefs: []gatewayv1.ParentReference{
 					{
@@ -458,15 +516,9 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 							Headers: []gatewayv1.HTTPHeaderMatch{
 								{
 									Type:  &headerExact,
-									Name:  "X-Gateway-Base-Model-Name",
+									Name:  "X-Gateway-Model-Name", // https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/pkg/bbr/README.md
 									Value: modelName,
 								},
-							},
-						},
-						{
-							Path: &gatewayv1.HTTPPathMatch{
-								Type:  &pathPrefix,
-								Value: strPtr("/"),
 							},
 						},
 					},
@@ -487,14 +539,97 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 				},
 			},
 		}
-		return ctrl.SetControllerReference(md, route, r.Scheme)
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create/update HTTPRoute: %w", err)
+		if updateErr := r.Update(ctx, existing); updateErr != nil {
+			return fmt.Errorf("failed to update HTTPRoute: %w", updateErr)
+		}
+		logger.V(1).Info("HTTPRoute updated", "name", existing.Name)
+		return nil
 	}
+	if apierrors.IsNotFound(err) {
+		// HTTPRoute is missing. If we created one previously the user deleted it
+		// intentionally — respect that and do not recreate.
+		if md.Annotations[kubeairunwayv1alpha1.HTTPRouteCreated] == "true" {
+			logger.V(1).Info("HTTPRoute was deleted by user, skipping recreation", "name", md.Name)
+			return nil
+		}
 
-	log.FromContext(ctx).V(1).Info("HTTPRoute reconciled", "name", route.Name, "result", result)
-	return nil
+		// First-time creation.
+		group := gatewayv1.Group("inference.networking.k8s.io")
+		kind := gatewayv1.Kind("InferencePool")
+		ns := gatewayv1.Namespace(gwConfig.GatewayNamespace)
+		pathPrefix := gatewayv1.PathMatchPathPrefix
+		headerExact := gatewayv1.HeaderMatchExact
+		timeout := gatewayv1.Duration("300s")
+		route := &gatewayv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      md.Name,
+				Namespace: md.Namespace,
+			},
+			Spec: gatewayv1.HTTPRouteSpec{
+				CommonRouteSpec: gatewayv1.CommonRouteSpec{
+					ParentRefs: []gatewayv1.ParentReference{
+						{
+							Name:      gatewayv1.ObjectName(gwConfig.GatewayName),
+							Namespace: &ns,
+						},
+					},
+				},
+				Rules: []gatewayv1.HTTPRouteRule{
+					{
+						Matches: []gatewayv1.HTTPRouteMatch{
+							{
+								Path: &gatewayv1.HTTPPathMatch{
+									Type:  &pathPrefix,
+									Value: strPtr("/"),
+								},
+								Headers: []gatewayv1.HTTPHeaderMatch{
+									{
+										Type:  &headerExact,
+										Name:  "X-Gateway-Model-Name", // https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/pkg/bbr/README.md
+										Value: modelName,
+									},
+								},
+							},
+						},
+						BackendRefs: []gatewayv1.HTTPBackendRef{
+							{
+								BackendRef: gatewayv1.BackendRef{
+									BackendObjectReference: gatewayv1.BackendObjectReference{
+										Group: &group,
+										Kind:  &kind,
+										Name:  gatewayv1.ObjectName(md.Name),
+									},
+								},
+							},
+						},
+						Timeouts: &gatewayv1.HTTPRouteTimeouts{
+							Request: &timeout,
+						},
+					},
+				},
+			},
+		}
+		if setErr := ctrl.SetControllerReference(md, route, r.Scheme); setErr != nil {
+			return fmt.Errorf("setting controller reference: %w", setErr)
+		}
+		if createErr := r.Create(ctx, route); createErr != nil {
+			return fmt.Errorf("failed to create HTTPRoute: %w", createErr)
+		}
+		logger.Info("HTTPRoute created", "name", route.Name)
+
+		// Annotate the ModelDeployment so future reconciles know we created a route.
+		patch := client.MergeFrom(md.DeepCopy())
+		if md.Annotations == nil {
+			md.Annotations = make(map[string]string)
+		}
+		md.Annotations[kubeairunwayv1alpha1.HTTPRouteCreated] = "true"
+		if patchErr := r.Patch(ctx, md, patch); patchErr != nil {
+			// Non-fatal: worst case we recreate the route once on the next reconcile.
+			logger.V(1).Info("Could not annotate ModelDeployment after HTTPRoute creation", "error", patchErr)
+		}
+		return nil
+	}
+	return fmt.Errorf("getting HTTPRoute: %w", err)
 }
 
 // resolveGatewayEndpoint reads the Gateway resource's status to find the actual endpoint address.
@@ -709,6 +844,15 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
 		&corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: eppName, Namespace: md.Namespace}},
 	}
+
+	// Conditionally delete the DestinationRule if Istio is present
+	if _, err := r.Client.RESTMapper().RESTMapping(schema.GroupKind{Group: "networking.istio.io", Kind: "DestinationRule"}); err == nil {
+		dr := &unstructured.Unstructured{}
+		dr.SetGroupVersionKind(schema.GroupVersionKind{Group: "networking.istio.io", Version: "v1beta1", Kind: "DestinationRule"})
+		dr.SetName(eppName)
+		dr.SetNamespace(md.Namespace)
+		eppResources = append(eppResources, dr)
+	}
 	for _, obj := range eppResources {
 		if err := r.Delete(ctx, obj); client.IgnoreNotFound(err) != nil {
 			logger.V(1).Info("Could not delete EPP resource", "resource", obj.GetObjectKind(), "error", err)
@@ -717,6 +861,34 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 
 	md.Status.Gateway = nil
 	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayDisabled", "Gateway resources cleaned up")
+
+	// Clear the httproute-created annotation so the controller will recreate the
+	// HTTPRoute when the deployment recovers to Running. Without this, a transient
+	// phase change (e.g. crash-loop) would permanently suppress HTTPRoute recreation.
+	if md.Annotations[kubeairunwayv1alpha1.HTTPRouteCreated] == "true" {
+		base := md.DeepCopy()
+		delete(md.Annotations, kubeairunwayv1alpha1.HTTPRouteCreated)
+		if err := r.Patch(ctx, md, client.MergeFrom(base)); err != nil {
+			logger.V(1).Info("Could not clear httproute-created annotation during cleanup", "error", err)
+		}
+	}
+
 	logger.Info("Gateway resources cleaned up", "name", md.Name)
+	return nil
+}
+
+// restartBBRIfPresent triggers a rolling restart of the body-based-router Deployment (if present
+// in the given namespace) by updating its restart annotation. This is necessary because BBR builds
+// its internal model registry on startup and does not dynamically watch InferencePools.
+func (r *ModelDeploymentReconciler) restartBBRIfPresent(ctx context.Context, namespace string) error {
+	var bbr appsv1.Deployment
+	if err := r.Get(ctx, client.ObjectKey{Name: "body-based-router", Namespace: namespace}, &bbr); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":{"kubeairunway.ai/restartedAt":"` + time.Now().UTC().Format(time.RFC3339) + `"}}}}}`)
+	if err := r.Patch(ctx, &bbr, client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
+		return fmt.Errorf("patching body-based-router: %w", err)
+	}
+	log.FromContext(ctx).Info("Triggered BBR rolling restart to discover new InferencePool", "namespace", namespace)
 	return nil
 }
