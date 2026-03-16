@@ -28,6 +28,40 @@ rules:
   - patch
   - watch
 - apiGroups:
+  - airunway.ai
+  resources:
+  - inferenceproviderconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - airunway.ai
+  resources:
+  - modeldeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - airunway.ai
+  resources:
+  - modeldeployments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - airunway.ai
+  resources:
+  - modeldeployments/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - apps
   resources:
   - deployments
@@ -92,40 +126,6 @@ rules:
   - get
   - list
   - watch
-- apiGroups:
-  - airunway.ai
-  resources:
-  - inferenceproviderconfigs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - airunway.ai
-  resources:
-  - modeldeployments
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - airunway.ai
-  resources:
-  - modeldeployments/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - airunway.ai
-  resources:
-  - modeldeployments/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - networking.istio.io
   resources:

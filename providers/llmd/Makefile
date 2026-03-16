@@ -10,7 +10,7 @@ build:
 
 ## Build provider Docker image
 docker-build:
-	docker build --platform linux/amd64 -f Dockerfile -t $(IMG) ../..
+	docker build --platform linux/amd64,linux/arm64 --push -f Dockerfile -t $(IMG) ../..
 	@echo "✅ llm-d provider image built: $(IMG)"
 
 ## Deploy provider to the K8s cluster

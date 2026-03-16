@@ -118,7 +118,7 @@ controller-build:
 
 # Build controller Docker image
 controller-docker-build:
-	docker build -f controller/Dockerfile -t $(CONTROLLER_IMG) .
+	docker build --platform linux/amd64,linux/arm64 --push -f controller/Dockerfile -t $(CONTROLLER_IMG) .
 	@echo "✅ Controller image built: $(CONTROLLER_IMG)"
 
 # Generate CRD manifests and deep copy code

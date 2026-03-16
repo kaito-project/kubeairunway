@@ -40,11 +40,14 @@ make controller-run
 # Regenerate CRDs and deepcopy code after editing *_types.go files
 make controller-generate
 
+# Build the docker container image
+make controller-docker-build CONTROLLER_IMG=<YOUR IMAGE>
+
 # Install CRDs into the cluster
 make controller-install
 
 # Deploy controller to cluster
-make controller-deploy
+make controller-deploy CONTROLLER_IMG=<YOUR IMAGE>
 ```
 
 **Important**: After editing `controller/api/v1alpha1/*_types.go` files, always run:
@@ -233,12 +236,12 @@ cd providers/kuberay && make build
 cd providers/llmd && make build
 
 # Build provider Docker image
-cd providers/kaito && make docker-build
-cd providers/llmd && make docker-build
+cd providers/kaito && make docker-build IMG=<YOUR IMAGE>
+cd providers/llmd && make docker-build IMG=<YOUR IMAGE>
 
 # Deploy provider to cluster
-cd providers/kaito && make deploy
-cd providers/llmd && make deploy
+cd providers/kaito && make deploy IMG=<YOUR IMAGE>
+cd providers/llmd && make deploy IMG=<YOUR IMAGE>
 
 # Generate deploy manifest
 cd providers/kaito && make generate-deploy-manifests
