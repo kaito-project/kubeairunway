@@ -4,6 +4,7 @@ export interface MultiNodeRecommendation {
   nodeCount: number;
   gpusPerNode: number;
   totalGpus: number;
+  pipelineParallelSize: number;
 }
 
 export interface GpuRecommendation {
@@ -173,6 +174,7 @@ function buildMultiNode(gpusNeeded: number, maxNodeGpus: number): MultiNodeRecom
     nodeCount,
     gpusPerNode: maxNodeGpus,
     totalGpus: nodeCount * maxNodeGpus,
+    pipelineParallelSize: nodeCount,
   };
 }
 
@@ -190,17 +192,32 @@ export function calculateMultiNode(
   gpuMemoryGb: number,
   gpuCount: number
 ): MultiNodeRecommendation | null {
-  if (gpuMemoryGb <= 0 || gpuCount <= 0) return null;
+  const pipelineParallelSize = calculatePipelineParallel(estimatedMemoryGb, gpuMemoryGb, gpuCount);
+  if (pipelineParallelSize <= 1) return null;
+
+  return {
+    nodeCount: pipelineParallelSize,
+    gpusPerNode: gpuCount,
+    totalGpus: pipelineParallelSize * gpuCount,
+    pipelineParallelSize,
+  };
+}
+
+/**
+ * Calculate the pipeline parallel degree needed to fit a model across nodes.
+ * Returns 1 when the model fits on a single node or inputs are invalid.
+ */
+export function calculatePipelineParallel(
+  estimatedMemoryGb: number,
+  gpuMemoryGb: number,
+  gpuCount: number
+): number {
+  if (estimatedMemoryGb <= 0 || gpuMemoryGb <= 0 || gpuCount <= 0) return 1;
 
   const totalMemoryPerNode = gpuCount * gpuMemoryGb;
-  if (estimatedMemoryGb <= totalMemoryPerNode) return null;
+  if (estimatedMemoryGb <= totalMemoryPerNode) return 1;
 
-  const nodeCount = Math.ceil(estimatedMemoryGb / totalMemoryPerNode);
-  return {
-    nodeCount,
-    gpusPerNode: gpuCount,
-    totalGpus: nodeCount * gpuCount,
-  };
+  return Math.ceil(estimatedMemoryGb / totalMemoryPerNode);
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateGpuRecommendation,
   calculateMultiNode,
+  calculatePipelineParallel,
   formatGpuCount,
 } from './gpu-recommendations';
 import type { Model, DetailedClusterCapacity } from './api';
@@ -171,6 +172,7 @@ describe('calculateGpuRecommendation', () => {
       expect(result.multiNode!.nodeCount).toBe(3); // ceil(10/4) = 3
       expect(result.multiNode!.gpusPerNode).toBe(4);
       expect(result.multiNode!.totalGpus).toBe(12); // 3 * 4
+      expect(result.multiNode!.pipelineParallelSize).toBe(3);
       expect(result.reason).toContain('distributed across 3 nodes');
     });
   });
@@ -262,6 +264,7 @@ describe('calculateGpuRecommendation', () => {
       expect(result.multiNode!.nodeCount).toBe(2);
       expect(result.multiNode!.gpusPerNode).toBe(1);
       expect(result.multiNode!.totalGpus).toBe(2);
+      expect(result.multiNode!.pipelineParallelSize).toBe(2);
     });
 
     it('returns multiNode for multi-GPU nodes when model still exceeds', () => {
@@ -273,6 +276,7 @@ describe('calculateGpuRecommendation', () => {
       expect(result.multiNode).toBeDefined();
       expect(result.multiNode!.nodeCount).toBe(3); // ceil(10/4)
       expect(result.multiNode!.gpusPerNode).toBe(4);
+      expect(result.multiNode!.pipelineParallelSize).toBe(3);
     });
 
     it('does not return multiNode when model fits on one node', () => {
@@ -294,6 +298,7 @@ describe('calculateGpuRecommendation', () => {
       expect(result.recommendedGpus).toBe(2);
       expect(result.multiNode).toBeDefined();
       expect(result.multiNode!.nodeCount).toBe(4); // ceil(8/2)
+      expect(result.multiNode!.pipelineParallelSize).toBe(4);
     });
 
     it('includes estimatedMemoryGb in result for recalculation', () => {
@@ -320,6 +325,7 @@ describe('calculateMultiNode', () => {
     expect(result!.nodeCount).toBe(2);
     expect(result!.gpusPerNode).toBe(1);
     expect(result!.totalGpus).toBe(2);
+    expect(result!.pipelineParallelSize).toBe(2);
   });
 
   it('reduces nodeCount when GPU count increases', () => {
@@ -334,6 +340,7 @@ describe('calculateMultiNode', () => {
     expect(result).not.toBeNull();
     expect(result!.nodeCount).toBe(5); // ceil(800/160)
     expect(result!.gpusPerNode).toBe(2);
+    expect(result!.pipelineParallelSize).toBe(5);
   });
 
   it('returns null for zero or negative gpuMemoryGb', () => {
@@ -344,6 +351,23 @@ describe('calculateMultiNode', () => {
   it('returns null for zero or negative gpuCount', () => {
     expect(calculateMultiNode(100, 80, 0)).toBeNull();
     expect(calculateMultiNode(100, 80, -1)).toBeNull();
+  });
+});
+
+describe('calculatePipelineParallel', () => {
+  it('returns 1 when model fits on one node', () => {
+    expect(calculatePipelineParallel(16, 80, 1)).toBe(1);
+  });
+
+  it('matches required node count when model exceeds one node', () => {
+    expect(calculatePipelineParallel(146, 80, 1)).toBe(2);
+    expect(calculatePipelineParallel(800, 80, 2)).toBe(5);
+  });
+
+  it('returns 1 for invalid inputs', () => {
+    expect(calculatePipelineParallel(0, 80, 1)).toBe(1);
+    expect(calculatePipelineParallel(100, 0, 1)).toBe(1);
+    expect(calculatePipelineParallel(100, 80, 0)).toBe(1);
   });
 });
 
