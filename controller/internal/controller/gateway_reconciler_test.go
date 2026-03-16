@@ -107,6 +107,14 @@ func fakeDetector(available bool, gwName, gwNs string) *gateway.Detector {
 	return d
 }
 
+// newTestGateway creates a minimal Gateway object in the given namespace.
+func newTestGateway(name, ns string) *gatewayv1.Gateway {
+	return &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec:       gatewayv1.GatewaySpec{GatewayClassName: "istio"},
+	}
+}
+
 // --- Tests ---
 
 func TestGateway_InferencePoolCreation(t *testing.T) {
@@ -116,7 +124,7 @@ func TestGateway_InferencePoolCreation(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md)
 	ctx := context.Background()
 
-	err := r.reconcileInferencePool(ctx, md, 8080)
+	err := r.reconcileInferencePool(ctx, md, 8080, "gateway-ns")
 	if err != nil {
 		t.Fatalf("reconcileInferencePool failed: %v", err)
 	}
@@ -174,7 +182,7 @@ func TestGateway_InferencePoolDefaultPort(t *testing.T) {
 	ctx := context.Background()
 
 	// reconcileGateway uses default port 8000 when no endpoint
-	err := r.reconcileInferencePool(ctx, md, 8000)
+	err := r.reconcileInferencePool(ctx, md, 8000, "gateway-ns")
 	if err != nil {
 		t.Fatalf("reconcileInferencePool failed: %v", err)
 	}
@@ -425,7 +433,7 @@ func TestGateway_StatusUpdate(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
-	r := newTestReconciler(scheme, detector, md)
+	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
 	err := r.reconcileGateway(ctx, md)
@@ -500,7 +508,7 @@ func TestGateway_StatusModelNameOverride(t *testing.T) {
 		ModelName: "custom-model-name",
 	}
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
-	r := newTestReconciler(scheme, detector, md)
+	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
 	err := r.reconcileGateway(ctx, md)
@@ -518,7 +526,7 @@ func TestGateway_StatusServedNameFallback(t *testing.T) {
 	md := newModelDeployment("test-model", "default")
 	md.Spec.Model.ServedName = "llama-3"
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
-	r := newTestReconciler(scheme, detector, md)
+	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
 	err := r.reconcileGateway(ctx, md)

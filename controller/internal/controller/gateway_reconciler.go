@@ -70,7 +70,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	}
 
 	// Resolve gateway configuration
-	gwConfig, err := r.resolveGatewayConfig(ctx, md)
+	gwConfig, err := r.resolveGatewayConfig(ctx)
 	if err != nil {
 		logger.Info("No gateway found for routing, skipping gateway reconciliation", "reason", err.Error())
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "NoGateway", err.Error())
@@ -94,8 +94,17 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 		// Non-fatal: pods may not exist yet or provider may handle labels
 	}
 
+	// If the ModelDeployment is in a different namespace than the Gateway, patch the Gateway
+	// listener to allow routes from md.Namespace.
+	if md.Namespace != gwConfig.GatewayNamespace {
+		if err := r.ensureGatewayAllowsNamespace(ctx, gwConfig, md.Namespace); err != nil {
+			r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayPatchFailed", err.Error())
+			return fmt.Errorf("patching Gateway allowedRoutes: %w", err)
+		}
+	}
+
 	// Create or update InferencePool
-	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
+	if err := r.reconcileInferencePool(ctx, md, port, gwConfig.GatewayNamespace); err != nil {
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
 		return fmt.Errorf("reconciling InferencePool: %w", err)
 	}
@@ -122,8 +131,9 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	// Update gateway status
 	endpoint := r.resolveGatewayEndpoint(ctx, gwConfig)
 	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{
-		Endpoint:  endpoint,
-		ModelName: modelName,
+		Endpoint:         endpoint,
+		ModelName:        modelName,
+		GatewayNamespace: gwConfig.GatewayNamespace,
 	}
 	r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionTrue, "GatewayConfigured", "InferencePool and HTTPRoute created")
 
@@ -132,7 +142,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 }
 
 // resolveGatewayConfig determines which Gateway to use as the HTTPRoute parent.
-func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (*gateway.GatewayConfig, error) {
+func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context) (*gateway.GatewayConfig, error) {
 	// Try explicit configuration first
 	if cfg, err := r.GatewayDetector.GetGatewayConfig(); err == nil {
 		return cfg, nil
@@ -177,7 +187,7 @@ func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md
 }
 
 // reconcileInferencePool creates or updates the InferencePool for a ModelDeployment.
-func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, port int32) error {
+func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, port int32, bbrNamespace string) error {
 	pool := &inferencev1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      md.Name,
@@ -216,7 +226,7 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 	// discovers the new model. BBR watches ConfigMaps via controller-runtime and rebuilds
 	// its internal model registry on startup.
 	if result == controllerutil.OperationResultCreated {
-		if err := r.restartBBRIfPresent(ctx, md.Namespace); err != nil {
+		if err := r.restartBBRIfPresent(ctx, bbrNamespace); err != nil {
 			log.FromContext(ctx).Info("Could not restart BBR deployment (non-fatal)", "error", err)
 		}
 	}
@@ -825,6 +835,53 @@ func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, servi
 		return result.Data[0].ID
 	}
 	return ""
+}
+
+// ensureGatewayAllowsNamespace patches every listener on the Gateway to use
+// allowedRoutes.namespaces.from=Selector targeting the ModelDeployment's namespace.
+// only the MD's namespace can attach HTTPRoutes.
+func (r *ModelDeploymentReconciler) ensureGatewayAllowsNamespace(ctx context.Context, gwConfig *gateway.GatewayConfig, namespace string) error {
+	var gw gatewayv1.Gateway
+	if err := r.Get(ctx, client.ObjectKey{Name: gwConfig.GatewayName, Namespace: gwConfig.GatewayNamespace}, &gw); err != nil {
+		return fmt.Errorf("getting Gateway: %w", err)
+	}
+
+	fromSelector := gatewayv1.NamespacesFromSelector
+	wantSelector := &metav1.LabelSelector{
+		MatchLabels: map[string]string{"kubernetes.io/metadata.name": namespace},
+	}
+
+	needsPatch := false
+	for _, l := range gw.Spec.Listeners {
+		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil ||
+			l.AllowedRoutes.Namespaces.From == nil || *l.AllowedRoutes.Namespaces.From != fromSelector ||
+			l.AllowedRoutes.Namespaces.Selector == nil ||
+			l.AllowedRoutes.Namespaces.Selector.MatchLabels["kubernetes.io/metadata.name"] != namespace {
+			needsPatch = true
+			break
+		}
+	}
+	if !needsPatch {
+		return nil
+	}
+
+	patch := gw.DeepCopy()
+	for i := range patch.Spec.Listeners {
+		if patch.Spec.Listeners[i].AllowedRoutes == nil {
+			patch.Spec.Listeners[i].AllowedRoutes = &gatewayv1.AllowedRoutes{}
+		}
+		patch.Spec.Listeners[i].AllowedRoutes.Namespaces = &gatewayv1.RouteNamespaces{
+			From:     &fromSelector,
+			Selector: wantSelector,
+		}
+	}
+	if err := r.Patch(ctx, patch, client.MergeFrom(&gw)); err != nil {
+		return fmt.Errorf("patching Gateway listeners: %w", err)
+	}
+
+	log.FromContext(ctx).Info("Patched Gateway listeners to allow routes from namespace",
+		"gateway", gwConfig.GatewayName, "namespace", namespace)
+	return nil
 }
 
 // cleanupGatewayResources removes gateway resources when gateway is disabled or

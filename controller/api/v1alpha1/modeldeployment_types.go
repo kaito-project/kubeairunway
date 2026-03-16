@@ -451,6 +451,9 @@ type GatewayStatus struct {
 	// modelName is the model name to use in API requests
 	// +optional
 	ModelName string `json:"modelName,omitempty"`
+	// gatewayNamespace is the namespace of the Gateway resource used for routing.
+	// +optional
+	GatewayNamespace string `json:"gatewayNamespace,omitempty"`
 }
 
 // ModelDeploymentStatus defines the observed state of ModelDeployment.
