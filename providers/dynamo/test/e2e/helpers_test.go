@@ -201,7 +201,7 @@ func collectDebugInfo(t *testing.T, mdName, namespace string) {
 
 	// Dynamo provider logs
 	if out, err := kubectlMayFail(t, "logs", "-l", "control-plane=dynamo-provider",
-		"-n", "kubeairunway-system", "--tail=100"); err == nil {
+		"-n", "airunway-system", "--tail=100"); err == nil {
 		t.Logf("Dynamo provider logs:\n%s", out)
 	}
 

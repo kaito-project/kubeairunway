@@ -1,41 +1,41 @@
 /**
- * Route path constants for the KubeAIRunway Headlamp plugin
+ * Route path constants for the AIRunway Headlamp plugin
  */
 
 export const ROUTES = {
-  /** Base path for all KubeAIRunway routes */
-  BASE: '/kubeairunway',
+  /** Base path for all AIRunway routes */
+  BASE: '/airunway',
 
   /** Deployments list page */
-  DEPLOYMENTS: '/kubeairunway/deployments',
+  DEPLOYMENTS: '/airunway/deployments',
 
   /** Deployment details page (with name and namespace params) */
-  DEPLOYMENT_DETAILS: '/kubeairunway/deployments/:namespace/:name',
+  DEPLOYMENT_DETAILS: '/airunway/deployments/:namespace/:name',
 
   /** Models catalog page */
-  MODELS: '/kubeairunway/models',
+  MODELS: '/airunway/models',
 
   /** Runtimes status page */
-  RUNTIMES: '/kubeairunway/runtimes',
+  RUNTIMES: '/airunway/runtimes',
 
   /** Settings page */
-  SETTINGS: '/kubeairunway/settings',
+  SETTINGS: '/airunway/settings',
 
   /** Integrations page */
-  INTEGRATIONS: '/kubeairunway/integrations',
+  INTEGRATIONS: '/airunway/integrations',
 
   /** Create deployment wizard */
-  CREATE_DEPLOYMENT: '/kubeairunway/deployments/create',
+  CREATE_DEPLOYMENT: '/airunway/deployments/create',
 
   /** HuggingFace OAuth callback */
-  HUGGINGFACE_CALLBACK: '/kubeairunway/oauth/callback/huggingface',
+  HUGGINGFACE_CALLBACK: '/airunway/oauth/callback/huggingface',
 } as const;
 
 /**
  * Generate a deployment details URL
  */
 export function getDeploymentDetailsUrl(name: string, namespace: string): string {
-  return `/kubeairunway/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
+  return `/airunway/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
 }
 
 /**

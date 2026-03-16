@@ -148,9 +148,9 @@ func testPVCCreatedAndBound(t *testing.T) {
 
 	// Verify labels.
 	managedBy := kubectl(t, "get", "pvc", pvcName, "-n", mdNamespace,
-		"-o", "jsonpath={.metadata.labels.kubeairunway\\.ai/managed-by}")
-	if managedBy != "kubeairunway" {
-		t.Fatalf("PVC label kubeairunway.ai/managed-by=%q, expected kubeairunway", managedBy)
+		"-o", "jsonpath={.metadata.labels.airunway\\.ai/managed-by}")
+	if managedBy != "airunway" {
+		t.Fatalf("PVC label airunway.ai/managed-by=%q, expected airunway", managedBy)
 	}
 
 	// Verify storage class.
@@ -205,9 +205,9 @@ func testDownloadJobCompletes(t *testing.T) {
 
 	// Verify labels.
 	jobType := kubectl(t, "get", "job", jobName, "-n", mdNamespace,
-		"-o", "jsonpath={.metadata.labels.kubeairunway\\.ai/job-type}")
+		"-o", "jsonpath={.metadata.labels.airunway\\.ai/job-type}")
 	if jobType != "model-download" {
-		t.Fatalf("Job label kubeairunway.ai/job-type=%q, expected model-download", jobType)
+		t.Fatalf("Job label airunway.ai/job-type=%q, expected model-download", jobType)
 	}
 
 	// Verify ModelDownloaded condition.
@@ -714,7 +714,7 @@ func TestDynamoStorageValidationE2E(t *testing.T) {
 	// baseMD returns a ModelDeployment YAML string with the given name and storage section.
 	// All tests use provider.name: dynamo, engine.type: vllm, resources.gpu.count: 1.
 	baseMD := func(name, storageYAML string) string {
-		return fmt.Sprintf(`apiVersion: kubeairunway.ai/v1alpha1
+		return fmt.Sprintf(`apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: %s
@@ -973,7 +973,7 @@ spec:
 		})
 
 		// Attempt update with storage block removed.
-		updateYAML := fmt.Sprintf(`apiVersion: kubeairunway.ai/v1alpha1
+		updateYAML := fmt.Sprintf(`apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: %s
@@ -1048,7 +1048,7 @@ spec:
 		name := "val-llamacpp"
 		t.Cleanup(func() { deleteModelDeployment(t, name) })
 
-		yaml := fmt.Sprintf(`apiVersion: kubeairunway.ai/v1alpha1
+		yaml := fmt.Sprintf(`apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: %s
@@ -1097,7 +1097,7 @@ spec:
 		// triggers the validating webhook's "vllm engine requires GPU" rejection.
 		name := "val-no-gpu"
 
-		yaml := fmt.Sprintf(`apiVersion: kubeairunway.ai/v1alpha1
+		yaml := fmt.Sprintf(`apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: %s

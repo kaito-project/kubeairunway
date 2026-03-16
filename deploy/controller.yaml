@@ -4,18 +4,18 @@ metadata:
   labels:
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     control-plane: controller-manager
-  name: kubeairunway-system
+  name: airunway-system
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: inferenceproviderconfigs.kubeairunway.ai
+  name: inferenceproviderconfigs.airunway.ai
 spec:
-  group: kubeairunway.ai
+  group: airunway.ai
   names:
     kind: InferenceProviderConfig
     listKind: InferenceProviderConfigList
@@ -302,9 +302,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: modeldeployments.kubeairunway.ai
+  name: modeldeployments.airunway.ai
 spec:
-  group: kubeairunway.ai
+  group: airunway.ai
   names:
     kind: ModelDeployment
     listKind: ModelDeploymentList
@@ -1049,8 +1049,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-controller-manager
-  namespace: kubeairunway-system
+  name: airunway-controller-manager
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -1058,8 +1058,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-leader-election-role
-  namespace: kubeairunway-system
+  name: airunway-leader-election-role
+  namespace: airunway-system
 rules:
 - apiGroups:
   - ""
@@ -1096,7 +1096,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubeairunway-cert-rotation-role
+  name: airunway-cert-rotation-role
 rules:
 - apiGroups:
   - ""
@@ -1127,16 +1127,16 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-inferenceproviderconfig-admin-role
+  name: airunway-inferenceproviderconfig-admin-role
 rules:
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
   - '*'
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs/status
   verbs:
@@ -1148,10 +1148,10 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-inferenceproviderconfig-editor-role
+  name: airunway-inferenceproviderconfig-editor-role
 rules:
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -1163,7 +1163,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs/status
   verbs:
@@ -1175,10 +1175,10 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-inferenceproviderconfig-viewer-role
+  name: airunway-inferenceproviderconfig-viewer-role
 rules:
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -1186,7 +1186,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs/status
   verbs:
@@ -1195,7 +1195,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubeairunway-manager-role
+  name: airunway-manager-role
 rules:
 - apiGroups:
   - ""
@@ -1286,7 +1286,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -1294,7 +1294,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments
   verbs:
@@ -1306,13 +1306,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/finalizers
   verbs:
   - update
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/status
   verbs:
@@ -1348,7 +1348,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubeairunway-metrics-auth-role
+  name: airunway-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -1366,7 +1366,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubeairunway-metrics-reader
+  name: airunway-metrics-reader
 rules:
 - nonResourceURLs:
   - /metrics
@@ -1379,16 +1379,16 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-modeldeployment-admin-role
+  name: airunway-modeldeployment-admin-role
 rules:
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments
   verbs:
   - '*'
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/status
   verbs:
@@ -1400,10 +1400,10 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-modeldeployment-editor-role
+  name: airunway-modeldeployment-editor-role
 rules:
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments
   verbs:
@@ -1415,7 +1415,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/status
   verbs:
@@ -1427,10 +1427,10 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-modeldeployment-viewer-role
+  name: airunway-modeldeployment-viewer-role
 rules:
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments
   verbs:
@@ -1438,7 +1438,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/status
   verbs:
@@ -1450,29 +1450,29 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-leader-election-rolebinding
-  namespace: kubeairunway-system
+  name: airunway-leader-election-rolebinding
+  namespace: airunway-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: kubeairunway-leader-election-role
+  name: airunway-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway-controller-manager
-  namespace: kubeairunway-system
+  name: airunway-controller-manager
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubeairunway-cert-rotation-rolebinding
+  name: airunway-cert-rotation-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubeairunway-cert-rotation-role
+  name: airunway-cert-rotation-role
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway-controller-manager
-  namespace: kubeairunway-system
+  name: airunway-controller-manager
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -1480,44 +1480,44 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: controller
-  name: kubeairunway-manager-rolebinding
+  name: airunway-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubeairunway-manager-role
+  name: airunway-manager-role
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway-controller-manager
-  namespace: kubeairunway-system
+  name: airunway-controller-manager
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubeairunway-metrics-auth-rolebinding
+  name: airunway-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubeairunway-metrics-auth-role
+  name: airunway-metrics-auth-role
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway-controller-manager
-  namespace: kubeairunway-system
+  name: airunway-controller-manager
+  namespace: airunway-system
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: kubeairunway-webhook-server-cert
-  namespace: kubeairunway-system
+  name: airunway-webhook-server-cert
+  namespace: airunway-system
 ---
 apiVersion: v1
 kind: Service
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     control-plane: controller-manager
-  name: kubeairunway-controller-manager-metrics-service
-  namespace: kubeairunway-system
+  name: airunway-controller-manager-metrics-service
+  namespace: airunway-system
 spec:
   ports:
   - name: https
@@ -1525,7 +1525,7 @@ spec:
     protocol: TCP
     targetPort: 8443
   selector:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     control-plane: controller-manager
 ---
 apiVersion: v1
@@ -1533,16 +1533,16 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway-webhook-service
-  namespace: kubeairunway-system
+    app.kubernetes.io/name: airunway
+  name: airunway-webhook-service
+  namespace: airunway-system
 spec:
   ports:
   - port: 443
     protocol: TCP
     targetPort: 9443
   selector:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     control-plane: controller-manager
 ---
 apiVersion: apps/v1
@@ -1551,15 +1551,15 @@ metadata:
   labels:
     app.kubernetes.io/component: controller
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     control-plane: controller-manager
-  name: kubeairunway-controller-manager
-  namespace: kubeairunway-system
+  name: airunway-controller-manager
+  namespace: airunway-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: kubeairunway
+      app.kubernetes.io/name: airunway
       control-plane: controller-manager
   template:
     metadata:
@@ -1567,7 +1567,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         app.kubernetes.io/component: controller
-        app.kubernetes.io/name: kubeairunway
+        app.kubernetes.io/name: airunway
         control-plane: controller-manager
     spec:
       containers:
@@ -1583,7 +1583,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: ghcr.io/kaito-project/kubeairunway/controller:latest
+        image: ghcr.io/kaito-project/airunway/controller:latest
         livenessProbe:
           httpGet:
             path: /healthz
@@ -1621,7 +1621,7 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: kubeairunway-controller-manager
+      serviceAccountName: airunway-controller-manager
       terminationGracePeriodSeconds: 10
       volumes:
       - emptyDir: {}
@@ -1630,20 +1630,20 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: kubeairunway-mutating-webhook-configuration
+  name: airunway-mutating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
     service:
-      name: kubeairunway-webhook-service
-      namespace: kubeairunway-system
-      path: /mutate-kubeairunway-ai-v1alpha1-modeldeployment
+      name: airunway-webhook-service
+      namespace: airunway-system
+      path: /mutate-airunway-ai-v1alpha1-modeldeployment
   failurePolicy: Fail
   name: mmodeldeployment-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - kubeairunway.ai
+    - airunway.ai
     apiVersions:
     - v1alpha1
     operations:
@@ -1656,20 +1656,20 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: kubeairunway-validating-webhook-configuration
+  name: airunway-validating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
     service:
-      name: kubeairunway-webhook-service
-      namespace: kubeairunway-system
-      path: /validate-kubeairunway-ai-v1alpha1-modeldeployment
+      name: airunway-webhook-service
+      namespace: airunway-system
+      path: /validate-airunway-ai-v1alpha1-modeldeployment
   failurePolicy: Fail
   name: vmodeldeployment-v1alpha1.kb.io
   rules:
   - apiGroups:
-    - kubeairunway.ai
+    - airunway.ai
     apiVersions:
     - v1alpha1
     operations:

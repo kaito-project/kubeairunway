@@ -6,30 +6,30 @@ import (
 	"strings"
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func newTestMD(name, namespace string) *kubeairunwayv1alpha1.ModelDeployment {
-	return &kubeairunwayv1alpha1.ModelDeployment{
+func newTestMD(name, namespace string) *airunwayv1alpha1.ModelDeployment {
+	return &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID:     "meta-llama/Llama-2-7b-chat-hf",
-				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
+				Source: airunwayv1alpha1.ModelSourceHuggingFace,
 			},
-			Engine: kubeairunwayv1alpha1.EngineSpec{
-				Type: kubeairunwayv1alpha1.EngineTypeVLLM,
+			Engine: airunwayv1alpha1.EngineSpec{
+				Type: airunwayv1alpha1.EngineTypeVLLM,
 			},
-			Resources: &kubeairunwayv1alpha1.ResourceSpec{
-				GPU: &kubeairunwayv1alpha1.GPUSpec{
+			Resources: &airunwayv1alpha1.ResourceSpec{
+				GPU: &airunwayv1alpha1.GPUSpec{
 					Count: 1,
 				},
 			},
@@ -68,10 +68,10 @@ func TestTransformAggregated(t *testing.T) {
 
 	// Check labels
 	labels := rs.GetLabels()
-	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" {
-		t.Errorf("expected managed-by label 'kubeairunway'")
+	if labels["airunway.ai/managed-by"] != "airunway" {
+		t.Errorf("expected managed-by label 'airunway'")
 	}
-	if labels["kubeairunway.ai/engine-type"] != "vllm" {
+	if labels["airunway.ai/engine-type"] != "vllm" {
 		t.Errorf("expected engine-type label 'vllm'")
 	}
 
@@ -104,7 +104,7 @@ func TestTransformAggregated(t *testing.T) {
 func TestTransformWithScaling(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{Replicas: 3}
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{Replicas: 3}
 
 	resources, err := tr.Transform(context.Background(), md)
 	if err != nil {
@@ -122,18 +122,18 @@ func TestTransformWithScaling(t *testing.T) {
 func TestTransformDisaggregated(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
-		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 2,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2, Type: "nvidia.com/gpu"},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 2, Type: "nvidia.com/gpu"},
 			Memory:   "64Gi",
 		},
-		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 3,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 			Memory:   "32Gi",
 		},
 	}
@@ -171,18 +171,18 @@ func TestTransformDisaggregated(t *testing.T) {
 func TestTransformDisaggregatedDefaultMemory(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
-		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 			// No memory → should default
 		},
-		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 			// No memory → should default
 		},
 	}
@@ -211,8 +211,8 @@ func TestTransformDisaggregatedDefaultMemory(t *testing.T) {
 func TestTransformWithPodTemplateLabels(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.PodTemplate = &kubeairunwayv1alpha1.PodTemplateSpec{
-		Metadata: &kubeairunwayv1alpha1.PodTemplateMetadata{
+	md.Spec.PodTemplate = &airunwayv1alpha1.PodTemplateSpec{
+		Metadata: &airunwayv1alpha1.PodTemplateMetadata{
 			Labels:      map[string]string{"custom": "label"},
 			Annotations: map[string]string{"custom": "annotation"},
 		},
@@ -335,7 +335,7 @@ func TestBuildEnvVars(t *testing.T) {
 	}
 
 	// With HF token
-	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{HuggingFaceToken: "my-secret"}
+	md.Spec.Secrets = &airunwayv1alpha1.SecretsSpec{HuggingFaceToken: "my-secret"}
 	envVars = tr.buildEnvVars(md)
 	if len(envVars) != 2 {
 		t.Fatalf("expected 2 env vars, got %d", len(envVars))
@@ -433,9 +433,9 @@ func TestBuildHeadGroupSpec(t *testing.T) {
 func TestBuildHeadGroupSpecWithCustomMemory(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
 		Memory: "64Gi",
-		GPU:    &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+		GPU:    &airunwayv1alpha1.GPUSpec{Count: 1},
 	}
 
 	headSpec := tr.buildHeadGroupSpec(md)
@@ -453,9 +453,9 @@ func TestBuildHeadGroupSpecWithCustomMemory(t *testing.T) {
 func TestBuildAggregatedWorkerGroup(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{Replicas: 2}
-	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
-		GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 4, Type: "nvidia.com/gpu"},
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{Replicas: 2}
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 4, Type: "nvidia.com/gpu"},
 	}
 
 	groups := tr.buildAggregatedWorkerGroup(md)
@@ -475,8 +475,8 @@ func TestBuildAggregatedWorkerGroup(t *testing.T) {
 func TestBuildAggregatedWorkerGroupCustomGPU(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
-		GPU:    &kubeairunwayv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU:    &airunwayv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
 		Memory: "64Gi",
 	}
 
@@ -526,17 +526,17 @@ func TestBoolPtr(t *testing.T) {
 func TestBuildDisaggregatedWorkerGroupsWithCustomGPUType(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
-		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 2, Type: "amd.com/gpu"},
 		},
-		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1, Type: "amd.com/gpu"},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1, Type: "amd.com/gpu"},
 		},
 	}
 

@@ -3,7 +3,7 @@ package llmd
 import (
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -47,7 +47,7 @@ func TestTranslateStatusNoConditions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
+	if result.Phase != airunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase, got %s", result.Phase)
 	}
 }
@@ -65,7 +65,7 @@ func TestTranslateStatusAvailableTrue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 	if result.Replicas == nil || result.Replicas.Desired != 2 {
@@ -92,7 +92,7 @@ func TestTranslateStatusProgressingDeadlineExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase, got %s", result.Phase)
 	}
 	if result.Message == "" {
@@ -113,7 +113,7 @@ func TestTranslateStatusProgressing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying phase, got %s", result.Phase)
 	}
 }
@@ -168,7 +168,7 @@ func TestTranslateStatusAvailableFalseWithMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase when Available=False with message, got %s", result.Phase)
 	}
 	if result.Message != "insufficient replicas" {

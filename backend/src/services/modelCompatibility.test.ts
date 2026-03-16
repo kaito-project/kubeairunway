@@ -10,7 +10,7 @@ import {
   parseParameterCountFromName,
   getEngineArchitectures,
 } from './modelCompatibility';
-import type { Engine, HfApiModelResult } from '@kubeairunway/shared';
+import type { Engine, HfApiModelResult } from '@airunway/shared';
 
 describe('inferArchitectureFromModelId', () => {
   test('infers LlamaForCausalLM for llama models', () => {

@@ -35,7 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 )
 
 const (
@@ -43,7 +43,7 @@ const (
 	ProviderName = "llmd"
 
 	// FinalizerName is the finalizer used by this controller
-	FinalizerName = "kubeairunway.ai/llmd-provider"
+	FinalizerName = "airunway.ai/llmd-provider"
 
 	// FieldManager is the server-side apply field manager name
 	FieldManager = "llmd-provider"
@@ -78,11 +78,11 @@ func NewLLMDProviderReconciler(c client.Client, scheme *runtime.Scheme) *LLMDPro
 	}
 }
 
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
@@ -92,7 +92,7 @@ func (r *LLMDProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	logger := log.FromContext(ctx)
 
 	// Fetch the ModelDeployment
-	var md kubeairunwayv1alpha1.ModelDeployment
+	var md airunwayv1alpha1.ModelDeployment
 	if err := r.Get(ctx, req.NamespacedName, &md); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -105,7 +105,7 @@ func (r *LLMDProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	logger.Info("Reconciling ModelDeployment for llm-d provider", "name", md.Name, "namespace", md.Namespace)
 
 	// Check for pause annotation
-	if md.Annotations != nil && md.Annotations["kubeairunway.ai/reconcile-paused"] == "true" {
+	if md.Annotations != nil && md.Annotations["airunway.ai/reconcile-paused"] == "true" {
 		logger.Info("Reconciliation paused", "name", md.Name)
 		return ctrl.Result{}, nil
 	}
@@ -127,19 +127,19 @@ func (r *LLMDProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// Validate provider compatibility
 	if err := r.validateCompatibility(&md); err != nil {
 		logger.Error(err, "Provider compatibility check failed", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = err.Error()
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with llm-d")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with llm-d")
 
 	// Transform ModelDeployment to Deployments + Services
 	resources, err := r.Transformer.Transform(ctx, &md)
 	if err != nil {
 		logger.Error(err, "Failed to transform ModelDeployment", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = fmt.Sprintf("Failed to generate llm-d resources: %s", err.Error())
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
@@ -156,16 +156,16 @@ func (r *LLMDProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			reason := "CreateFailed"
 			if isResourceConflict(err) {
 				reason = "ResourceConflict"
-				r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
+				r.setCondition(&md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
 			}
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Failed to create/update resource %s: %s", resource.GetName(), err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
 		}
 	}
 
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "Deployments and Services created successfully")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "Deployments and Services created successfully")
 
 	// Update provider status — use the primary Deployment (resources[0]) for tracking
 	if len(resources) > 0 {
@@ -181,9 +181,9 @@ func (r *LLMDProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Set phase to Deploying if not already Running or Failed
-	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning &&
-		md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseDeploying
+	if md.Status.Phase != airunwayv1alpha1.DeploymentPhaseRunning &&
+		md.Status.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseDeploying
 		md.Status.Message = "Deployments created, waiting for pods to be ready"
 	}
 
@@ -198,14 +198,14 @@ func (r *LLMDProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request
 }
 
 // validateCompatibility checks if the ModelDeployment configuration is compatible with llm-d
-func (r *LLMDProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *LLMDProviderReconciler) validateCompatibility(md *airunwayv1alpha1.ModelDeployment) error {
 	// llm-d only supports vLLM
-	if md.ResolvedEngineType() != kubeairunwayv1alpha1.EngineTypeVLLM {
+	if md.ResolvedEngineType() != airunwayv1alpha1.EngineTypeVLLM {
 		return fmt.Errorf("llm-d provider only supports vllm engine, got %s", md.ResolvedEngineType())
 	}
 
 	// Disaggregated mode: validate component-level GPUs
-	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		if md.Spec.Scaling == nil || md.Spec.Scaling.Prefill == nil {
 			return fmt.Errorf("spec.scaling.prefill is required for disaggregated serving mode")
 		}
@@ -257,7 +257,7 @@ func verifyOwnerReference(existing *unstructured.Unstructured, mdUID types.UID) 
 // createOrUpdateResource creates or updates an unstructured resource using server-side apply.
 // Server-side apply avoids resourceVersion conflicts that occur when Kubernetes defaults
 // fields between our Get and Update calls.
-func (r *LLMDProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *LLMDProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// For existing resources, verify ownership before applying
@@ -282,7 +282,7 @@ func (r *LLMDProviderReconciler) createOrUpdateResource(ctx context.Context, res
 }
 
 // syncStatus fetches the primary Deployment and syncs its status to the ModelDeployment
-func (r *LLMDProviderReconciler) syncStatus(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
+func (r *LLMDProviderReconciler) syncStatus(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
 	upstream := &unstructured.Unstructured{}
 	upstream.SetGroupVersionKind(desired.GroupVersionKind())
 
@@ -309,19 +309,19 @@ func (r *LLMDProviderReconciler) syncStatus(ctx context.Context, md *kubeairunwa
 	md.Status.Replicas = statusResult.Replicas
 	md.Status.Endpoint = statusResult.Endpoint
 
-	if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseRunning {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
-	} else if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
+	if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseRunning {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
+	} else if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseFailed {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
 	} else {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
 	}
 
 	return nil
 }
 
 // handleDeletion handles the deletion of a ModelDeployment
-func (r *LLMDProviderReconciler) handleDeletion(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
+func (r *LLMDProviderReconciler) handleDeletion(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(md, FinalizerName) {
@@ -331,14 +331,14 @@ func (r *LLMDProviderReconciler) handleDeletion(ctx context.Context, md *kubeair
 	logger.Info("Handling deletion", "name", md.Name, "namespace", md.Namespace)
 
 	// Update phase to Terminating
-	md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseTerminating
+	md.Status.Phase = airunwayv1alpha1.DeploymentPhaseTerminating
 	if err := r.Status().Update(ctx, md); err != nil {
 		logger.Error(err, "Failed to update status to Terminating")
 	}
 
 	// Determine primary Deployment name (decode suffix for disaggregated mode)
 	primaryName := md.Name
-	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		primaryName = md.Name + "-decode"
 	}
 
@@ -373,7 +373,7 @@ func (r *LLMDProviderReconciler) handleDeletion(ctx context.Context, md *kubeair
 		}
 
 		// For disaggregated mode, also delete the prefill Deployment explicitly
-		if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+		if md.Spec.Serving != nil && md.Spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 			prefillDeploy := &unstructured.Unstructured{}
 			prefillDeploy.SetGroupVersionKind(deploymentGVK)
 			prefillName := md.Name + "-prefill"
@@ -401,7 +401,7 @@ func (r *LLMDProviderReconciler) handleDeletion(ctx context.Context, md *kubeair
 }
 
 // setCondition updates a condition on the ModelDeployment
-func (r *LLMDProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
+func (r *LLMDProviderReconciler) setCondition(md *airunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
@@ -416,9 +416,9 @@ func (r *LLMDProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDepl
 // SetupWithManager sets up the controller with the Manager.
 func (r *LLMDProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubeairunwayv1alpha1.ModelDeployment{}).
+		For(&airunwayv1alpha1.ModelDeployment{}).
 		WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
-			md, ok := obj.(*kubeairunwayv1alpha1.ModelDeployment)
+			md, ok := obj.(*airunwayv1alpha1.ModelDeployment)
 			if !ok {
 				return false
 			}

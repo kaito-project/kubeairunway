@@ -3,7 +3,7 @@ package llmd
 import (
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 )
 
 func TestGetProviderConfigSpec(t *testing.T) {
@@ -27,7 +27,7 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	}
 	hasVLLM := false
 	for _, e := range engines {
-		if e == kubeairunwayv1alpha1.EngineTypeVLLM {
+		if e == airunwayv1alpha1.EngineTypeVLLM {
 			hasVLLM = true
 		}
 	}
@@ -40,10 +40,10 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	hasAggregated := false
 	hasDisaggregated := false
 	for _, m := range modes {
-		if m == kubeairunwayv1alpha1.ServingModeAggregated {
+		if m == airunwayv1alpha1.ServingModeAggregated {
 			hasAggregated = true
 		}
-		if m == kubeairunwayv1alpha1.ServingModeDisaggregated {
+		if m == airunwayv1alpha1.ServingModeDisaggregated {
 			hasDisaggregated = true
 		}
 	}

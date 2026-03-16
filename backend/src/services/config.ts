@@ -1,8 +1,8 @@
 import * as k8s from '@kubernetes/client-node';
 import logger from '../lib/logger';
 
-// Default namespace for KubeAIRunway deployments
-const DEFAULT_KUBEAIRUNWAY_NAMESPACE = 'kubeairunway-system';
+// Default namespace for AIRunway deployments
+const DEFAULT_KUBEAIRUNWAY_NAMESPACE = 'airunway-system';
 
 /**
  * Application configuration stored in Kubernetes ConfigMap
@@ -11,8 +11,8 @@ export interface AppConfig {
   defaultNamespace?: string;
 }
 
-const CONFIG_NAMESPACE = 'kubeairunway-system';
-const CONFIG_NAME = 'kubeairunway-config';
+const CONFIG_NAMESPACE = 'airunway-system';
+const CONFIG_NAME = 'airunway-config';
 const CONFIG_KEY = 'config.json';
 
 /**
@@ -47,7 +47,7 @@ class ConfigService {
   }
 
   /**
-   * Ensure the kubeairunway namespace exists
+   * Ensure the airunway namespace exists
    */
   private async ensureNamespace(): Promise<void> {
     try {
@@ -60,8 +60,8 @@ class ConfigService {
           metadata: {
             name: CONFIG_NAMESPACE,
             labels: {
-              'app.kubernetes.io/name': 'kubeairunway',
-              'app.kubernetes.io/managed-by': 'kubeairunway',
+              'app.kubernetes.io/name': 'airunway',
+              'app.kubernetes.io/managed-by': 'airunway',
             },
           },
         });
@@ -130,8 +130,8 @@ class ConfigService {
           name: CONFIG_NAME,
           namespace: CONFIG_NAMESPACE,
           labels: {
-            'app.kubernetes.io/name': 'kubeairunway',
-            'app.kubernetes.io/managed-by': 'kubeairunway',
+            'app.kubernetes.io/name': 'airunway',
+            'app.kubernetes.io/managed-by': 'airunway',
           },
         },
         data: {

@@ -6,7 +6,7 @@ config:
 graph TB
     subgraph UI["🖥️ UI Layer (optional)"]
         direction TB
-        WebUI["KubeAIRunway Web UI<br/>━━━━━━━━━━━━━━━━<br/>React SPA + Hono backend<br/>Auth · Deploy · Logs · Cost"]
+        WebUI["AIRunway Web UI<br/>━━━━━━━━━━━━━━━━<br/>React SPA + Hono backend<br/>Auth · Deploy · Logs · Cost"]
         Headlamp["Headlamp Plugin<br/>━━━━━━━━━━━━━━━━<br/>Dashboard UI"]
         CustomUI["Custom UI / CLI<br/>━━━━━━━━━━━━━━━━<br/>Any K8s client"]
     end
@@ -30,7 +30,7 @@ graph TB
     subgraph K8S["⚙️ Kubernetes Cluster"]
         direction TB
 
-        CoreController["KubeAIRunway Core Controller<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>Engine selection · Provider matching (CEL)"]
+        CoreController["AIRunway Core Controller<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>Engine selection · Provider matching (CEL)"]
 
         subgraph CONTROL_PLANE[" "]
             direction LR

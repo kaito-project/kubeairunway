@@ -38,7 +38,7 @@ const (
 	GatewayCRDResource = "gateways"
 
 	// LabelInferenceGateway is the label to identify the inference gateway
-	LabelInferenceGateway = "kubeairunway.ai/inference-gateway"
+	LabelInferenceGateway = "airunway.ai/inference-gateway"
 )
 
 // GatewayConfig holds the resolved gateway configuration

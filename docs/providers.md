@@ -60,7 +60,7 @@ The selection reason is recorded in `status.provider.selectedReason` for observa
 
 ## Provider Abstraction
 
-KubeAIRunway supports two deployment methods, both using the provider abstraction pattern:
+AIRunway supports two deployment methods, both using the provider abstraction pattern:
 
 ### CRD-Based Deployment (Recommended)
 Users create `ModelDeployment` CRs, and the controller + provider controllers handle the rest:

@@ -1,7 +1,7 @@
 /**
  * Backend Discovery Service
  *
- * Discovers the KubeAIRunway backend URL using multiple strategies:
+ * Discovers the AIRunway backend URL using multiple strategies:
  * 1. Plugin settings (user-configured)
  * 2. In-cluster service discovery
  * 3. Default fallback (localhost for development)
@@ -19,7 +19,7 @@ const SETTINGS_KEY_BACKEND_URL = 'backendUrl';
 const SETTINGS_KEY_BACKEND_NAMESPACE = 'backendNamespace';
 
 // Default values
-const DEFAULT_NAMESPACE = 'kubeairunway-system';
+const DEFAULT_NAMESPACE = 'airunway-system';
 const DEFAULT_LOCAL_URL = 'http://localhost:3001';
 
 /**
@@ -54,7 +54,7 @@ export function setBackendNamespace(namespace: string): void {
  * Build the in-cluster service URL
  */
 function getInClusterServiceUrl(namespace: string): string {
-  return `http://kubeairunway.${namespace}.svc:3001`;
+  return `http://airunway.${namespace}.svc:3001`;
 }
 
 /**
@@ -78,7 +78,7 @@ async function isBackendReachable(url: string, timeout = 3000): Promise<boolean>
 }
 
 /**
- * Discover the KubeAIRunway backend
+ * Discover the AIRunway backend
  *
  * Tries in order:
  * 1. User-configured URL from settings

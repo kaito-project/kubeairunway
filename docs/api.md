@@ -1,6 +1,6 @@
 # API Reference
 
-KubeAIRunway provides two APIs for managing deployments:
+AIRunway provides two APIs for managing deployments:
 
 1. **CRD API** (Recommended) - Create `ModelDeployment` custom resources directly via kubectl
 2. **REST API** - Web UI backend API for browser-based management
@@ -12,7 +12,7 @@ The preferred way to deploy models is via the `ModelDeployment` CRD:
 ```bash
 # Create a deployment
 kubectl apply -f - <<EOF
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: qwen-demo
@@ -125,7 +125,7 @@ engine:
 
 ```yaml
 # User creates:
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: llama-8b
@@ -159,7 +159,7 @@ spec:
 
 ```yaml
 # User creates:
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: gemma-cpu
@@ -190,7 +190,7 @@ spec:
 
 ```yaml
 # User creates:
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: llama-70b-pd
@@ -269,7 +269,7 @@ Get Kubernetes cluster connection status.
 ```json
 {
   "connected": true,
-  "namespace": "kubeairunway-system",
+  "namespace": "airunway-system",
   "providerId": "dynamo",
   "providerInstalled": true
 }
@@ -305,7 +305,7 @@ Get current settings and available providers.
 ```json
 {
   "config": {
-    "defaultNamespace": "kubeairunway-system"
+    "defaultNamespace": "airunway-system"
   },
   "auth": {
     "enabled": false
@@ -698,7 +698,7 @@ List all deployments for the active provider.
   "deployments": [
     {
       "name": "qwen-deployment",
-      "namespace": "kubeairunway-system",
+      "namespace": "airunway-system",
       "modelId": "Qwen/Qwen3-0.6B",
       "engine": "vllm",
       "phase": "Running",
@@ -716,7 +716,7 @@ Create a new deployment.
 ```json
 {
   "name": "qwen-deployment",
-  "namespace": "kubeairunway-system",
+  "namespace": "airunway-system",
   "provider": "dynamo",
   "modelId": "Qwen/Qwen3-0.6B",
   "engine": "vllm",
@@ -742,7 +742,7 @@ Create a new deployment.
 {
   "message": "Deployment created successfully",
   "name": "qwen-deployment",
-  "namespace": "kubeairunway-system",
+  "namespace": "airunway-system",
   "provider": "dynamo"
 }
 ```
@@ -757,7 +757,7 @@ Get deployment details including pod status.
 ```json
 {
   "name": "qwen-deployment",
-  "namespace": "kubeairunway-system",
+  "namespace": "airunway-system",
   "modelId": "Qwen/Qwen3-0.6B",
   "engine": "vllm",
   "provider": "dynamo",
@@ -787,14 +787,14 @@ Get the Kubernetes manifest resources for a deployment.
   "resources": [
     {
       "kind": "ModelDeployment",
-      "apiVersion": "kubeairunway.ai/v1alpha1",
+      "apiVersion": "airunway.ai/v1alpha1",
       "name": "qwen-deployment",
       "manifest": { }
     }
   ],
   "primaryResource": {
     "kind": "ModelDeployment",
-    "apiVersion": "kubeairunway.ai/v1alpha1"
+    "apiVersion": "airunway.ai/v1alpha1"
   }
 }
 ```
@@ -935,7 +935,7 @@ Get Prometheus metrics from a deployment's inference service.
 ```json
 {
   "available": false,
-  "error": "Metrics are only available when KubeAIRunway is deployed inside the Kubernetes cluster.",
+  "error": "Metrics are only available when AIRunway is deployed inside the Kubernetes cluster.",
   "timestamp": "2025-01-15T10:30:00.000Z",
   "metrics": [],
   "runningOffCluster": true
@@ -943,7 +943,7 @@ Get Prometheus metrics from a deployment's inference service.
 ```
 
 **Notes:**
-- Metrics require KubeAIRunway to be running inside the cluster
+- Metrics require AIRunway to be running inside the cluster
 - Supports both vLLM and llama.cpp metric formats
 - Returns `runningOffCluster: true` when running locally
 
@@ -980,7 +980,7 @@ Get reasons why deployment pods are pending (unschedulable).
 
 ## HuggingFace OAuth
 
-KubeAIRunway supports HuggingFace OAuth with PKCE for secure token acquisition. This enables access to gated models (e.g., Llama, Mistral) without manually managing tokens.
+AIRunway supports HuggingFace OAuth with PKCE for secure token acquisition. This enables access to gated models (e.g., Llama, Mistral) without manually managing tokens.
 
 ### GET /oauth/huggingface/config
 Get OAuth configuration for initiating HuggingFace sign-in.
@@ -1187,7 +1187,7 @@ Build an AIKit image from a HuggingFace GGUF model or get pre-made image referen
 ```json
 {
   "success": true,
-  "imageRef": "registry.kubeairunway-system.svc.cluster.local:5000/my-model:v1",
+  "imageRef": "registry.airunway-system.svc.cluster.local:5000/my-model:v1",
   "buildTime": 120,
   "wasPremade": false,
   "message": "AIKit image built successfully"
@@ -1200,10 +1200,10 @@ Preview what image would be built (dry-run, no actual build).
 **Response:**
 ```json
 {
-  "imageRef": "registry.kubeairunway-system.svc.cluster.local:5000/my-model:v1",
+  "imageRef": "registry.airunway-system.svc.cluster.local:5000/my-model:v1",
   "wasPremade": false,
   "requiresBuild": true,
-  "registryUrl": "registry.kubeairunway-system.svc.cluster.local:5000"
+  "registryUrl": "registry.airunway-system.svc.cluster.local:5000"
 }
 ```
 
@@ -1216,7 +1216,7 @@ Check build infrastructure (registry and BuildKit) status.
   "ready": true,
   "registry": {
     "ready": true,
-    "url": "registry.kubeairunway-system.svc.cluster.local:5000",
+    "url": "registry.airunway-system.svc.cluster.local:5000",
     "message": "Registry is running"
   },
   "builder": {
@@ -1237,11 +1237,11 @@ Set up build infrastructure (deploy registry and BuildKit if needed).
   "success": true,
   "message": "Build infrastructure is ready",
   "registry": {
-    "url": "registry.kubeairunway-system.svc.cluster.local:5000",
+    "url": "registry.airunway-system.svc.cluster.local:5000",
     "ready": true
   },
   "builder": {
-    "name": "buildkit-kubeairunway",
+    "name": "buildkit-airunway",
     "ready": true
   }
 }
@@ -1275,7 +1275,7 @@ Check if AI Configurator CLI is available on the system.
 {
   "available": false,
   "runningInCluster": true,
-  "error": "AI Configurator is only available when running KubeAIRunway locally"
+  "error": "AI Configurator is only available when running AIRunway locally"
 }
 ```
 

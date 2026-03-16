@@ -19,7 +19,7 @@ package dynamo
 import (
 	"fmt"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -27,10 +27,10 @@ import (
 // Defined locally to avoid importing the controller's internal providers package,
 // keeping this provider self-contained for out-of-tree use.
 type ProviderStatusResult struct {
-	Phase        kubeairunwayv1alpha1.DeploymentPhase
+	Phase        airunwayv1alpha1.DeploymentPhase
 	Message      string
-	Replicas     *kubeairunwayv1alpha1.ReplicaStatus
-	Endpoint     *kubeairunwayv1alpha1.EndpointStatus
+	Replicas     *airunwayv1alpha1.ReplicaStatus
+	Endpoint     *airunwayv1alpha1.EndpointStatus
 	ResourceName string
 	ResourceKind string
 }
@@ -66,7 +66,7 @@ func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) 
 	result := &ProviderStatusResult{
 		ResourceName: upstream.GetName(),
 		ResourceKind: DynamoGraphDeploymentKind,
-		Phase:        kubeairunwayv1alpha1.DeploymentPhasePending,
+		Phase:        airunwayv1alpha1.DeploymentPhasePending,
 	}
 
 	// Get status object
@@ -103,24 +103,24 @@ func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) 
 }
 
 // mapStateToPhase converts Dynamo state to ModelDeployment phase
-func (t *StatusTranslator) mapStateToPhase(state DynamoState) kubeairunwayv1alpha1.DeploymentPhase {
+func (t *StatusTranslator) mapStateToPhase(state DynamoState) airunwayv1alpha1.DeploymentPhase {
 	switch state {
 	case DynamoStateSuccessful:
-		return kubeairunwayv1alpha1.DeploymentPhaseRunning
+		return airunwayv1alpha1.DeploymentPhaseRunning
 	case DynamoStateDeploying:
-		return kubeairunwayv1alpha1.DeploymentPhaseDeploying
+		return airunwayv1alpha1.DeploymentPhaseDeploying
 	case DynamoStateFailed:
-		return kubeairunwayv1alpha1.DeploymentPhaseFailed
+		return airunwayv1alpha1.DeploymentPhaseFailed
 	case DynamoStatePending:
-		return kubeairunwayv1alpha1.DeploymentPhasePending
+		return airunwayv1alpha1.DeploymentPhasePending
 	default:
-		return kubeairunwayv1alpha1.DeploymentPhasePending
+		return airunwayv1alpha1.DeploymentPhasePending
 	}
 }
 
 // extractReplicas extracts replica information from the status
-func (t *StatusTranslator) extractReplicas(status map[string]interface{}) *kubeairunwayv1alpha1.ReplicaStatus {
-	replicas := &kubeairunwayv1alpha1.ReplicaStatus{}
+func (t *StatusTranslator) extractReplicas(status map[string]interface{}) *airunwayv1alpha1.ReplicaStatus {
+	replicas := &airunwayv1alpha1.ReplicaStatus{}
 
 	// Try to get replica counts from various possible locations
 	// Dynamo may report these in different ways depending on the version
@@ -162,8 +162,8 @@ func (t *StatusTranslator) extractReplicas(status map[string]interface{}) *kubea
 }
 
 // extractEndpoint extracts service endpoint information
-func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured, status map[string]interface{}) *kubeairunwayv1alpha1.EndpointStatus {
-	endpoint := &kubeairunwayv1alpha1.EndpointStatus{}
+func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured, status map[string]interface{}) *airunwayv1alpha1.EndpointStatus {
+	endpoint := &airunwayv1alpha1.EndpointStatus{}
 
 	// Check for endpoint in status
 	if serviceName, found, _ := unstructured.NestedString(status, "endpoint", "service"); found {

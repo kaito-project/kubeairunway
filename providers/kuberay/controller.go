@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 )
 
 const (
@@ -46,7 +46,7 @@ const (
 	ProviderName = "kuberay"
 
 	// FinalizerName is the finalizer used by this controller
-	FinalizerName = "kubeairunway.ai/kuberay-provider"
+	FinalizerName = "airunway.ai/kuberay-provider"
 
 	// FieldManager is the server-side apply field manager name
 	FieldManager = "kuberay-provider"
@@ -76,11 +76,11 @@ func NewKubeRayProviderReconciler(client client.Client, scheme *runtime.Scheme) 
 	}
 }
 
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ray.io,resources=rayservices,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ray.io,resources=rayservices/status,verbs=get
 
@@ -89,7 +89,7 @@ func (r *KubeRayProviderReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	logger := log.FromContext(ctx)
 
 	// Fetch the ModelDeployment
-	var md kubeairunwayv1alpha1.ModelDeployment
+	var md airunwayv1alpha1.ModelDeployment
 	if err := r.Get(ctx, req.NamespacedName, &md); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -102,7 +102,7 @@ func (r *KubeRayProviderReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	logger.Info("Reconciling ModelDeployment for KubeRay provider", "name", md.Name, "namespace", md.Namespace)
 
 	// Check for pause annotation
-	if md.Annotations != nil && md.Annotations["kubeairunway.ai/reconcile-paused"] == "true" {
+	if md.Annotations != nil && md.Annotations["airunway.ai/reconcile-paused"] == "true" {
 		logger.Info("Reconciliation paused", "name", md.Name)
 		return ctrl.Result{}, nil
 	}
@@ -124,19 +124,19 @@ func (r *KubeRayProviderReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Validate provider compatibility
 	if err := r.validateCompatibility(&md); err != nil {
 		logger.Error(err, "Provider compatibility check failed", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = err.Error()
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with KubeRay")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with KubeRay")
 
 	// Transform ModelDeployment to RayService
 	resources, err := r.Transformer.Transform(ctx, &md)
 	if err != nil {
 		logger.Error(err, "Failed to transform ModelDeployment", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = fmt.Sprintf("Failed to generate KubeRay resources: %s", err.Error())
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
@@ -148,16 +148,16 @@ func (r *KubeRayProviderReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			reason := "CreateFailed"
 			if isResourceConflict(err) {
 				reason = "ResourceConflict"
-				r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
+				r.setCondition(&md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
 			}
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Failed to create RayService: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
 		}
 	}
 
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "RayService created successfully")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "RayService created successfully")
 
 	// Update provider status
 	md.Status.Provider.ResourceName = md.Name
@@ -171,9 +171,9 @@ func (r *KubeRayProviderReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Set phase to Deploying if not already Running or Failed
-	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning &&
-		md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseDeploying
+	if md.Status.Phase != airunwayv1alpha1.DeploymentPhaseRunning &&
+		md.Status.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseDeploying
 		md.Status.Message = "RayService created, waiting for pods to be ready"
 	}
 
@@ -188,9 +188,9 @@ func (r *KubeRayProviderReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 // validateCompatibility checks if the ModelDeployment configuration is compatible with KubeRay
-func (r *KubeRayProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *KubeRayProviderReconciler) validateCompatibility(md *airunwayv1alpha1.ModelDeployment) error {
 	// KubeRay only supports vllm
-	if md.ResolvedEngineType() != kubeairunwayv1alpha1.EngineTypeVLLM {
+	if md.ResolvedEngineType() != airunwayv1alpha1.EngineTypeVLLM {
 		return fmt.Errorf("KubeRay only supports vllm engine, got %s", md.ResolvedEngineType())
 	}
 
@@ -199,7 +199,7 @@ func (r *KubeRayProviderReconciler) validateCompatibility(md *kubeairunwayv1alph
 	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
 		hasGPU = true
 	}
-	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		if md.Spec.Scaling != nil {
 			if md.Spec.Scaling.Prefill != nil && md.Spec.Scaling.Prefill.GPU != nil && md.Spec.Scaling.Prefill.GPU.Count > 0 {
 				hasGPU = true
@@ -241,7 +241,7 @@ func verifyOwnerReference(existing *unstructured.Unstructured, mdUID types.UID) 
 }
 
 // createOrUpdateResource creates or updates an unstructured resource
-func (r *KubeRayProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *KubeRayProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Check if resource exists
@@ -281,7 +281,7 @@ func (r *KubeRayProviderReconciler) createOrUpdateResource(ctx context.Context, 
 }
 
 // syncStatus fetches the upstream resource and syncs its status to the ModelDeployment
-func (r *KubeRayProviderReconciler) syncStatus(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
+func (r *KubeRayProviderReconciler) syncStatus(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
 	// Fetch the current state of the upstream resource
 	upstream := &unstructured.Unstructured{}
 	upstream.SetGroupVersionKind(desired.GroupVersionKind())
@@ -312,19 +312,19 @@ func (r *KubeRayProviderReconciler) syncStatus(ctx context.Context, md *kubeairu
 	md.Status.Endpoint = statusResult.Endpoint
 
 	// Update Ready condition based on phase
-	if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseRunning {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
-	} else if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
+	if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseRunning {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
+	} else if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseFailed {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
 	} else {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
 	}
 
 	return nil
 }
 
 // handleDeletion handles the deletion of a ModelDeployment
-func (r *KubeRayProviderReconciler) handleDeletion(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
+func (r *KubeRayProviderReconciler) handleDeletion(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(md, FinalizerName) {
@@ -334,7 +334,7 @@ func (r *KubeRayProviderReconciler) handleDeletion(ctx context.Context, md *kube
 	logger.Info("Handling deletion", "name", md.Name, "namespace", md.Namespace)
 
 	// Update phase to Terminating
-	md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseTerminating
+	md.Status.Phase = airunwayv1alpha1.DeploymentPhaseTerminating
 	if err := r.Status().Update(ctx, md); err != nil {
 		logger.Error(err, "Failed to update status to Terminating")
 	}
@@ -392,7 +392,7 @@ func (r *KubeRayProviderReconciler) handleDeletion(ctx context.Context, md *kube
 }
 
 // setCondition updates a condition on the ModelDeployment
-func (r *KubeRayProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
+func (r *KubeRayProviderReconciler) setCondition(md *airunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
@@ -407,10 +407,10 @@ func (r *KubeRayProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelD
 // SetupWithManager sets up the controller with the Manager.
 func (r *KubeRayProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubeairunwayv1alpha1.ModelDeployment{}).
+		For(&airunwayv1alpha1.ModelDeployment{}).
 		// Only watch ModelDeployments where provider.name == "kuberay"
 		WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
-			md, ok := obj.(*kubeairunwayv1alpha1.ModelDeployment)
+			md, ok := obj.(*airunwayv1alpha1.ModelDeployment)
 			if !ok {
 				return false
 			}
@@ -434,7 +434,7 @@ func (r *KubeRayProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// Get owner references
 				for _, ref := range obj.GetOwnerReferences() {
-					if ref.APIVersion == kubeairunwayv1alpha1.GroupVersion.String() &&
+					if ref.APIVersion == airunwayv1alpha1.GroupVersion.String() &&
 						ref.Kind == "ModelDeployment" {
 						return []reconcile.Request{
 							{

@@ -6,14 +6,14 @@ The controller exposes Prometheus metrics:
 
 ```
 # Controller metrics
-kubeairunway_modeldeployment_total{namespace, phase}
-kubeairunway_reconciliation_duration_seconds{provider}
-kubeairunway_reconciliation_errors_total{provider, error_type}
-kubeairunway_provider_selection{provider, reason}
+airunway_modeldeployment_total{namespace, phase}
+airunway_reconciliation_duration_seconds{provider}
+airunway_reconciliation_errors_total{provider, error_type}
+airunway_provider_selection{provider, reason}
 
 # Deployment metrics
-kubeairunway_deployment_replicas{name, namespace, state}
-kubeairunway_deployment_phase{name, namespace, phase}
+airunway_deployment_replicas{name, namespace, state}
+airunway_deployment_phase{name, namespace, phase}
 ```
 
 ## Kubernetes Events

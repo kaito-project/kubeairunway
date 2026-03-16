@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -58,24 +58,24 @@ func NewTransformer() *Transformer {
 // Aggregated mode returns [Deployment, Service].
 // Disaggregated mode returns [decode Deployment, prefill Deployment, decode Service, prefill Service].
 // resources[0] is always the primary resource used for status tracking.
-func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
-	if md.ResolvedEngineType() != kubeairunwayv1alpha1.EngineTypeVLLM {
+func (t *Transformer) Transform(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
+	if md.ResolvedEngineType() != airunwayv1alpha1.EngineTypeVLLM {
 		return nil, fmt.Errorf("llm-d provider only supports vllm engine, got %s", md.ResolvedEngineType())
 	}
 
-	servingMode := kubeairunwayv1alpha1.ServingModeAggregated
+	servingMode := airunwayv1alpha1.ServingModeAggregated
 	if md.Spec.Serving != nil && md.Spec.Serving.Mode != "" {
 		servingMode = md.Spec.Serving.Mode
 	}
 
-	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if servingMode == airunwayv1alpha1.ServingModeDisaggregated {
 		return t.transformDisaggregated(md)
 	}
 	return t.transformAggregated(md)
 }
 
 // transformAggregated creates a single Deployment + Service for aggregated serving.
-func (t *Transformer) transformAggregated(md *kubeairunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
+func (t *Transformer) transformAggregated(md *airunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
 	replicas := int64(1)
 	if md.Spec.Scaling != nil && md.Spec.Scaling.Replicas > 0 {
 		replicas = int64(md.Spec.Scaling.Replicas)
@@ -97,7 +97,7 @@ func (t *Transformer) transformAggregated(md *kubeairunwayv1alpha1.ModelDeployme
 }
 
 // transformDisaggregated creates separate decode + prefill Deployments and Services.
-func (t *Transformer) transformDisaggregated(md *kubeairunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
+func (t *Transformer) transformDisaggregated(md *airunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
 	if md.Spec.Scaling == nil {
 		return nil, fmt.Errorf("spec.scaling is required for disaggregated serving mode")
 	}
@@ -143,7 +143,7 @@ func (t *Transformer) transformDisaggregated(md *kubeairunwayv1alpha1.ModelDeplo
 }
 
 // buildDeployment constructs an apps/v1 Deployment as unstructured.
-func (t *Transformer) buildDeployment(md *kubeairunwayv1alpha1.ModelDeployment, name string, replicas int64, resources *kubeairunwayv1alpha1.ResourceSpec, args []string) (*unstructured.Unstructured, error) {
+func (t *Transformer) buildDeployment(md *airunwayv1alpha1.ModelDeployment, name string, replicas int64, resources *airunwayv1alpha1.ResourceSpec, args []string) (*unstructured.Unstructured, error) {
 	d := &unstructured.Unstructured{}
 	d.SetAPIVersion("apps/v1")
 	d.SetKind("Deployment")
@@ -179,13 +179,13 @@ func (t *Transformer) buildDeployment(md *kubeairunwayv1alpha1.ModelDeployment, 
 
 	// Pod selector labels (must be a stable subset)
 	selectorLabels := map[string]interface{}{
-		"kubeairunway.ai/deployment": md.Name,
+		"airunway.ai/deployment": md.Name,
 		"app":                        name,
 	}
 
 	// Pod template labels (must include selector labels)
 	podLabels := map[string]interface{}{
-		"kubeairunway.ai/deployment": md.Name,
+		"airunway.ai/deployment": md.Name,
 		"app":                        name,
 	}
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil {
@@ -256,7 +256,7 @@ func (t *Transformer) buildDeployment(md *kubeairunwayv1alpha1.ModelDeployment, 
 
 // buildService constructs a core/v1 Service as unstructured.
 // selectorApp is the value of the "app" label used to target pods.
-func (t *Transformer) buildService(md *kubeairunwayv1alpha1.ModelDeployment, name, selectorApp string) *unstructured.Unstructured {
+func (t *Transformer) buildService(md *airunwayv1alpha1.ModelDeployment, name, selectorApp string) *unstructured.Unstructured {
 	svc := &unstructured.Unstructured{}
 	svc.SetAPIVersion("v1")
 	svc.SetKind("Service")
@@ -279,7 +279,7 @@ func (t *Transformer) buildService(md *kubeairunwayv1alpha1.ModelDeployment, nam
 	spec := map[string]interface{}{
 		"type": "ClusterIP",
 		"selector": map[string]interface{}{
-			"kubeairunway.ai/deployment": md.Name,
+			"airunway.ai/deployment": md.Name,
 			"app":                        selectorApp,
 		},
 		"ports": []interface{}{
@@ -297,7 +297,7 @@ func (t *Transformer) buildService(md *kubeairunwayv1alpha1.ModelDeployment, nam
 }
 
 // buildContainer constructs the vLLM container map.
-func (t *Transformer) buildContainer(md *kubeairunwayv1alpha1.ModelDeployment, image string, args []string, resources *kubeairunwayv1alpha1.ResourceSpec) (map[string]interface{}, error) {
+func (t *Transformer) buildContainer(md *airunwayv1alpha1.ModelDeployment, image string, args []string, resources *airunwayv1alpha1.ResourceSpec) (map[string]interface{}, error) {
 	argsList := make([]interface{}, len(args))
 	for i, a := range args {
 		argsList[i] = a
@@ -336,7 +336,7 @@ func (t *Transformer) buildContainer(md *kubeairunwayv1alpha1.ModelDeployment, i
 // buildVLLMArgs constructs the vLLM command-line arguments.
 // kvTransferConfig is optional; pass "" for aggregated mode.
 // gpuCount overrides the GPU count used for tensor parallelism (0 means use top-level spec.resources).
-func (t *Transformer) buildVLLMArgs(md *kubeairunwayv1alpha1.ModelDeployment, kvTransferConfig string, gpuCount int32) ([]string, error) {
+func (t *Transformer) buildVLLMArgs(md *airunwayv1alpha1.ModelDeployment, kvTransferConfig string, gpuCount int32) ([]string, error) {
 	var args []string
 
 	// Model
@@ -393,7 +393,7 @@ func (t *Transformer) buildVLLMArgs(md *kubeairunwayv1alpha1.ModelDeployment, kv
 }
 
 // buildResourceLimits creates resource limits and requests from ResourceSpec.
-func (t *Transformer) buildResourceLimits(spec *kubeairunwayv1alpha1.ResourceSpec) map[string]interface{} {
+func (t *Transformer) buildResourceLimits(spec *airunwayv1alpha1.ResourceSpec) map[string]interface{} {
 	if spec == nil {
 		return nil
 	}
@@ -429,7 +429,7 @@ func (t *Transformer) buildResourceLimits(spec *kubeairunwayv1alpha1.ResourceSpe
 }
 
 // buildEnvVars constructs environment variables including HF_TOKEN from secrets.
-func (t *Transformer) buildEnvVars(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
+func (t *Transformer) buildEnvVars(md *airunwayv1alpha1.ModelDeployment) []interface{} {
 	var envVars []interface{}
 
 	// Add user-specified env vars
@@ -468,7 +468,7 @@ func (t *Transformer) buildEnvVars(md *kubeairunwayv1alpha1.ModelDeployment) []i
 }
 
 // buildTolerations converts tolerations from ModelDeployment to unstructured format.
-func (t *Transformer) buildTolerations(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
+func (t *Transformer) buildTolerations(md *airunwayv1alpha1.ModelDeployment) []interface{} {
 	tolerations := make([]interface{}, len(md.Spec.Tolerations))
 	for i, tol := range md.Spec.Tolerations {
 		tolMap := map[string]interface{}{
@@ -490,17 +490,17 @@ func (t *Transformer) buildTolerations(md *kubeairunwayv1alpha1.ModelDeployment)
 }
 
 // buildLabels creates the standard set of labels for llm-d resources.
-func (t *Transformer) buildLabels(md *kubeairunwayv1alpha1.ModelDeployment) map[string]string {
+func (t *Transformer) buildLabels(md *airunwayv1alpha1.ModelDeployment) map[string]string {
 	return map[string]string{
-		"kubeairunway.ai/managed-by":   "kubeairunway",
-		"kubeairunway.ai/deployment":   md.Name,
-		"kubeairunway.ai/model-source": string(md.Spec.Model.Source),
-		"kubeairunway.ai/engine-type":  string(md.ResolvedEngineType()),
+		"airunway.ai/managed-by":   "airunway",
+		"airunway.ai/deployment":   md.Name,
+		"airunway.ai/model-source": string(md.Spec.Model.Source),
+		"airunway.ai/engine-type":  string(md.ResolvedEngineType()),
 	}
 }
 
 // getImage returns the container image to use.
-func (t *Transformer) getImage(md *kubeairunwayv1alpha1.ModelDeployment) string {
+func (t *Transformer) getImage(md *airunwayv1alpha1.ModelDeployment) string {
 	if md.Spec.Image != "" {
 		return md.Spec.Image
 	}
@@ -509,15 +509,15 @@ func (t *Transformer) getImage(md *kubeairunwayv1alpha1.ModelDeployment) string 
 
 // componentToResourceSpec converts a ComponentScalingSpec to a ResourceSpec
 // for use in building container resources.
-func componentToResourceSpec(comp *kubeairunwayv1alpha1.ComponentScalingSpec) *kubeairunwayv1alpha1.ResourceSpec {
+func componentToResourceSpec(comp *airunwayv1alpha1.ComponentScalingSpec) *airunwayv1alpha1.ResourceSpec {
 	if comp == nil {
 		return nil
 	}
-	spec := &kubeairunwayv1alpha1.ResourceSpec{
+	spec := &airunwayv1alpha1.ResourceSpec{
 		Memory: comp.Memory,
 	}
 	if comp.GPU != nil {
-		spec.GPU = &kubeairunwayv1alpha1.GPUSpec{
+		spec.GPU = &airunwayv1alpha1.GPUSpec{
 			Count: comp.GPU.Count,
 		}
 	}
@@ -563,7 +563,7 @@ func boolPtr(b bool) *bool {
 
 // applyOverrides deep-merges spec.provider.overrides into the unstructured object.
 // This is the escape hatch that lets users set arbitrary fields on the provider resource.
-func applyOverrides(obj *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func applyOverrides(obj *unstructured.Unstructured, md *airunwayv1alpha1.ModelDeployment) error {
 	if md.Spec.Provider == nil || md.Spec.Provider.Overrides == nil {
 		return nil
 	}

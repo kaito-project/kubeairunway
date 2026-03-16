@@ -1,13 +1,13 @@
-# KubeAIRunway
+# AIRunway
 
-<img src="./frontend/public/logo.png" alt="KubeAIRunway Logo" width="200">
+<img src="./frontend/public/logo.png" alt="AIRunway Logo" width="200">
 
 Deploy and manage large language models on Kubernetes — no YAML required.
 
 > [!NOTE]
-> KubeAIRunway is still under heavy development and the APIs are not currently considered stable. Feedback is welcome! ❤️
+> AIRunway is still under heavy development and the APIs are not currently considered stable. Feedback is welcome! ❤️
 
-KubeAIRunway gives you a web UI and a unified Kubernetes CRD (`ModelDeployment`) to deploy models across multiple inference providers. Browse [HuggingFace](https://huggingface.co/), pick a model, click deploy.
+AIRunway gives you a web UI and a unified Kubernetes CRD (`ModelDeployment`) to deploy models across multiple inference providers. Browse [HuggingFace](https://huggingface.co/), pick a model, click deploy.
 
 ## Highlights
 
@@ -38,32 +38,32 @@ KubeAIRunway gives you a web UI and a unified Kubernetes CRD (`ModelDeployment`)
 
 ### Option A: Run Locally
 
-Download the [latest release](https://github.com/kaito-project/kubeairunway/releases) and run:
+Download the [latest release](https://github.com/kaito-project/airunway/releases) and run:
 
 ```bash
-./kubeairunway
+./airunway
 ```
 
 Open **http://localhost:3001**
 
-> **macOS:** Remove quarantine if needed: `xattr -dr com.apple.quarantine kubeairunway`
+> **macOS:** Remove quarantine if needed: `xattr -dr com.apple.quarantine airunway`
 
 ### Option B: Deploy to Kubernetes
 
 ```bash
 # Install CRDs and controller (required)
-kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/airunway/main/deploy/controller.yaml
 
 # Install dashboard UI (optional)
-kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/dashboard.yaml
-kubectl port-forward -n kubeairunway-system svc/kubeairunway 3001:80
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/airunway/main/deploy/dashboard.yaml
+kubectl port-forward -n airunway-system svc/airunway 3001:80
 ```
 
 Open **http://localhost:3001** — see [deployment docs](deploy/README.md) for more options.
 
 ### Getting Started
 
-1. **Install a provider shim** — Apply one or more provider shims to register providers with KubeAIRunway. See [Supported Providers](#supported-providers) for available options.
+1. **Install a provider shim** — Apply one or more provider shims to register providers with AIRunway. See [Supported Providers](#supported-providers) for available options.
 2. **Install the provider** — Go to the Installation page and install the upstream provider via Helm
 3. **Connect HuggingFace** — Sign in via Settings → HuggingFace (optional for non-gated models)
 4. **Deploy a model** — Browse the catalog, pick a model, configure, and deploy
@@ -83,7 +83,7 @@ curl http://localhost:8000/v1/chat/completions \
 ## ModelDeployment CRD
 
 ```yaml
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: my-model

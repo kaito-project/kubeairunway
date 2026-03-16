@@ -61,7 +61,7 @@ The project can be compiled to a standalone executable that includes both the ba
 bun run compile
 
 # Run the binary (serves both API and frontend on port 3001)
-./dist/kubeairunway
+./dist/airunway
 
 # Check version info
 curl http://localhost:3001/api/health/version
@@ -119,7 +119,7 @@ controller/
 ```
 
 ### CRDs
-KubeAIRunway defines two CRDs:
+AIRunway defines two CRDs:
 
 1. **ModelDeployment** (namespaced) - User-facing API for deploying models
 2. **InferenceProviderConfig** (cluster-scoped) - Provider registration
@@ -134,7 +134,7 @@ cd controller && make manifests generate
 The core controller reconciliation follows these steps:
 
 1. **Receive** ModelDeployment event
-2. **Check** for pause annotation (`kubeairunway.ai/reconcile-paused: "true"`) — skip if paused
+2. **Check** for pause annotation (`airunway.ai/reconcile-paused: "true"`) — skip if paused
 3. **Select engine** — use explicit `spec.engine.type` or auto-select from provider capabilities (filtered by GPU/CPU, serving mode, and engine GPU requirements)
 4. **Validate** spec (engine/resource compatibility, required fields)
 5. **Select provider** — use explicit `spec.provider.name` or run auto-selection algorithm (CEL rules now see the resolved engine)
@@ -153,12 +153,12 @@ The core controller stops here. Provider controllers then:
 
 **Controller metrics:**
 ```
-kubeairunway_modeldeployment_total{namespace, phase}
-kubeairunway_reconciliation_duration_seconds{provider}
-kubeairunway_reconciliation_errors_total{provider, error_type}
-kubeairunway_provider_selection{provider, reason}
-kubeairunway_deployment_replicas{name, namespace, state}
-kubeairunway_deployment_phase{name, namespace, phase}
+airunway_modeldeployment_total{namespace, phase}
+airunway_reconciliation_duration_seconds{provider}
+airunway_reconciliation_errors_total{provider, error_type}
+airunway_provider_selection{provider, reason}
+airunway_deployment_replicas{name, namespace, state}
+airunway_deployment_phase{name, namespace, phase}
 ```
 
 **Events emitted:**
@@ -197,7 +197,7 @@ cd controller && go test -v ./...
 
 ### Version Compatibility Matrix
 
-| KubeAIRunway Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
+| AIRunway Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
 |------------------------|------------|----------------|-----------------|------------------|
 | v0.1.x                 | 1.26-1.30  | v0.3.x         | v0.1.x          | v1.1.x           |
 
@@ -249,46 +249,46 @@ cd providers/kaito && make generate-deploy-manifests
 ### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:3001
-VITE_DEFAULT_NAMESPACE=kubeairunway-system
+VITE_DEFAULT_NAMESPACE=airunway-system
 VITE_DEFAULT_HF_SECRET=hf-token-secret
 ```
 
 ### Backend (.env)
 ```env
 PORT=3001
-DEFAULT_NAMESPACE=kubeairunway-system
+DEFAULT_NAMESPACE=airunway-system
 CORS_ORIGIN=http://localhost:5173
 AUTH_ENABLED=false
 ```
 
 ## Authentication
 
-KubeAIRunway supports optional authentication using Kubernetes OIDC tokens from your kubeconfig.
+AIRunway supports optional authentication using Kubernetes OIDC tokens from your kubeconfig.
 
 ### Enabling Authentication
 
 Set the `AUTH_ENABLED` environment variable:
 
 ```bash
-AUTH_ENABLED=true ./dist/kubeairunway
+AUTH_ENABLED=true ./dist/airunway
 ```
 
 ### Login Flow
 
 1. **Run the login command:**
    ```bash
-   kubeairunway login
+   airunway login
    ```
    This extracts your OIDC token from kubeconfig and opens the browser with a magic link.
 
 2. **Alternative: Specify server URL:**
    ```bash
-   kubeairunway login --server https://kubeairunway.example.com
+   airunway login --server https://airunway.example.com
    ```
 
 3. **Use a specific kubeconfig context:**
    ```bash
-   kubeairunway login --context my-cluster
+   airunway login --context my-cluster
    ```
 
 ### How It Works
@@ -309,14 +309,14 @@ These routes are accessible without authentication:
 ### CLI Commands
 
 ```bash
-kubeairunway                    # Start server (default)
-kubeairunway serve              # Start server
-kubeairunway login              # Login with kubeconfig credentials
-kubeairunway login --server URL # Login to specific server
-kubeairunway login --context X  # Use specific kubeconfig context
-kubeairunway logout             # Clear stored credentials
-kubeairunway version            # Show version
-kubeairunway help               # Show help
+airunway                    # Start server (default)
+airunway serve              # Start server
+airunway login              # Login with kubeconfig credentials
+airunway login --server URL # Login to specific server
+airunway login --context X  # Use specific kubeconfig context
+airunway logout             # Clear stored credentials
+airunway version            # Show version
+airunway help               # Show help
 ```
 
 ## Project Commands
@@ -325,7 +325,7 @@ kubeairunway help               # Show help
 ```bash
 bun run dev           # Start both frontend and backend
 bun run build         # Build all packages
-bun run compile       # Build single binary (frontend + backend) to dist/kubeairunway
+bun run compile       # Build single binary (frontend + backend) to dist/airunway
 bun run lint          # Lint all packages
 ```
 
@@ -399,13 +399,13 @@ make clean              # Remove build artifacts
 #### Prerequisites for Headlamp Plugin
 
 - Headlamp Desktop (v0.20+) or Headlamp running in-cluster
-- KubeAIRunway backend deployed or running locally
+- AIRunway backend deployed or running locally
 
 #### Configuring Backend URL
 
 The plugin discovers the backend in this order:
-1. **Plugin Settings**: Configure in Headlamp → Settings → Plugins → KubeAIRunway
-2. **In-Cluster**: Auto-discovers `kubeairunway.<namespace>.svc`
+1. **Plugin Settings**: Configure in Headlamp → Settings → Plugins → AIRunway
+2. **In-Cluster**: Auto-discovers `airunway.<namespace>.svc`
 3. **Default**: Falls back to `http://localhost:3001`
 
 #### Testing with Headlamp Desktop
@@ -416,7 +416,7 @@ The plugin discovers the backend in this order:
    make setup
    ```
 
-2. Start KubeAIRunway backend:
+2. Start AIRunway backend:
    ```bash
    cd ../..
    bun run dev:backend
@@ -430,7 +430,7 @@ The plugin discovers the backend in this order:
 ```bash
 kubectl create secret generic hf-token-secret \
   --from-literal=HF_TOKEN="your-token" \
-  -n kubeairunway
+  -n airunway
 ```
 
 ### Install NVIDIA Dynamo (via Helm)
@@ -588,7 +588,7 @@ curl -X POST http://localhost:3001/api/deployments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-deployment",
-    "namespace": "kubeairunway-system",
+    "namespace": "airunway-system",
     "provider": "dynamo",
     "modelId": "Qwen/Qwen3-0.6B",
     "engine": "vllm",
@@ -645,7 +645,7 @@ After deployment is running:
 ```bash
 # Port-forward to the service (check deployment details for exact service name)
 # Dynamo/KubeRay deployments expose port 8000
-kubectl port-forward svc/<deployment>-frontend 8000:8000 -n kubeairunway-system
+kubectl port-forward svc/<deployment>-frontend 8000:8000 -n airunway-system
 
 # KAITO deployments with vLLM expose port 8000
 kubectl port-forward svc/<deployment-name> 8000:8000 -n kaito-workspace
@@ -674,8 +674,8 @@ curl http://localhost:5000/v1/chat/completions \
 ## Troubleshooting
 
 ### Controller not reconciling
-- Check controller logs: `kubectl logs -n kubeairunway-system deploy/kubeairunway-controller-manager`
-- Verify CRDs are installed: `kubectl get crd modeldeployments.kubeairunway.ai`
+- Check controller logs: `kubectl logs -n airunway-system deploy/airunway-controller-manager`
+- Verify CRDs are installed: `kubectl get crd modeldeployments.airunway.ai`
 - Check RBAC permissions for the controller service account
 
 ### ModelDeployment stuck in Pending
@@ -705,7 +705,7 @@ curl http://localhost:5000/v1/chat/completions \
 - Check events: `kubectl get events -n kaito-workspace --sort-by=.lastTimestamp`
 
 ### Metrics not available
-- Metrics require KubeAIRunway to run in-cluster
+- Metrics require AIRunway to run in-cluster
 - Check deployment pods are running: `kubectl get pods -n <namespace>`
 - Verify metrics endpoint is exposed (port 8000 for vLLM, port 5000 for llama.cpp)
 
@@ -719,20 +719,20 @@ curl http://localhost:5000/v1/chat/completions \
 #### Plugin not appearing in Headlamp
 - Verify plugin was built: `cd plugins/headlamp && bun run build`
 - Check plugin deployment location:
-  - macOS: `~/.config/Headlamp/plugins/kubeairunway-headlamp-plugin`
-  - Linux: `~/.config/Headlamp/plugins/kubeairunway-headlamp-plugin`
-  - Windows: `%APPDATA%/Headlamp/plugins/kubeairunway-headlamp-plugin`
+  - macOS: `~/.config/Headlamp/plugins/airunway-headlamp-plugin`
+  - Linux: `~/.config/Headlamp/plugins/airunway-headlamp-plugin`
+  - Windows: `%APPDATA%/Headlamp/plugins/airunway-headlamp-plugin`
 - Restart Headlamp after deploying the plugin
 
 #### Plugin can't connect to backend
-- Check backend URL in Headlamp → Settings → Plugins → KubeAIRunway
+- Check backend URL in Headlamp → Settings → Plugins → AIRunway
 - Verify backend is running: `curl http://localhost:3001/api/health`
 - For in-cluster deployments, ensure the service is accessible
 - Check browser dev tools (Network tab) for connection errors
 
 #### Plugin shows "Connection Failed" banner
 - The plugin auto-discovers the backend; ensure it's running
-- In-cluster: Deploy KubeAIRunway backend to `kubeairunway-system` namespace
+- In-cluster: Deploy AIRunway backend to `airunway-system` namespace
 - Local development: Start backend with `bun run dev:backend`
 
 #### Type errors after shared package changes

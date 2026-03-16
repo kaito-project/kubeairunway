@@ -25,7 +25,7 @@ const getArg = (name: string): string | undefined => {
 };
 
 const target = getArg('target');
-const outfileName = getArg('outfile') || 'kubeairunway';
+const outfileName = getArg('outfile') || 'airunway';
 const versionArg = getArg('version');
 
 // Build output path

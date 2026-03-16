@@ -7,7 +7,7 @@ import { HfModelSearch } from '@/components/models/HfModelSearch'
 import { SkeletonGrid } from '@/components/ui/skeleton'
 import { BookMarked, Search, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Engine } from '@kubeairunway/shared'
+import type { Engine } from '@airunway/shared'
 
 type Tab = 'curated' | 'huggingface'
 

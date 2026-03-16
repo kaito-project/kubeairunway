@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +31,7 @@ import (
 
 // HasManagedPVCs returns true if any volume in the ModelDeployment has Size set,
 // meaning the controller is responsible for creating PVCs.
-func HasManagedPVCs(md *kubeairunwayv1alpha1.ModelDeployment) bool {
+func HasManagedPVCs(md *airunwayv1alpha1.ModelDeployment) bool {
 	if md.Spec.Model.Storage == nil {
 		return false
 	}
@@ -44,7 +44,7 @@ func HasManagedPVCs(md *kubeairunwayv1alpha1.ModelDeployment) bool {
 }
 
 // HasStorageVolumes returns true if the ModelDeployment has any storage volumes configured.
-func HasStorageVolumes(md *kubeairunwayv1alpha1.ModelDeployment) bool {
+func HasStorageVolumes(md *airunwayv1alpha1.ModelDeployment) bool {
 	return md.Spec.Model.Storage != nil && len(md.Spec.Model.Storage.Volumes) > 0
 }
 
@@ -57,7 +57,7 @@ func HasStorageVolumes(md *kubeairunwayv1alpha1.ModelDeployment) bool {
 //
 // For pre-existing PVCs (Size is nil): returns ready only when the PVC is Bound,
 // since these are outside the controller's control.
-func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment) (bool, error) {
+func EnsurePVCs(ctx context.Context, c client.Client, md *airunwayv1alpha1.ModelDeployment) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	if md.Spec.Model.Storage == nil {
@@ -129,14 +129,14 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 		// race window where the old PVC still exists. Delete it and requeue so the
 		// next reconcile creates a fresh PVC.
 		if !IsOwnedByMD(existing, md.UID) {
-			// Safety guard: only delete PVCs that were created by kubeairunway.
+			// Safety guard: only delete PVCs that were created by airunway.
 			// A PVC without the managed-by label was created by another controller
 			// or manually — deleting it would be destructive and unintended.
-			if existing.Labels[kubeairunwayv1alpha1.LabelManagedBy] != "kubeairunway" {
+			if existing.Labels[airunwayv1alpha1.LabelManagedBy] != "airunway" {
 				return false, fmt.Errorf(
-					"PVC %s exists but was not created by kubeairunway (missing %s label); "+
+					"PVC %s exists but was not created by airunway (missing %s label); "+
 						"refusing to delete — remove the PVC manually or change the volume claimName",
-					claimName, kubeairunwayv1alpha1.LabelManagedBy,
+					claimName, airunwayv1alpha1.LabelManagedBy,
 				)
 			}
 			if err := deleteStalePVC(ctx, c, existing); err != nil {
@@ -167,7 +167,7 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 }
 
 // buildPVC creates a PVC spec from a StorageVolume with Size set.
-func buildPVC(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwayv1alpha1.StorageVolume) (*corev1.PersistentVolumeClaim, error) {
+func buildPVC(md *airunwayv1alpha1.ModelDeployment, vol *airunwayv1alpha1.StorageVolume) (*corev1.PersistentVolumeClaim, error) {
 	if vol.Size == nil {
 		return nil, fmt.Errorf("volume size must be set for controller-created PVCs")
 	}
@@ -185,12 +185,12 @@ func buildPVC(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwayv1alpha
 			Name:      claimName,
 			Namespace: md.Namespace,
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: md.Name,
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: md.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion:         kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion:         airunwayv1alpha1.GroupVersion.String(),
 					Kind:               "ModelDeployment",
 					Name:               md.Name,
 					UID:                md.UID,
@@ -229,15 +229,15 @@ func deleteStalePVC(ctx context.Context, c client.Client, pvc *corev1.Persistent
 // DeleteManagedPVCs deletes all PVCs managed by the given ModelDeployment.
 // Only PVCs whose OwnerReference UID matches the ModelDeployment's UID are deleted,
 // preventing accidental deletion of PVCs adopted by a recreated ModelDeployment.
-func DeleteManagedPVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func DeleteManagedPVCs(ctx context.Context, c client.Client, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	pvcList := &corev1.PersistentVolumeClaimList{}
 	if err := c.List(ctx, pvcList,
 		client.InNamespace(md.Namespace),
 		client.MatchingLabels{
-			kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-			kubeairunwayv1alpha1.LabelModelDeployment: md.Name,
+			airunwayv1alpha1.LabelManagedBy:       "airunway",
+			airunwayv1alpha1.LabelModelDeployment: md.Name,
 		},
 	); err != nil {
 		return fmt.Errorf("failed to list managed PVCs: %w", err)

@@ -5,7 +5,7 @@
 #   kubectl create secret generic llm-d-hf-token --from-literal=HF_TOKEN=<token>
 ---
 # Aggregated mode: single Deployment with intelligent inference scheduling
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: llama-8b-llmd
@@ -29,7 +29,7 @@ spec:
     huggingFaceToken: "llm-d-hf-token"
 ---
 # Disaggregated mode: separate prefill and decode Deployments for reduced TTFT
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: llama-70b-llmd-pd

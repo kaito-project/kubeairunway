@@ -34,8 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
-	kaito "github.com/kaito-project/kubeairunway/providers/kaito"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	kaito "github.com/kaito-project/airunway/providers/kaito"
 )
 
 var (
@@ -45,7 +45,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(kubeairunwayv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(airunwayv1alpha1.AddToScheme(scheme))
 }
 
 func main() {
@@ -101,7 +101,7 @@ func main() {
 		Metrics:                metricsServerOptions,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "kubeairunway-kaito-provider",
+		LeaderElectionID:       "airunway-kaito-provider",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

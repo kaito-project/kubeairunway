@@ -1,7 +1,7 @@
 {
-  "name": "@kubeairunway/shared",
+  "name": "@airunway/shared",
   "version": "1.0.0",
-  "description": "Shared types for KubeAIRunway",
+  "description": "Shared types for AIRunway",
   "type": "module",
   "main": "./types/index.ts",
   "types": "./types/index.ts",

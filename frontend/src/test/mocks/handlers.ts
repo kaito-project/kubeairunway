@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import { toModelDeploymentManifest } from '@kubeairunway/shared'
-import type { DeploymentConfig } from '@kubeairunway/shared'
+import { toModelDeploymentManifest } from '@airunway/shared'
+import type { DeploymentConfig } from '@airunway/shared'
 
 // Use wildcard prefix to match both relative URLs (/api/...) and absolute URLs (http://localhost:3001/api/...)
 const API_BASE = '*/api'
@@ -38,7 +38,7 @@ export const mockModels = [
 export const mockDeployments = [
   {
     name: 'qwen3-0-6b-vllm-abc123',
-    namespace: 'kubeairunway-system',
+    namespace: 'airunway-system',
     modelId: 'Qwen/Qwen3-0.6B',
     engine: 'vllm' as const,
     mode: 'aggregated' as const,
@@ -64,14 +64,14 @@ export const mockDeployments = [
 
 export const mockSettings = {
   config: {
-    defaultNamespace: 'kubeairunway-system',
+    defaultNamespace: 'airunway-system',
   },
   providers: [
     {
       id: 'dynamo',
       name: 'NVIDIA Dynamo',
       description: 'GPU-accelerated inference with disaggregated serving',
-      defaultNamespace: 'kubeairunway-system',
+      defaultNamespace: 'airunway-system',
     },
     {
       id: 'kuberay',
@@ -83,7 +83,7 @@ export const mockSettings = {
       id: 'llmd',
       name: 'llm-d',
       description: 'vLLM with aggregated or disaggregated serving',
-      defaultNamespace: 'kubeairunway-system',
+      defaultNamespace: 'airunway-system',
     },
   ],
 }
@@ -130,16 +130,16 @@ export const handlers = [
     const config = await request.json() as DeploymentConfig
     const manifest = toModelDeploymentManifest({
       ...config,
-      namespace: config.namespace || 'kubeairunway-system',
+      namespace: config.namespace || 'airunway-system',
     })
     return HttpResponse.json({
       resources: [{
         kind: 'ModelDeployment',
-        apiVersion: 'kubeairunway.ai/v1alpha1',
+        apiVersion: 'airunway.ai/v1alpha1',
         name: config.name,
         manifest: manifest as unknown as Record<string, unknown>,
       }],
-      primaryResource: { kind: 'ModelDeployment', apiVersion: 'kubeairunway.ai/v1alpha1' },
+      primaryResource: { kind: 'ModelDeployment', apiVersion: 'airunway.ai/v1alpha1' },
     })
   }),
 
@@ -173,7 +173,7 @@ export const handlers = [
   http.get(`${API_BASE}/cluster/status`, () => {
     return HttpResponse.json({
       connected: true,
-      namespace: 'kubeairunway-system',
+      namespace: 'airunway-system',
       clusterName: 'test-cluster',
       provider: {
         id: 'dynamo',

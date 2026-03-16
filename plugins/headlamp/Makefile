@@ -1,9 +1,9 @@
 # ============================================================================
-#                    Makefile for KubeAIRunway Headlamp Plugin
+#                    Makefile for AIRunway Headlamp Plugin
 # ============================================================================
 #
 # This Makefile automates the entire build and deployment process for the
-# KubeAIRunway Headlamp Plugin. It provides a streamlined development workflow
+# AIRunway Headlamp Plugin. It provides a streamlined development workflow
 # with commands for building, testing, deploying, and maintaining the plugin.
 #
 # OVERVIEW:
@@ -19,13 +19,13 @@
 #
 # DIRECTORY STRUCTURE:
 # -------------------
-# kubeairunway-headlamp-plugin/
+# airunway-headlamp-plugin/
 # ├── src/                          # Source code
 # ├── dist/                         # Build output (temporary, auto-cleaned)
 # ├── .plugins/                     # Extracted plugin (deployment ready)
 # │   ├── main.js                   # Plugin bundle
 # │   └── package.json              # Plugin metadata
-# └── ~/Library/Application Support/Headlamp/plugins/kubeairunway-headlamp-plugin/
+# └── ~/Library/Application Support/Headlamp/plugins/airunway-headlamp-plugin/
 #                                   # Deployment target (macOS)
 #
 # COMMON WORKFLOWS:
@@ -53,7 +53,7 @@
 # VARIABLES
 # ============================================================================
 
-PLUGIN_NAME := kubeairunway-headlamp-plugin
+PLUGIN_NAME := airunway-headlamp-plugin
 SOURCE_DIR := .plugins
 DIST_DIR := dist
 
@@ -279,7 +279,7 @@ watch:
 .PHONY: help
 help:
 	@echo "============================================================================"
-	@echo "KubeAIRunway Headlamp Plugin Makefile"
+	@echo "AIRunway Headlamp Plugin Makefile"
 	@echo "============================================================================"
 	@echo ""
 	@echo "COMMON WORKFLOWS:"

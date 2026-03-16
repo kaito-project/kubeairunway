@@ -1,7 +1,7 @@
 import * as k8s from '@kubernetes/client-node';
 import logger from '../lib/logger';
 import { withRetry } from '../lib/retry';
-import type { HfSecretStatus, HfUserInfo } from '@kubeairunway/shared';
+import type { HfSecretStatus, HfUserInfo } from '@airunway/shared';
 import { huggingFaceService } from './huggingface';
 
 /**
@@ -85,8 +85,8 @@ class SecretsService {
         name: HF_SECRET_NAME,
         namespace,
         labels: {
-          'app.kubernetes.io/managed-by': 'kubeairunway',
-          'kubeairunway.ai/secret-type': 'huggingface-token',
+          'app.kubernetes.io/managed-by': 'airunway',
+          'airunway.ai/secret-type': 'huggingface-token',
         },
       },
       type: 'Opaque',

@@ -1,12 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubeairunway-llmd-provider-rolebinding
+  name: airunway-llmd-provider-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubeairunway-llmd-provider-role
+  name: airunway-llmd-provider-role
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway-llmd-provider
-  namespace: kubeairunway-system
+  name: airunway-llmd-provider
+  namespace: airunway-system

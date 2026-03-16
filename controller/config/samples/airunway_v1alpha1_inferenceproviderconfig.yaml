@@ -1,9 +1,9 @@
 # Example: KAITO provider registration (typically created by kaito-provider controller)
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: InferenceProviderConfig
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     app.kubernetes.io/managed-by: kustomize
   name: kaito
 spec:
@@ -23,11 +23,11 @@ spec:
   documentation: "https://github.com/kaito-project/kaito-provider"
 ---
 # Example: Dynamo provider registration (typically created by dynamo-provider controller)
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: InferenceProviderConfig
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     app.kubernetes.io/managed-by: kustomize
   name: dynamo
 spec:
@@ -51,11 +51,11 @@ spec:
   documentation: "https://github.com/kaito-project/dynamo-provider"
 ---
 # Example: KubeRay provider registration (typically created by kuberay-provider controller)
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: InferenceProviderConfig
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     app.kubernetes.io/managed-by: kustomize
   name: kuberay
 spec:

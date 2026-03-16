@@ -6,7 +6,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 console.log('[API] API_BASE:', API_BASE || '(same origin)');
 
 // Auth token storage key
-const AUTH_TOKEN_KEY = 'kubeairunway_auth_token';
+const AUTH_TOKEN_KEY = 'airunway_auth_token';
 
 /**
  * Get the stored auth token
@@ -27,7 +27,7 @@ function dispatchUnauthorized(): void {
 }
 
 // ============================================================================
-// Re-export types from @kubeairunway/shared
+// Re-export types from @airunway/shared
 // ============================================================================
 
 // Core types
@@ -52,7 +52,7 @@ export type {
   StorageSpec,
   VolumePurpose,
   PersistentVolumeAccessMode,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Settings types
 export type {
@@ -61,7 +61,7 @@ export type {
   Settings,
   RuntimeStatus,
   RuntimesStatusResponse,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Installation types
 export type {
@@ -74,7 +74,7 @@ export type {
   ClusterGpuCapacity,
   GatewayCRDStatus,
   GatewayCRDInstallResult,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // HuggingFace types
 export type {
@@ -86,14 +86,14 @@ export type {
   HfModelSearchResult,
   HfModelSearchResponse,
   HfSearchParams,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // API response types
 export type {
   Pagination,
   DeploymentsListResponse,
   ClusterStatusResponse,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Metrics types
 export type {
@@ -102,7 +102,7 @@ export type {
   ComputedMetric,
   ComputedMetrics,
   MetricDefinition,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Autoscaler types
 export type {
@@ -113,7 +113,7 @@ export type {
   PodFailureReason,
   PodLogsOptions,
   PodLogsResponse,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // AIKit types
 export type {
@@ -122,7 +122,7 @@ export type {
   AikitBuildResult,
   AikitPreviewResult,
   AikitInfrastructureStatus,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Import types for internal use
 import type {
@@ -161,7 +161,7 @@ import type {
   AikitBuildResult,
   AikitPreviewResult,
   AikitInfrastructureStatus,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // ============================================================================
 // Error Handling
@@ -617,14 +617,14 @@ export type {
   AIConfiguratorStatus,
   AIConfiguratorConfig,
   AIConfiguratorPerformance,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Import types for internal use
 import type {
   AIConfiguratorInput,
   AIConfiguratorResult,
   AIConfiguratorStatus,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 export const aiConfiguratorApi = {
   /** Check if AI Configurator is available */
@@ -659,20 +659,20 @@ export type {
   RealtimePricing,
   GpuPricing,
   CloudProvider,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Import types for internal use
 import type {
   CostEstimateRequest,
   CostEstimateResponse,
   NodePoolCostEstimate,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 // Import gateway types for internal use
 import type {
   GatewayInfo,
   GatewayModelInfo,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 
 export const costsApi = {
   /** Estimate deployment cost based on GPU configuration */

@@ -39,20 +39,20 @@ RUN cd backend && \
     fi && \
     VERSION=${VERSION} GIT_COMMIT=${GIT_COMMIT} bun run scripts/compile.ts \
       --target=$TARGET \
-      --outfile=kubeairunway
+      --outfile=airunway
 
 # Stage 2: Runtime with distroless
 # Using cc-debian12 which includes glibc (required by Bun-compiled binaries)
 FROM gcr.io/distroless/cc-debian12:nonroot
 
 # Labels for container registry
-LABEL org.opencontainers.image.title="KubeAIRunway"
+LABEL org.opencontainers.image.title="AIRunway"
 LABEL org.opencontainers.image.description="Web-based platform for deploying and managing LLM frameworks on Kubernetes"
-LABEL org.opencontainers.image.source="https://github.com/kaito-project/kubeairunway"
+LABEL org.opencontainers.image.source="https://github.com/kaito-project/airunway"
 LABEL org.opencontainers.image.licenses="MIT"
 
 # Copy the compiled binary
-COPY --from=builder /app/dist/kubeairunway /kubeairunway
+COPY --from=builder /app/dist/airunway /airunway
 
 # Expose the default port
 EXPOSE 3001
@@ -61,4 +61,4 @@ EXPOSE 3001
 USER nonroot:nonroot
 
 # Start the application
-ENTRYPOINT ["/kubeairunway"]
+ENTRYPOINT ["/airunway"]

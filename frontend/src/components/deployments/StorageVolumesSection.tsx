@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Plus, X, HardDrive, Info } from 'lucide-react'
-import type { StorageVolume, VolumePurpose, PersistentVolumeAccessMode } from '@kubeairunway/shared'
+import type { StorageVolume, VolumePurpose, PersistentVolumeAccessMode } from '@airunway/shared'
 
 const MAX_VOLUMES = 8
 

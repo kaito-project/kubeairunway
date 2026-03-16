@@ -5,12 +5,12 @@
  * including authentication token injection from Headlamp's context.
  */
 
-import { createApiClient, type ApiClient } from '@kubeairunway/shared/api';
+import { createApiClient, type ApiClient } from '@airunway/shared/api';
 import { getBackendUrlSync, clearBackendCache } from './backend-discovery';
 
 // Re-export types for convenience
-export type { ApiClient } from '@kubeairunway/shared/api';
-export * from '@kubeairunway/shared/api';
+export type { ApiClient } from '@airunway/shared/api';
+export * from '@airunway/shared/api';
 
 // Singleton API client instance
 let apiClientInstance: ApiClient | null = null;
@@ -62,7 +62,7 @@ function getHeadlampToken(): string | null {
 
     return null;
   } catch {
-    console.warn('[KubeAIRunway] Failed to get Headlamp token');
+    console.warn('[AIRunway] Failed to get Headlamp token');
     return null;
   }
 }
@@ -80,7 +80,7 @@ export function getApiClient(): ApiClient {
       baseUrl,
       getToken: getHeadlampToken,
       onUnauthorized: () => {
-        console.warn('[KubeAIRunway] Unauthorized - token may be invalid');
+        console.warn('[AIRunway] Unauthorized - token may be invalid');
         // Could dispatch an event here to show a notification
       },
     });

@@ -5,8 +5,8 @@ import logger from '../lib/logger';
  * BuildKit builder configuration
  */
 export const BUILDKIT_CONFIG = {
-  builderName: 'kubeairunway-builder',
-  namespace: 'kubeairunway-system',
+  builderName: 'airunway-builder',
+  namespace: 'airunway-system',
   resources: {
     cpu: '2',
     memory: '4Gi',
@@ -187,7 +187,7 @@ class BuildKitService {
   }
 
   /**
-   * Get the status of the KubeAIRunway builder
+   * Get the status of the AIRunway builder
    */
   async getBuilderStatus(): Promise<BuilderStatus> {
     // List all builders

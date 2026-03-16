@@ -56,17 +56,17 @@ jobs:
           VERSION=${{ steps.version.outputs.VERSION }}
           
           # Rename binaries with version
-          mv dist/kubeairunway-linux-x64 release/kubeairunway-${VERSION}-linux-amd64
-          mv dist/kubeairunway-linux-arm64 release/kubeairunway-${VERSION}-linux-arm64
-          mv dist/kubeairunway-darwin-x64 release/kubeairunway-${VERSION}-darwin-amd64
-          mv dist/kubeairunway-darwin-arm64 release/kubeairunway-${VERSION}-darwin-arm64
-          mv dist/kubeairunway-windows-x64.exe release/kubeairunway-${VERSION}-windows-amd64.exe
+          mv dist/airunway-linux-x64 release/airunway-${VERSION}-linux-amd64
+          mv dist/airunway-linux-arm64 release/airunway-${VERSION}-linux-arm64
+          mv dist/airunway-darwin-x64 release/airunway-${VERSION}-darwin-amd64
+          mv dist/airunway-darwin-arm64 release/airunway-${VERSION}-darwin-arm64
+          mv dist/airunway-windows-x64.exe release/airunway-${VERSION}-windows-amd64.exe
           
           # Make binaries executable (except Windows)
-          chmod +x release/kubeairunway-${VERSION}-linux-amd64
-          chmod +x release/kubeairunway-${VERSION}-linux-arm64
-          chmod +x release/kubeairunway-${VERSION}-darwin-amd64
-          chmod +x release/kubeairunway-${VERSION}-darwin-arm64
+          chmod +x release/airunway-${VERSION}-linux-amd64
+          chmod +x release/airunway-${VERSION}-linux-arm64
+          chmod +x release/airunway-${VERSION}-darwin-amd64
+          chmod +x release/airunway-${VERSION}-darwin-arm64
           
           # Generate checksums
           cd release
@@ -132,7 +132,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/kaito-project/kubeairunway/dashboard
+          images: ghcr.io/kaito-project/airunway/dashboard
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -175,7 +175,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/kaito-project/kubeairunway/controller
+          images: ghcr.io/kaito-project/airunway/controller
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -222,7 +222,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/kaito-project/kubeairunway/model-downloader
+          images: ghcr.io/kaito-project/airunway/model-downloader
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

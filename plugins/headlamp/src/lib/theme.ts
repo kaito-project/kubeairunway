@@ -1,5 +1,5 @@
 /**
- * Theme utilities for KubeAIRunway Headlamp Plugin
+ * Theme utilities for AIRunway Headlamp Plugin
  *
  * Provides consistent colors and styling that work with Headlamp's
  * light and dark themes.

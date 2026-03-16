@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
-	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	"github.com/kaito-project/airunway/controller/internal/gateway"
 )
 
 // ModelDeploymentReconciler reconciles a ModelDeployment object
@@ -48,10 +48,10 @@ type ModelDeploymentReconciler struct {
 	GatewayDetector *gateway.Detector
 }
 
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=inference.networking.k8s.io,resources=inferencepools,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch
@@ -77,7 +77,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	logger := log.FromContext(ctx)
 
 	// Fetch the ModelDeployment
-	var md kubeairunwayv1alpha1.ModelDeployment
+	var md airunwayv1alpha1.ModelDeployment
 	if err := r.Get(ctx, req.NamespacedName, &md); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -89,7 +89,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	logger.Info("Reconciling ModelDeployment", "name", md.Name, "namespace", md.Namespace)
 
 	// Check for pause annotation
-	if md.Annotations != nil && md.Annotations["kubeairunway.ai/reconcile-paused"] == "true" {
+	if md.Annotations != nil && md.Annotations["airunway.ai/reconcile-paused"] == "true" {
 		logger.Info("Reconciliation paused", "name", md.Name)
 		return ctrl.Result{}, nil
 	}
@@ -101,14 +101,14 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Initialize status if needed
 	if md.Status.Phase == "" {
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhasePending
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhasePending
 	}
 
 	// Step 1: Select engine if needed (before validation, since validation needs engine type)
 	if r.EnableProviderSelector {
 		if err := r.selectEngine(ctx, &md); err != nil {
 			logger.Error(err, "Engine selection failed", "name", md.Name)
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
 			md.Status.Message = fmt.Sprintf("Engine selection failed: %s", err.Error())
 			return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
 		}
@@ -124,18 +124,18 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Step 4: Validate the spec (uses resolved engine type)
 	if err := r.validateSpec(ctx, &md); err != nil {
 		logger.Error(err, "Validation failed", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = fmt.Sprintf("Validation failed: %s", err.Error())
 		return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
 	}
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeValidated, metav1.ConditionTrue, "ValidationPassed", "Schema validation passed")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeValidated, metav1.ConditionTrue, "ValidationPassed", "Schema validation passed")
 
 	// Step 5: Run provider selection if needed
 	if r.EnableProviderSelector {
 		if err := r.selectProvider(ctx, &md); err != nil {
 			logger.Error(err, "Provider selection failed", "name", md.Name)
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
 			md.Status.Message = fmt.Sprintf("Provider selection failed: %s", err.Error())
 			return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
 		}
@@ -146,14 +146,14 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if md.Status.Provider == nil || md.Status.Provider.Name == "" {
 		if md.Spec.Provider != nil && md.Spec.Provider.Name != "" {
 			// User explicitly specified a provider
-			md.Status.Provider = &kubeairunwayv1alpha1.ProviderStatus{
+			md.Status.Provider = &airunwayv1alpha1.ProviderStatus{
 				Name:           md.Spec.Provider.Name,
 				SelectedReason: "explicit provider selection",
 			}
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "ExplicitSelection", "Provider explicitly specified in spec")
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "ExplicitSelection", "Provider explicitly specified in spec")
 		} else if !r.EnableProviderSelector {
 			// No provider specified and selector disabled
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "NoProvider", "No provider specified and provider-selector not enabled")
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "NoProvider", "No provider specified and provider-selector not enabled")
 			md.Status.Message = "No provider specified and provider-selector not enabled"
 		}
 	}
@@ -172,7 +172,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// - ProviderCompatible, ResourceCreated, Ready conditions
 
 	// Step 7: Reconcile gateway resources (InferencePool + HTTPRoute) when deployment is running
-	if md.Status.Phase == kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if md.Status.Phase == airunwayv1alpha1.DeploymentPhaseRunning {
 		if md.Spec.Gateway != nil && md.Spec.Gateway.Enabled != nil && !*md.Spec.Gateway.Enabled {
 			// Gateway explicitly disabled — clean up any existing resources
 			if err := r.cleanupGatewayResources(ctx, &md); err != nil {
@@ -213,11 +213,11 @@ func isNoMatchError(err error) bool {
 }
 
 // validateSpec performs validation on the ModelDeployment spec
-func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	spec := &md.Spec
 
 	// Validate model.id is required for huggingface source
-	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
+	if spec.Model.Source == airunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
 		if spec.Model.ID == "" {
 			return fmt.Errorf("model.id is required when source is huggingface")
 		}
@@ -236,20 +236,20 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeai
 	}
 
 	switch engineType {
-	case kubeairunwayv1alpha1.EngineTypeVLLM, kubeairunwayv1alpha1.EngineTypeSGLang, kubeairunwayv1alpha1.EngineTypeTRTLLM:
+	case airunwayv1alpha1.EngineTypeVLLM, airunwayv1alpha1.EngineTypeSGLang, airunwayv1alpha1.EngineTypeTRTLLM:
 		// These engines require GPU (unless in disaggregated mode with component-level GPUs)
-		servingMode := kubeairunwayv1alpha1.ServingModeAggregated
+		servingMode := airunwayv1alpha1.ServingModeAggregated
 		if spec.Serving != nil && spec.Serving.Mode != "" {
 			servingMode = spec.Serving.Mode
 		}
 
-		if servingMode == kubeairunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
+		if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
 			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", engineType)
 		}
 	}
 
 	// Validate disaggregated mode configuration
-	if spec.Serving != nil && spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if spec.Serving != nil && spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		// Cannot specify resources.gpu in disaggregated mode
 		if spec.Resources != nil && spec.Resources.GPU != nil && spec.Resources.GPU.Count > 0 {
 			return fmt.Errorf("cannot specify both resources.gpu and scaling.prefill/decode in disaggregated mode")
@@ -275,16 +275,16 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *kubeai
 }
 
 // selectEngine auto-selects the engine type from provider capabilities if not specified
-func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// If engine type is explicitly specified, just record it in status
 	if md.Spec.Engine.Type != "" {
-		md.Status.Engine = &kubeairunwayv1alpha1.EngineStatus{
+		md.Status.Engine = &airunwayv1alpha1.EngineStatus{
 			Type:           md.Spec.Engine.Type,
 			SelectedReason: "explicit engine selection",
 		}
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "ExplicitSelection", "Engine explicitly specified in spec")
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "ExplicitSelection", "Engine explicitly specified in spec")
 		return nil
 	}
 
@@ -294,7 +294,7 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *kubeai
 	}
 
 	// List all InferenceProviderConfigs
-	var providerConfigs kubeairunwayv1alpha1.InferenceProviderConfigList
+	var providerConfigs airunwayv1alpha1.InferenceProviderConfigList
 	if err := r.List(ctx, &providerConfigs); err != nil {
 		return fmt.Errorf("failed to list provider configs: %w", err)
 	}
@@ -305,10 +305,10 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *kubeai
 
 	// Collect supported engines from ready providers, filtering by compatibility
 	// GPU-requiring engines cannot run on CPU-only deployments
-	gpuRequiringEngines := map[kubeairunwayv1alpha1.EngineType]bool{
-		kubeairunwayv1alpha1.EngineTypeVLLM:   true,
-		kubeairunwayv1alpha1.EngineTypeSGLang: true,
-		kubeairunwayv1alpha1.EngineTypeTRTLLM: true,
+	gpuRequiringEngines := map[airunwayv1alpha1.EngineType]bool{
+		airunwayv1alpha1.EngineTypeVLLM:   true,
+		airunwayv1alpha1.EngineTypeSGLang: true,
+		airunwayv1alpha1.EngineTypeTRTLLM: true,
 	}
 
 	// Determine deployment characteristics
@@ -316,16 +316,16 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *kubeai
 	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
 		hasGPU = true
 	}
-	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		hasGPU = true
 	}
 
-	servingMode := kubeairunwayv1alpha1.ServingModeAggregated
+	servingMode := airunwayv1alpha1.ServingModeAggregated
 	if md.Spec.Serving != nil && md.Spec.Serving.Mode != "" {
 		servingMode = md.Spec.Serving.Mode
 	}
 
-	availableEngines := make(map[kubeairunwayv1alpha1.EngineType]string) // engine -> provider name
+	availableEngines := make(map[airunwayv1alpha1.EngineType]string) // engine -> provider name
 
 	for _, pc := range providerConfigs.Items {
 		if !pc.Status.Ready || pc.Spec.Capabilities == nil {
@@ -370,31 +370,31 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *kubeai
 	}
 
 	// Select the highest-preference engine that is available
-	enginePreference := []kubeairunwayv1alpha1.EngineType{
-		kubeairunwayv1alpha1.EngineTypeVLLM,
-		kubeairunwayv1alpha1.EngineTypeSGLang,
-		kubeairunwayv1alpha1.EngineTypeTRTLLM,
-		kubeairunwayv1alpha1.EngineTypeLlamaCpp,
+	enginePreference := []airunwayv1alpha1.EngineType{
+		airunwayv1alpha1.EngineTypeVLLM,
+		airunwayv1alpha1.EngineTypeSGLang,
+		airunwayv1alpha1.EngineTypeTRTLLM,
+		airunwayv1alpha1.EngineTypeLlamaCpp,
 	}
 	for _, engine := range enginePreference {
 		if providerName, ok := availableEngines[engine]; ok {
 			logger.Info("Engine auto-selected", "engine", engine, "fromProvider", providerName)
-			md.Status.Engine = &kubeairunwayv1alpha1.EngineStatus{
+			md.Status.Engine = &airunwayv1alpha1.EngineStatus{
 				Type:           engine,
 				SelectedReason: fmt.Sprintf("auto-selected from provider %s capabilities", providerName),
 			}
-			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
+			r.setCondition(md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
 			return nil
 		}
 	}
 
 	// Fallback: pick any available engine (shouldn't happen if preference list is complete)
 	for engine, providerName := range availableEngines {
-		md.Status.Engine = &kubeairunwayv1alpha1.EngineStatus{
+		md.Status.Engine = &airunwayv1alpha1.EngineStatus{
 			Type:           engine,
 			SelectedReason: fmt.Sprintf("auto-selected from provider %s capabilities", providerName),
 		}
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
 		return nil
 	}
 
@@ -402,7 +402,7 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *kubeai
 }
 
 // selectProvider runs the provider selection algorithm
-func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Skip if provider is already selected (either in spec or status)
@@ -414,7 +414,7 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 	}
 
 	// List all InferenceProviderConfigs
-	var providerConfigs kubeairunwayv1alpha1.InferenceProviderConfigList
+	var providerConfigs airunwayv1alpha1.InferenceProviderConfigList
 	if err := r.List(ctx, &providerConfigs); err != nil {
 		return fmt.Errorf("failed to list provider configs: %w", err)
 	}
@@ -424,7 +424,7 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 	}
 
 	// Filter to ready providers
-	var readyProviders []kubeairunwayv1alpha1.InferenceProviderConfig
+	var readyProviders []airunwayv1alpha1.InferenceProviderConfig
 	for _, pc := range providerConfigs.Items {
 		if pc.Status.Ready {
 			readyProviders = append(readyProviders, pc)
@@ -446,17 +446,17 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *kube
 
 	logger.Info("Provider selected", "provider", selectedProvider, "reason", reason)
 
-	md.Status.Provider = &kubeairunwayv1alpha1.ProviderStatus{
+	md.Status.Provider = &airunwayv1alpha1.ProviderStatus{
 		Name:           selectedProvider,
 		SelectedReason: reason,
 	}
-	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Provider %s auto-selected", selectedProvider))
+	r.setCondition(md, airunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Provider %s auto-selected", selectedProvider))
 
 	return nil
 }
 
 // runSelectionAlgorithm implements the provider selection algorithm
-func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alpha1.ModelDeployment, providers []kubeairunwayv1alpha1.InferenceProviderConfig) (string, string, error) {
+func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *airunwayv1alpha1.ModelDeployment, providers []airunwayv1alpha1.InferenceProviderConfig) (string, string, error) {
 	spec := &md.Spec
 	engineType := md.ResolvedEngineType()
 
@@ -465,7 +465,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 	if spec.Resources != nil && spec.Resources.GPU != nil && spec.Resources.GPU.Count > 0 {
 		hasGPU = true
 	}
-	if spec.Serving != nil && spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if spec.Serving != nil && spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		hasGPU = true
 	}
 
@@ -510,7 +510,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 		}
 
 		// Check serving mode support
-		servingMode := kubeairunwayv1alpha1.ServingModeAggregated
+		servingMode := airunwayv1alpha1.ServingModeAggregated
 		if spec.Serving != nil && spec.Serving.Mode != "" {
 			servingMode = spec.Serving.Mode
 		}
@@ -562,7 +562,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *kubeairunwayv1alph
 }
 
 // setCondition updates a condition on the ModelDeployment
-func (r *ModelDeploymentReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
+func (r *ModelDeploymentReconciler) setCondition(md *airunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
@@ -577,7 +577,7 @@ func (r *ModelDeploymentReconciler) setCondition(md *kubeairunwayv1alpha1.ModelD
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModelDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	builder := ctrl.NewControllerManagedBy(mgr).
-		For(&kubeairunwayv1alpha1.ModelDeployment{}).
+		For(&airunwayv1alpha1.ModelDeployment{}).
 		Named("modeldeployment")
 
 	// Watch InferencePool so the controller reconciles when one is created/deleted.
@@ -593,7 +593,7 @@ func (r *ModelDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // specToMap converts a ModelDeploymentSpec to a map for CEL evaluation
-func specToMap(spec *kubeairunwayv1alpha1.ModelDeploymentSpec) (map[string]any, error) {
+func specToMap(spec *airunwayv1alpha1.ModelDeploymentSpec) (map[string]any, error) {
 	data, err := json.Marshal(spec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal spec: %w", err)

@@ -19,16 +19,16 @@ package llmd
 import (
 	"fmt"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // ProviderStatusResult contains the status fields extracted from an upstream Deployment.
 type ProviderStatusResult struct {
-	Phase        kubeairunwayv1alpha1.DeploymentPhase
+	Phase        airunwayv1alpha1.DeploymentPhase
 	Message      string
-	Replicas     *kubeairunwayv1alpha1.ReplicaStatus
-	Endpoint     *kubeairunwayv1alpha1.EndpointStatus
+	Replicas     *airunwayv1alpha1.ReplicaStatus
+	Endpoint     *airunwayv1alpha1.EndpointStatus
 	ResourceName string
 	ResourceKind string
 }
@@ -57,7 +57,7 @@ func (t *StatusTranslator) TranslateStatus(upstream *unstructured.Unstructured) 
 	result := &ProviderStatusResult{
 		ResourceName: upstream.GetName(),
 		ResourceKind: "Deployment",
-		Phase:        kubeairunwayv1alpha1.DeploymentPhasePending,
+		Phase:        airunwayv1alpha1.DeploymentPhasePending,
 	}
 
 	conditions, found, err := unstructured.NestedSlice(upstream.Object, "status", "conditions")
@@ -114,13 +114,13 @@ func (t *StatusTranslator) parseConditions(conditions []interface{}) map[string]
 //   - Available=False AND Progressing=True → Deploying
 //   - Progressing=False (DeadlineExceeded) OR Available=False with reason → Failed
 //   - else → Pending
-func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo) (kubeairunwayv1alpha1.DeploymentPhase, string) {
+func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo) (airunwayv1alpha1.DeploymentPhase, string) {
 	avail, hasAvail := condMap[conditionAvailable]
 	prog, hasProg := condMap[conditionProgressing]
 
 	// Available = True means all desired replicas are up
 	if hasAvail && avail.Status == "True" {
-		return kubeairunwayv1alpha1.DeploymentPhaseRunning, ""
+		return airunwayv1alpha1.DeploymentPhaseRunning, ""
 	}
 
 	// Progressing=False with DeadlineExceeded is a hard failure
@@ -129,25 +129,25 @@ func (t *StatusTranslator) mapConditionsToPhase(condMap map[string]conditionInfo
 		if msg == "" {
 			msg = "deployment timed out waiting for rollout"
 		}
-		return kubeairunwayv1alpha1.DeploymentPhaseFailed, msg
+		return airunwayv1alpha1.DeploymentPhaseFailed, msg
 	}
 
 	// Progressing=True and Available=False → still rolling out
 	if hasProg && prog.Status == "True" {
-		return kubeairunwayv1alpha1.DeploymentPhaseDeploying, ""
+		return airunwayv1alpha1.DeploymentPhaseDeploying, ""
 	}
 
 	// Available=False with an explicit failure message
 	if hasAvail && avail.Status == "False" && avail.Message != "" {
-		return kubeairunwayv1alpha1.DeploymentPhaseFailed, avail.Message
+		return airunwayv1alpha1.DeploymentPhaseFailed, avail.Message
 	}
 
-	return kubeairunwayv1alpha1.DeploymentPhasePending, ""
+	return airunwayv1alpha1.DeploymentPhasePending, ""
 }
 
 // extractReplicas extracts replica counts from Deployment status.
-func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured) *kubeairunwayv1alpha1.ReplicaStatus {
-	replicas := &kubeairunwayv1alpha1.ReplicaStatus{}
+func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured) *airunwayv1alpha1.ReplicaStatus {
+	replicas := &airunwayv1alpha1.ReplicaStatus{}
 
 	if desired, found, _ := unstructured.NestedInt64(upstream.Object, "spec", "replicas"); found {
 		replicas.Desired = int32(desired)
@@ -164,10 +164,10 @@ func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured) 
 
 // extractEndpoint returns the Service endpoint for this Deployment.
 // The Service name matches the Deployment name by convention.
-func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *kubeairunwayv1alpha1.EndpointStatus {
+func (t *StatusTranslator) extractEndpoint(upstream *unstructured.Unstructured) *airunwayv1alpha1.EndpointStatus {
 	// For disaggregated decode deployments the name ends in "-decode";
 	// the service name matches the deployment name.
-	return &kubeairunwayv1alpha1.EndpointStatus{
+	return &airunwayv1alpha1.EndpointStatus{
 		Service: upstream.GetName(),
 		Port:    int32(DefaultVLLMPort),
 	}

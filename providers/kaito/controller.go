@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 )
 
 const (
@@ -44,7 +44,7 @@ const (
 	ProviderName = "kaito"
 
 	// FinalizerName is the finalizer used by this controller
-	FinalizerName = "kubeairunway.ai/kaito-provider"
+	FinalizerName = "airunway.ai/kaito-provider"
 
 	// FieldManager is the server-side apply field manager name
 	FieldManager = "kaito-provider"
@@ -74,11 +74,11 @@ func NewKaitoProviderReconciler(client client.Client, scheme *runtime.Scheme) *K
 	}
 }
 
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kaito.sh,resources=workspaces,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles the reconciliation loop for ModelDeployments assigned to the KAITO provider
@@ -86,7 +86,7 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	logger := log.FromContext(ctx)
 
 	// Fetch the ModelDeployment
-	var md kubeairunwayv1alpha1.ModelDeployment
+	var md airunwayv1alpha1.ModelDeployment
 	if err := r.Get(ctx, req.NamespacedName, &md); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -99,7 +99,7 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	logger.Info("Reconciling ModelDeployment for KAITO provider", "name", md.Name, "namespace", md.Namespace)
 
 	// Check for pause annotation
-	if md.Annotations != nil && md.Annotations["kubeairunway.ai/reconcile-paused"] == "true" {
+	if md.Annotations != nil && md.Annotations["airunway.ai/reconcile-paused"] == "true" {
 		logger.Info("Reconciliation paused", "name", md.Name)
 		return ctrl.Result{}, nil
 	}
@@ -121,19 +121,19 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Validate provider compatibility
 	if err := r.validateCompatibility(&md); err != nil {
 		logger.Error(err, "Provider compatibility check failed", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = err.Error()
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with KAITO")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with KAITO")
 
 	// Transform ModelDeployment to KAITO Workspace
 	resources, err := r.Transformer.Transform(ctx, &md)
 	if err != nil {
 		logger.Error(err, "Failed to transform ModelDeployment", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = fmt.Sprintf("Failed to generate KAITO resources: %s", err.Error())
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
@@ -145,16 +145,16 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			reason := "CreateFailed"
 			if isResourceConflict(err) {
 				reason = "ResourceConflict"
-				r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
+				r.setCondition(&md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
 			}
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Failed to create Workspace: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
 		}
 	}
 
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "Workspace created successfully")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "Workspace created successfully")
 
 	// Update provider status
 	md.Status.Provider.ResourceName = md.Name
@@ -168,9 +168,9 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Set phase to Deploying if not already Running or Failed
-	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning &&
-		md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseDeploying
+	if md.Status.Phase != airunwayv1alpha1.DeploymentPhaseRunning &&
+		md.Status.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseDeploying
 		md.Status.Message = "Workspace created, waiting for pods to be ready"
 	}
 
@@ -185,24 +185,24 @@ func (r *KaitoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 // validateCompatibility checks if the ModelDeployment configuration is compatible with KAITO
-func (r *KaitoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *KaitoProviderReconciler) validateCompatibility(md *airunwayv1alpha1.ModelDeployment) error {
 	// KAITO doesn't support sglang
-	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeSGLang {
+	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeSGLang {
 		return fmt.Errorf("KAITO does not support sglang engine")
 	}
 
 	// KAITO doesn't support trtllm
-	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeTRTLLM {
+	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeTRTLLM {
 		return fmt.Errorf("KAITO does not support trtllm engine")
 	}
 
 	// KAITO doesn't support disaggregated serving
-	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		return fmt.Errorf("KAITO does not support disaggregated serving mode")
 	}
 
 	// llamacpp requires spec.image to be set
-	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeLlamaCpp && md.Spec.Image == "" {
+	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeLlamaCpp && md.Spec.Image == "" {
 		return fmt.Errorf("llamacpp engine requires spec.image to be set")
 	}
 
@@ -236,7 +236,7 @@ func verifyOwnerReference(existing *unstructured.Unstructured, mdUID types.UID) 
 }
 
 // createOrUpdateResource creates or updates an unstructured resource
-func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Check if resource exists
@@ -279,7 +279,7 @@ func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, re
 }
 
 // syncStatus fetches the upstream resource and syncs its status to the ModelDeployment
-func (r *KaitoProviderReconciler) syncStatus(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
+func (r *KaitoProviderReconciler) syncStatus(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
 	// Fetch the current state of the upstream resource
 	upstream := &unstructured.Unstructured{}
 	upstream.SetGroupVersionKind(desired.GroupVersionKind())
@@ -310,19 +310,19 @@ func (r *KaitoProviderReconciler) syncStatus(ctx context.Context, md *kubeairunw
 	md.Status.Endpoint = statusResult.Endpoint
 
 	// Update Ready condition based on phase
-	if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseRunning {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
-	} else if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
+	if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseRunning {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
+	} else if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseFailed {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
 	} else {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
 	}
 
 	return nil
 }
 
 // handleDeletion handles the deletion of a ModelDeployment
-func (r *KaitoProviderReconciler) handleDeletion(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
+func (r *KaitoProviderReconciler) handleDeletion(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(md, FinalizerName) {
@@ -332,7 +332,7 @@ func (r *KaitoProviderReconciler) handleDeletion(ctx context.Context, md *kubeai
 	logger.Info("Handling deletion", "name", md.Name, "namespace", md.Namespace)
 
 	// Update phase to Terminating
-	md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseTerminating
+	md.Status.Phase = airunwayv1alpha1.DeploymentPhaseTerminating
 	if err := r.Status().Update(ctx, md); err != nil {
 		logger.Error(err, "Failed to update status to Terminating")
 	}
@@ -390,7 +390,7 @@ func (r *KaitoProviderReconciler) handleDeletion(ctx context.Context, md *kubeai
 }
 
 // setCondition updates a condition on the ModelDeployment
-func (r *KaitoProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
+func (r *KaitoProviderReconciler) setCondition(md *airunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
@@ -405,10 +405,10 @@ func (r *KaitoProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDep
 // SetupWithManager sets up the controller with the Manager.
 func (r *KaitoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubeairunwayv1alpha1.ModelDeployment{}).
+		For(&airunwayv1alpha1.ModelDeployment{}).
 		// Only watch ModelDeployments where provider.name == "kaito"
 		WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
-			md, ok := obj.(*kubeairunwayv1alpha1.ModelDeployment)
+			md, ok := obj.(*airunwayv1alpha1.ModelDeployment)
 			if !ok {
 				return false
 			}

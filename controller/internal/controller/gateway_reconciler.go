@@ -37,15 +37,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
-	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	"github.com/kaito-project/airunway/controller/internal/gateway"
 	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // reconcileGateway creates or updates InferencePool and HTTPRoute resources
 // for a ModelDeployment that has gateway integration enabled.
-func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Skip if no gateway detector configured
@@ -58,7 +58,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		// Warn if user explicitly enabled gateway but CRDs are missing
 		if md.Spec.Gateway != nil && md.Spec.Gateway.Enabled != nil && *md.Spec.Gateway.Enabled {
 			logger.Info("Gateway explicitly enabled but Gateway API Inference Extension CRDs not found", "name", md.Name)
-			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "CRDsNotAvailable", "Gateway API Inference Extension CRDs are not installed in the cluster")
+			r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "CRDsNotAvailable", "Gateway API Inference Extension CRDs are not installed in the cluster")
 		}
 		return nil
 	}
@@ -73,7 +73,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 	gwConfig, err := r.resolveGatewayConfig(ctx, md)
 	if err != nil {
 		logger.Info("No gateway found for routing, skipping gateway reconciliation", "reason", err.Error())
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "NoGateway", err.Error())
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "NoGateway", err.Error())
 		return nil
 	}
 
@@ -96,13 +96,13 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 
 	// Create or update InferencePool
 	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
 		return fmt.Errorf("reconciling InferencePool: %w", err)
 	}
 
 	// Create or update EPP (Endpoint Picker Proxy) for the InferencePool
 	if err := r.reconcileEPP(ctx, md); err != nil {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
 		return fmt.Errorf("reconciling EPP: %w", err)
 	}
 
@@ -114,25 +114,25 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ku
 		logger.V(1).Info("Using user-provided HTTPRoute", "httpRouteRef", md.Spec.Gateway.HTTPRouteRef)
 	} else {
 		if err := r.reconcileHTTPRoute(ctx, md, gwConfig, modelName); err != nil {
-			r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "HTTPRouteFailed", err.Error())
+			r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "HTTPRouteFailed", err.Error())
 			return fmt.Errorf("reconciling HTTPRoute: %w", err)
 		}
 	}
 
 	// Update gateway status
 	endpoint := r.resolveGatewayEndpoint(ctx, gwConfig)
-	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
+	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{
 		Endpoint:  endpoint,
 		ModelName: modelName,
 	}
-	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionTrue, "GatewayConfigured", "InferencePool and HTTPRoute created")
+	r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionTrue, "GatewayConfigured", "InferencePool and HTTPRoute created")
 
 	logger.Info("Gateway resources reconciled", "name", md.Name, "gateway", gwConfig.GatewayName, "model", modelName)
 	return nil
 }
 
 // resolveGatewayConfig determines which Gateway to use as the HTTPRoute parent.
-func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (*gateway.GatewayConfig, error) {
+func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (*gateway.GatewayConfig, error) {
 	// Try explicit configuration first
 	if cfg, err := r.GatewayDetector.GetGatewayConfig(); err == nil {
 		return cfg, nil
@@ -177,7 +177,7 @@ func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md
 }
 
 // reconcileInferencePool creates or updates the InferencePool for a ModelDeployment.
-func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, port int32) error {
+func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, port int32) error {
 	pool := &inferencev1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      md.Name,
@@ -194,7 +194,7 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 	result, err := ctrl.CreateOrUpdate(ctx, r.Client, pool, func() error {
 		pool.Spec.Selector = inferencev1.LabelSelector{
 			MatchLabels: map[inferencev1.LabelKey]inferencev1.LabelValue{
-				inferencev1.LabelKey(kubeairunwayv1alpha1.LabelModelDeployment): inferencev1.LabelValue(md.Name),
+				inferencev1.LabelKey(airunwayv1alpha1.LabelModelDeployment): inferencev1.LabelValue(md.Name),
 			},
 		}
 		pool.Spec.TargetPorts = []inferencev1.Port{
@@ -225,7 +225,7 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 
 // reconcileEPP creates or updates the Endpoint Picker Proxy deployment and service
 // for a ModelDeployment's InferencePool.
-func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	eppName := md.Name + "-epp"
 	eppPort := r.GatewayDetector.EPPServicePort
 	if eppPort == 0 {
@@ -239,7 +239,7 @@ func (r *ModelDeploymentReconciler) reconcileEPP(ctx context.Context, md *kubeai
 	labels := map[string]string{
 		"app.kubernetes.io/name":       eppName,
 		"app.kubernetes.io/instance":   md.Name,
-		"app.kubernetes.io/managed-by": "kubeairunway",
+		"app.kubernetes.io/managed-by": "airunway",
 	}
 
 	// ServiceAccount
@@ -442,7 +442,7 @@ kind: EndpointPickerConfig
 // but only if Istio is detected (i.e. the DestinationRule CRD is registered in the cluster).
 // DestinationRule: tell Istio to use SIMPLE TLS (insecureSkipVerify)
 // to skip cert validation.
-func (r *ModelDeploymentReconciler) reconcileEPPDestinationRule(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, eppName string) error {
+func (r *ModelDeploymentReconciler) reconcileEPPDestinationRule(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, eppName string) error {
 	gk := schema.GroupKind{Group: "networking.istio.io", Kind: "DestinationRule"}
 	if _, err := r.Client.RESTMapper().RESTMapping(gk); err != nil {
 		log.FromContext(ctx).V(1).Info("Istio not detected, skipping DestinationRule", "eppName", eppName)
@@ -483,7 +483,7 @@ func strPtr(s string) *string { return &s }
 // The deletion is treated as intentional (BYO / opt-out). The ModelDeployment is
 // annotated with HTTPRouteCreated after the initial creation so that future
 // reconciles will skip recreating a missing route.
-func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig, modelName string) error {
+func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, gwConfig *gateway.GatewayConfig, modelName string) error {
 	logger := log.FromContext(ctx)
 
 	existing := &gatewayv1.HTTPRoute{}
@@ -548,7 +548,7 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 	if apierrors.IsNotFound(err) {
 		// HTTPRoute is missing. If we created one previously the user deleted it
 		// intentionally — respect that and do not recreate.
-		if md.Annotations[kubeairunwayv1alpha1.HTTPRouteCreated] == "true" {
+		if md.Annotations[airunwayv1alpha1.HTTPRouteCreated] == "true" {
 			logger.V(1).Info("HTTPRoute was deleted by user, skipping recreation", "name", md.Name)
 			return nil
 		}
@@ -622,7 +622,7 @@ func (r *ModelDeploymentReconciler) reconcileHTTPRoute(ctx context.Context, md *
 		if md.Annotations == nil {
 			md.Annotations = make(map[string]string)
 		}
-		md.Annotations[kubeairunwayv1alpha1.HTTPRouteCreated] = "true"
+		md.Annotations[airunwayv1alpha1.HTTPRouteCreated] = "true"
 		if patchErr := r.Patch(ctx, md, patch); patchErr != nil {
 			// Non-fatal: worst case we recreate the route once on the next reconcile.
 			logger.V(1).Info("Could not annotate ModelDeployment after HTTPRoute creation", "error", patchErr)
@@ -649,7 +649,7 @@ func (r *ModelDeploymentReconciler) resolveGatewayEndpoint(ctx context.Context, 
 
 // resolveModelName determines the model name for gateway routing.
 // Priority: spec.gateway.modelName > spec.model.servedName > auto-discovered from /v1/models > spec.model.id
-func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) string {
+func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) string {
 	// Use explicit overrides first
 	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
 		return md.Spec.Gateway.ModelName
@@ -718,8 +718,8 @@ func (r *ModelDeploymentReconciler) resolveTargetPort(ctx context.Context, servi
 }
 
 // labelModelPods finds pods backing the model's service and ensures they have the
-// kubeairunway.ai/model-deployment label so the InferencePool selector can match them.
-func (r *ModelDeploymentReconciler) labelModelPods(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+// airunway.ai/model-deployment label so the InferencePool selector can match them.
+func (r *ModelDeploymentReconciler) labelModelPods(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	if md.Status.Endpoint == nil || md.Status.Endpoint.Service == "" {
 		return nil
 	}
@@ -743,7 +743,7 @@ func (r *ModelDeploymentReconciler) labelModelPods(ctx context.Context, md *kube
 		return fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	labelKey := kubeairunwayv1alpha1.LabelModelDeployment
+	labelKey := airunwayv1alpha1.LabelModelDeployment
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if pod.Labels[labelKey] == md.Name {
@@ -807,7 +807,7 @@ func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, servi
 
 // cleanupGatewayResources removes gateway resources when gateway is disabled or
 // the deployment is no longer running. Also sets GatewayReady=False.
-func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 	eppName := md.Name + "-epp"
 
@@ -860,14 +860,14 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 	}
 
 	md.Status.Gateway = nil
-	r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayDisabled", "Gateway resources cleaned up")
+	r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayDisabled", "Gateway resources cleaned up")
 
 	// Clear the httproute-created annotation so the controller will recreate the
 	// HTTPRoute when the deployment recovers to Running. Without this, a transient
 	// phase change (e.g. crash-loop) would permanently suppress HTTPRoute recreation.
-	if md.Annotations[kubeairunwayv1alpha1.HTTPRouteCreated] == "true" {
+	if md.Annotations[airunwayv1alpha1.HTTPRouteCreated] == "true" {
 		base := md.DeepCopy()
-		delete(md.Annotations, kubeairunwayv1alpha1.HTTPRouteCreated)
+		delete(md.Annotations, airunwayv1alpha1.HTTPRouteCreated)
 		if err := r.Patch(ctx, md, client.MergeFrom(base)); err != nil {
 			logger.V(1).Info("Could not clear httproute-created annotation during cleanup", "error", err)
 		}
@@ -885,7 +885,7 @@ func (r *ModelDeploymentReconciler) restartBBRIfPresent(ctx context.Context, nam
 	if err := r.Get(ctx, client.ObjectKey{Name: "body-based-router", Namespace: namespace}, &bbr); err != nil {
 		return client.IgnoreNotFound(err)
 	}
-	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":{"kubeairunway.ai/restartedAt":"` + time.Now().UTC().Format(time.RFC3339) + `"}}}}}`)
+	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":{"airunway.ai/restartedAt":"` + time.Now().UTC().Format(time.RFC3339) + `"}}}}}`)
 	if err := r.Patch(ctx, &bbr, client.RawPatch(types.StrategicMergePatchType, patch)); err != nil {
 		return fmt.Errorf("patching body-based-router: %w", err)
 	}

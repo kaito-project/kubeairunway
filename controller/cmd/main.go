@@ -49,22 +49,22 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
-	"github.com/kaito-project/kubeairunway/controller/internal/controller"
-	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
-	webhookv1alpha1 "github.com/kaito-project/kubeairunway/controller/internal/webhook/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	"github.com/kaito-project/airunway/controller/internal/controller"
+	"github.com/kaito-project/airunway/controller/internal/gateway"
+	webhookv1alpha1 "github.com/kaito-project/airunway/controller/internal/webhook/v1alpha1"
 	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	// +kubebuilder:scaffold:imports
 )
 
 const (
-	secretName     = "kubeairunway-webhook-server-cert"
-	caName         = "kubeairunway-ca"
-	caOrganization = "kubeairunway"
+	secretName     = "airunway-webhook-server-cert"
+	caName         = "airunway-ca"
+	caOrganization = "airunway"
 	certDir        = "/tmp/k8s-webhook-server/serving-certs"
-	vwhName        = "kubeairunway-validating-webhook-configuration"
-	mwhName        = "kubeairunway-mutating-webhook-configuration"
+	vwhName        = "airunway-validating-webhook-configuration"
+	mwhName        = "airunway-mutating-webhook-configuration"
 )
 
 var (
@@ -75,7 +75,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(kubeairunwayv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(airunwayv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.Install(scheme))
 	utilruntime.Must(inferencev1.Install(scheme))
 	// +kubebuilder:scaffold:scheme
@@ -173,8 +173,8 @@ func main() {
 		"If set, the controller will run provider selection for ModelDeployments without explicit provider.name")
 	flag.BoolVar(&disableCertRotation, "disable-cert-rotation", false,
 		"Disable automatic generation and rotation of webhook TLS certificates/keys")
-	flag.StringVar(&certServiceName, "cert-service-name", "kubeairunway-webhook-service",
-		"The service name used to generate the TLS cert's hostname. Defaults to kubeairunway-webhook-service")
+	flag.StringVar(&certServiceName, "cert-service-name", "airunway-webhook-service",
+		"The service name used to generate the TLS cert's hostname. Defaults to airunway-webhook-service")
 	flag.StringVar(&gatewayName, "gateway-name", "",
 		"Explicit Gateway resource name for HTTPRoute parent. If empty, auto-detects from cluster.")
 	flag.StringVar(&gatewayNamespace, "gateway-namespace", "",
@@ -266,7 +266,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "2038fe6a.kubeairunway.ai",
+		LeaderElectionID:       "2038fe6a.airunway.ai",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

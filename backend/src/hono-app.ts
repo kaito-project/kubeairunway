@@ -12,7 +12,7 @@ import {
   getIndexHtmlResponse,
   hasStaticFiles,
 } from './static';
-import type { UserInfo } from '@kubeairunway/shared';
+import type { UserInfo } from '@airunway/shared';
 
 // Import route modules
 import {

@@ -25,9 +25,9 @@ jobs:
       - name: Setup Kind
         run: |
           go install sigs.k8s.io/kind@latest
-          kind create cluster --name kubeairunway-gw-e2e --wait 120s
+          kind create cluster --name airunway-gw-e2e --wait 120s
           # Allow workloads on control plane node for LoadBalancer access
-          kubectl label node kubeairunway-gw-e2e-control-plane node.kubernetes.io/exclude-from-external-load-balancers- 2>/dev/null || true
+          kubectl label node airunway-gw-e2e-control-plane node.kubernetes.io/exclude-from-external-load-balancers- 2>/dev/null || true
 
       - name: Install cloud-provider-kind
         run: |
@@ -64,17 +64,17 @@ jobs:
 
       - name: Build and deploy controller
         run: |
-          make controller-docker-build CONTROLLER_IMG=kubeairunway-controller:e2e
-          kind load docker-image kubeairunway-controller:e2e --name kubeairunway-gw-e2e
-          make controller-deploy CONTROLLER_IMG=kubeairunway-controller:e2e
-          kubectl wait --for=condition=Available deployment -n kubeairunway-system -l control-plane=controller-manager --timeout=120s
+          make controller-docker-build CONTROLLER_IMG=airunway-controller:e2e
+          kind load docker-image airunway-controller:e2e --name airunway-gw-e2e
+          make controller-deploy CONTROLLER_IMG=airunway-controller:e2e
+          kubectl wait --for=condition=Available deployment -n airunway-system -l control-plane=controller-manager --timeout=120s
 
       - name: Build and deploy KAITO provider
         run: |
           make -C providers/kaito docker-build IMG=kaito-provider:e2e
-          kind load docker-image kaito-provider:e2e --name kubeairunway-gw-e2e
+          kind load docker-image kaito-provider:e2e --name airunway-gw-e2e
           make -C providers/kaito deploy IMG=kaito-provider:e2e
-          kubectl wait --for=condition=Available deployment -n kubeairunway-system -l control-plane=kaito-provider --timeout=120s
+          kubectl wait --for=condition=Available deployment -n airunway-system -l control-plane=kaito-provider --timeout=120s
 
       - name: Wait for provider registration
         run: |
@@ -136,7 +136,7 @@ jobs:
 
           # Verify selector label
           SELECTOR=$(kubectl get inferencepool llama-gw-e2e -n default \
-            -o jsonpath='{.spec.selector.matchLabels.kubeairunway\.ai/model-deployment}')
+            -o jsonpath='{.spec.selector.matchLabels.airunway\.ai/model-deployment}')
           if [ "$SELECTOR" != "llama-gw-e2e" ]; then
             echo "❌ InferencePool selector mismatch: expected 'llama-gw-e2e', got '$SELECTOR'"
             exit 1
@@ -333,9 +333,9 @@ jobs:
           echo "=== Workspaces ==="
           kubectl get workspaces -A -o yaml
           echo "=== Controller Logs ==="
-          kubectl logs -n kubeairunway-system -l control-plane=controller-manager --tail=200
+          kubectl logs -n airunway-system -l control-plane=controller-manager --tail=200
           echo "=== KAITO Provider Logs ==="
-          kubectl logs -n kubeairunway-system -l control-plane=kaito-provider --tail=100
+          kubectl logs -n airunway-system -l control-plane=kaito-provider --tail=100
           echo "=== EPP Logs ==="
           kubectl logs -n default -l app.kubernetes.io/name=llama-gw-e2e-epp --tail=100 2>/dev/null || echo "No EPP logs"
           echo "=== Istio Logs ==="
@@ -353,4 +353,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          kind delete cluster --name kubeairunway-gw-e2e
+          kind delete cluster --name airunway-gw-e2e

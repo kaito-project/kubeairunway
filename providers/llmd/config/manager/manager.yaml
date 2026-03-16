@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kubeairunway-llmd-provider
-  namespace: kubeairunway-system
+  name: airunway-llmd-provider
+  namespace: airunway-system
   labels:
     control-plane: llmd-provider
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     app.kubernetes.io/component: llmd-provider
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
       control-plane: llmd-provider
-      app.kubernetes.io/name: kubeairunway
+      app.kubernetes.io/name: airunway
   replicas: 1
   template:
     metadata:
@@ -20,7 +20,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: llmd-provider
-        app.kubernetes.io/name: kubeairunway
+        app.kubernetes.io/name: airunway
         app.kubernetes.io/component: llmd-provider
     spec:
       securityContext:
@@ -66,5 +66,5 @@ spec:
           requests:
             cpu: 100m
             memory: 128Mi
-      serviceAccountName: kubeairunway-llmd-provider
+      serviceAccountName: airunway-llmd-provider
       terminationGracePeriodSeconds: 10

@@ -1,6 +1,6 @@
-# Contributing to KubeAIRunway
+# Contributing to AIRunway
 
-Thank you for your interest in contributing to KubeAIRunway! This guide covers development setup, project structure, and contribution guidelines.
+Thank you for your interest in contributing to AIRunway! This guide covers development setup, project structure, and contribution guidelines.
 
 ## Development Setup
 
@@ -57,7 +57,7 @@ bun run dev:backend     # Start with watch mode
 ## Project Structure
 
 ```
-kubeairunway/
+airunway/
 ├── frontend/          # React frontend application
 │   ├── src/
 │   │   ├── components/  # UI components
@@ -105,7 +105,7 @@ kubeairunway/
 
 ### Provider Pattern
 
-KubeAIRunway uses a two-tier provider architecture. The core controller handles `ModelDeployment` validation and provider selection, while independent out-of-tree provider controllers (in `providers/`) handle provider-specific resource creation:
+AIRunway uses a two-tier provider architecture. The core controller handles `ModelDeployment` validation and provider selection, while independent out-of-tree provider controllers (in `providers/`) handle provider-specific resource creation:
 
 - **Core controller**: Validates specs, selects providers via `InferenceProviderConfig` CRDs, updates status
 - **Provider controllers**: Watch `ModelDeployment` resources, create provider-specific resources (KAITO Workspace, DynamoGraphDeployment, RayService)
@@ -113,18 +113,18 @@ KubeAIRunway uses a two-tier provider architecture. The core controller handles 
 
 ### Configuration Storage
 
-Settings are stored in a Kubernetes ConfigMap (`kubeairunway-config`) in the `kubeairunway-system` namespace:
+Settings are stored in a Kubernetes ConfigMap (`airunway-config`) in the `airunway-system` namespace:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubeairunway-config
-  namespace: kubeairunway-system
+  name: airunway-config
+  namespace: airunway-system
 data:
   config.json: |
     {
-      "defaultNamespace": "kubeairunway-system"
+      "defaultNamespace": "airunway-system"
     }
 ```
 
@@ -135,14 +135,14 @@ data:
 ### Frontend (.env)
 ```env
 VITE_API_URL=http://localhost:3001
-VITE_DEFAULT_NAMESPACE=kubeairunway-system
+VITE_DEFAULT_NAMESPACE=airunway-system
 VITE_DEFAULT_HF_SECRET=hf-token-secret
 ```
 
 ### Backend (.env)
 ```env
 PORT=3001
-DEFAULT_NAMESPACE=kubeairunway-system
+DEFAULT_NAMESPACE=airunway-system
 CORS_ORIGIN=http://localhost:5173
 AUTH_ENABLED=false
 ```
@@ -220,7 +220,7 @@ curl -X POST http://localhost:3001/api/deployments \
   -H "Content-Type: application/json" \
   -d '{
     "name": "test-deployment",
-    "namespace": "kubeairunway-system",
+    "namespace": "airunway-system",
     "modelId": "Qwen/Qwen3-0.6B",
     "engine": "vllm",
     "mode": "aggregated",
@@ -300,7 +300,7 @@ curl -X POST http://localhost:3001/api/deployments \
 
 ### Provider not detected as installed
 - Check CRD exists: `kubectl get crd dynamographdeployments.nvidia.com`
-- Check operator deployment: `kubectl get deployments -n kubeairunway`
+- Check operator deployment: `kubectl get deployments -n airunway`
 
 ### Frontend can't reach backend
 - Check CORS_ORIGIN matches frontend URL

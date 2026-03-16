@@ -1,8 +1,8 @@
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     app.kubernetes.io/managed-by: kustomize
   name: llama-8b-example
 spec:
@@ -25,11 +25,11 @@ spec:
     huggingFaceToken: "hf-token"
 ---
 # Example: CPU-only deployment with llama.cpp
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     app.kubernetes.io/managed-by: kustomize
   name: gemma-cpu-example
 spec:
@@ -48,11 +48,11 @@ spec:
   image: "ghcr.io/sozercan/llama-cpp-runner:latest"
 ---
 # Example: Disaggregated prefill/decode deployment
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     app.kubernetes.io/managed-by: kustomize
   name: llama-70b-pd-example
 spec:

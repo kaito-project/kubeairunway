@@ -1,7 +1,7 @@
 {
-  "name": "kubeairunway-headlamp-plugin",
+  "name": "airunway-headlamp-plugin",
   "version": "0.1.0",
-  "description": "KubeAIRunway ML deployment management plugin for Headlamp",
+  "description": "AIRunway ML deployment management plugin for Headlamp",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "tsc": "tsc --noEmit"
   },
   "dependencies": {
-    "@kubeairunway/shared": "workspace:*"
+    "@airunway/shared": "workspace:*"
   },
   "devDependencies": {
     "@kinvolk/headlamp-plugin": "^0.9.0",
@@ -38,7 +38,7 @@
   "keywords": [
     "headlamp",
     "headlamp-plugin",
-    "kubeairunway",
+    "airunway",
     "kubernetes",
     "ml",
     "machine-learning",
@@ -50,6 +50,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kaito-project/kubeairunway.git"
+    "url": "https://github.com/kaito-project/airunway.git"
   }
 }

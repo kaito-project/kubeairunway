@@ -1,8 +1,8 @@
-# KubeAIRunway - Agent Instructions
+# AIRunway - Agent Instructions
 
 ## WHY: Project Purpose
 
-**KubeAIRunway** is a platform for deploying and managing machine learning models on Kubernetes. It provides a unified CRD abstraction (`ModelDeployment`) that works across multiple inference providers (KAITO, Dynamo, KubeRay, llm-d, etc.).
+**AIRunway** is a platform for deploying and managing machine learning models on Kubernetes. It provides a unified CRD abstraction (`ModelDeployment`) that works across multiple inference providers (KAITO, Dynamo, KubeRay, llm-d, etc.).
 
 ## WHAT: Tech Stack & Structure
 
@@ -26,7 +26,7 @@
 - `ModelDeployment` - Unified API for deploying ML models
 - `InferenceProviderConfig` - Provider registration with capabilities and selection rules
 
-**Headlamp plugin**: When working on `plugins/headlamp/`, read [plugins/headlamp/README.md](plugins/headlamp/README.md) for patterns and best practices. Key rules: use Headlamp's built-in components (`SectionBox`, `SimpleTable`, etc.), never bundle React, use `@kubeairunway/shared` for types/API.
+**Headlamp plugin**: When working on `plugins/headlamp/`, read [plugins/headlamp/README.md](plugins/headlamp/README.md) for patterns and best practices. Key rules: use Headlamp's built-in components (`SectionBox`, `SimpleTable`, etc.), never bundle React, use `@airunway/shared` for types/API.
 
 **UI language**: Assume the user is **not familiar with Kubernetes**. All user-facing text in the Web UI and Headlamp plugin must use plain, approachable language:
 - Avoid Kubernetes-specific terms in labels, descriptions, and hints — use everyday equivalents users already understand

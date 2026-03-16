@@ -1,5 +1,5 @@
 KUSTOMIZE ?= ../../controller/bin/kustomize
-IMG ?= ghcr.io/kaito-project/kubeairunway/kuberay-provider:latest
+IMG ?= ghcr.io/kaito-project/airunway/kuberay-provider:latest
 
 .PHONY: build docker-build deploy generate-deploy-manifests
 

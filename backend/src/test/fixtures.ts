@@ -3,9 +3,9 @@
  * Provides mock data for K8s resources used across route tests.
  */
 
-import type { AutoscalerDetectionResult, AutoscalerStatusInfo } from '@kubeairunway/shared';
-import type { AIConfiguratorStatus, AIConfiguratorResult, AIConfiguratorConfig } from '@kubeairunway/shared';
-import type { DeploymentStatus, PodStatus } from '@kubeairunway/shared';
+import type { AutoscalerDetectionResult, AutoscalerStatusInfo } from '@airunway/shared';
+import type { AIConfiguratorStatus, AIConfiguratorResult, AIConfiguratorConfig } from '@airunway/shared';
+import type { DeploymentStatus, PodStatus } from '@airunway/shared';
 
 // ============================================================================
 // Autoscaler Fixtures
@@ -117,7 +117,7 @@ export const mockDeploymentWithPendingPod: DeploymentStatus = {
 };
 
 export const mockDeploymentManifest = {
-  apiVersion: 'kubeairunway.ai/v1alpha1',
+  apiVersion: 'airunway.ai/v1alpha1',
   kind: 'ModelDeployment',
   metadata: {
     name: 'test-deploy',
@@ -135,7 +135,7 @@ export const mockDeploymentManifest = {
 // ============================================================================
 
 export const mockInferenceProviderConfig = {
-  apiVersion: 'kubeairunway.ai/v1alpha1',
+  apiVersion: 'airunway.ai/v1alpha1',
   kind: 'InferenceProviderConfig',
   metadata: { name: 'kaito' },
   spec: {

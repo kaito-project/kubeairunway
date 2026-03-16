@@ -43,7 +43,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/kaito-project/kubeairunway/kaito-provider:${{ inputs.version }}
-            ghcr.io/kaito-project/kubeairunway/kaito-provider:latest
+            ghcr.io/kaito-project/airunway/kaito-provider:${{ inputs.version }}
+            ghcr.io/kaito-project/airunway/kaito-provider:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

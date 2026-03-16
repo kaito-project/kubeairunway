@@ -7,8 +7,8 @@ import { withRetry } from '../lib/retry';
  * Uses NodePort to allow kubelets (running on nodes) to access the registry
  */
 export const REGISTRY_CONFIG = {
-  name: 'kubeairunway-registry',
-  namespace: 'kubeairunway-system',
+  name: 'airunway-registry',
+  namespace: 'airunway-system',
   port: 5000,
   nodePort: 30500, // NodePort for kubelet access
   image: 'registry:2',
@@ -175,7 +175,7 @@ class RegistryService {
           metadata: {
             name: REGISTRY_CONFIG.namespace,
             labels: {
-              'app.kubernetes.io/managed-by': 'kubeairunway',
+              'app.kubernetes.io/managed-by': 'airunway',
             },
           },
         });
@@ -198,7 +198,7 @@ class RegistryService {
         labels: {
           app: REGISTRY_CONFIG.name,
           'app.kubernetes.io/name': REGISTRY_CONFIG.name,
-          'app.kubernetes.io/managed-by': 'kubeairunway',
+          'app.kubernetes.io/managed-by': 'airunway',
         },
       },
       spec: {
@@ -300,7 +300,7 @@ class RegistryService {
         labels: {
           app: REGISTRY_CONFIG.name,
           'app.kubernetes.io/name': REGISTRY_CONFIG.name,
-          'app.kubernetes.io/managed-by': 'kubeairunway',
+          'app.kubernetes.io/managed-by': 'airunway',
         },
       },
       spec: {

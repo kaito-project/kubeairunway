@@ -78,7 +78,7 @@ export function LoginPage() {
               <path d="M2 12l10 5 10-5" />
             </svg>
           </div>
-          <CardTitle className="text-2xl">KubeAIRunway</CardTitle>
+          <CardTitle className="text-2xl">AIRunway</CardTitle>
           <CardDescription>Authentication Required</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -94,7 +94,7 @@ export function LoginPage() {
               Run this command in your terminal to authenticate:
             </p>
             <div className="rounded-lg bg-muted p-3 font-mono text-sm">
-              <code>kubeairunway login</code>
+              <code>airunway login</code>
             </div>
             <p className="text-xs text-muted-foreground">
               This will extract your credentials and open this page automatically.
@@ -148,7 +148,7 @@ export function LoginPage() {
             <p>
               Need help?{' '}
               <a
-                href="https://github.com/kaito-project/kubeairunway#authentication"
+                href="https://github.com/kaito-project/airunway#authentication"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"

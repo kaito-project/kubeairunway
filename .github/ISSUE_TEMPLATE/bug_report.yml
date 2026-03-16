@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug or unexpected behavior in KubeAIRunway
+description: Report a bug or unexpected behavior in AIRunway
 title: "[Bug]: "
 labels: ["bug", "triage"]
 body:
@@ -51,7 +51,7 @@ body:
     id: deployment-type
     attributes:
       label: Deployment Type
-      description: How are you running KubeAIRunway?
+      description: How are you running AIRunway?
       options:
         - Local binary
         - Kubernetes deployment
@@ -62,8 +62,8 @@ body:
   - type: input
     id: app-version
     attributes:
-      label: KubeAIRunway Version
-      description: What version of KubeAIRunway are you using?
+      label: AIRunway Version
+      description: What version of AIRunway are you using?
       placeholder: e.g., 1.0.0 or commit hash
     validations:
       required: true

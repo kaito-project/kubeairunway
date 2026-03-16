@@ -1,12 +1,12 @@
 name: Feature Request
-description: Suggest a new feature or enhancement for KubeAIRunway
+description: Suggest a new feature or enhancement for AIRunway
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting a feature! Please describe what you'd like to see in KubeAIRunway.
+        Thanks for suggesting a feature! Please describe what you'd like to see in AIRunway.
 
   - type: checkboxes
     id: existing-issue

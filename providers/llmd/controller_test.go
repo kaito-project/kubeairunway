@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,25 +14,25 @@ import (
 
 func newScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = kubeairunwayv1alpha1.AddToScheme(s)
+	_ = airunwayv1alpha1.AddToScheme(s)
 	return s
 }
 
-func newMDForController(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
-	return &kubeairunwayv1alpha1.ModelDeployment{
+func newMDForController(name, ns string) *airunwayv1alpha1.ModelDeployment {
+	return &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model:  kubeairunwayv1alpha1.ModelSpec{ID: "test-model", Source: kubeairunwayv1alpha1.ModelSourceHuggingFace},
-			Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-			Resources: &kubeairunwayv1alpha1.ResourceSpec{
-				GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model:  airunwayv1alpha1.ModelSpec{ID: "test-model", Source: airunwayv1alpha1.ModelSourceHuggingFace},
+			Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+			Resources: &airunwayv1alpha1.ResourceSpec{
+				GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
 			},
 		},
-		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
-			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: ProviderName},
+		Status: airunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &airunwayv1alpha1.ProviderStatus{Name: ProviderName},
 		},
 	}
 }
@@ -42,16 +42,16 @@ func TestValidateCompatibility(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		md      *kubeairunwayv1alpha1.ModelDeployment
+		md      *airunwayv1alpha1.ModelDeployment
 		wantErr bool
 	}{
 		{
 			name: "vllm with GPU is compatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{
-						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Resources: &airunwayv1alpha1.ResourceSpec{
+						GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
 					},
 				},
 			},
@@ -59,11 +59,11 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "sglang is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeSGLang},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{
-						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeSGLang},
+					Resources: &airunwayv1alpha1.ResourceSpec{
+						GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
 					},
 				},
 			},
@@ -71,11 +71,11 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "trtllm is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeTRTLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{
-						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeTRTLLM},
+					Resources: &airunwayv1alpha1.ResourceSpec{
+						GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
 					},
 				},
 			},
@@ -83,9 +83,9 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "no GPU resources is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
 					Resources: nil,
 				},
 			},
@@ -93,11 +93,11 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "zero GPU count is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{
-						GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 0},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Resources: &airunwayv1alpha1.ResourceSpec{
+						GPU: &airunwayv1alpha1.GPUSpec{Count: 0},
 					},
 				},
 			},
@@ -105,14 +105,14 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated without prefill is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &airunwayv1alpha1.ScalingSpec{
+						Decode: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 1,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 						},
 					},
 				},
@@ -121,14 +121,14 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated without decode is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &airunwayv1alpha1.ScalingSpec{
+						Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 2,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 						},
 					},
 				},
@@ -137,18 +137,18 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated with both prefill and decode is compatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &airunwayv1alpha1.ScalingSpec{
+						Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 2,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 						},
-						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+						Decode: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 1,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 4},
 						},
 					},
 				},
@@ -157,17 +157,17 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated without GPU on prefill is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &airunwayv1alpha1.ScalingSpec{
+						Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 2,
 						},
-						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+						Decode: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 1,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 4},
 						},
 					},
 				},
@@ -176,16 +176,16 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated without GPU on decode is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &airunwayv1alpha1.ScalingSpec{
+						Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 2,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 						},
-						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+						Decode: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 1,
 						},
 					},
@@ -195,18 +195,18 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated without top-level resources is compatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{Mode: kubeairunwayv1alpha1.ServingModeDisaggregated},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated},
+					Scaling: &airunwayv1alpha1.ScalingSpec{
+						Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 4,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 						},
-						Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+						Decode: &airunwayv1alpha1.ComponentScalingSpec{
 							Replicas: 1,
-							GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+							GPU:      &airunwayv1alpha1.GPUSpec{Count: 4},
 						},
 					},
 				},

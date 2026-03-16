@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -33,7 +33,7 @@ import (
 func TestNeedsDownloadJob(t *testing.T) {
 	tests := []struct {
 		name string
-		md   *kubeairunwayv1alpha1.ModelDeployment
+		md   *airunwayv1alpha1.ModelDeployment
 		want bool
 	}{
 		{
@@ -43,13 +43,13 @@ func TestNeedsDownloadJob(t *testing.T) {
 		},
 		{
 			name: "custom source",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Model: kubeairunwayv1alpha1.ModelSpec{
-						Source: kubeairunwayv1alpha1.ModelSourceCustom,
-						Storage: &kubeairunwayv1alpha1.StorageSpec{
-							Volumes: []kubeairunwayv1alpha1.StorageVolume{
-								{Name: "cache", Purpose: kubeairunwayv1alpha1.VolumePurposeModelCache},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model: airunwayv1alpha1.ModelSpec{
+						Source: airunwayv1alpha1.ModelSourceCustom,
+						Storage: &airunwayv1alpha1.StorageSpec{
+							Volumes: []airunwayv1alpha1.StorageVolume{
+								{Name: "cache", Purpose: airunwayv1alpha1.VolumePurposeModelCache},
 							},
 						},
 					},
@@ -59,13 +59,13 @@ func TestNeedsDownloadJob(t *testing.T) {
 		},
 		{
 			name: "huggingface without modelCache volume",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Model: kubeairunwayv1alpha1.ModelSpec{
-						Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
-						Storage: &kubeairunwayv1alpha1.StorageSpec{
-							Volumes: []kubeairunwayv1alpha1.StorageVolume{
-								{Name: "custom", Purpose: kubeairunwayv1alpha1.VolumePurposeCustom},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model: airunwayv1alpha1.ModelSpec{
+						Source: airunwayv1alpha1.ModelSourceHuggingFace,
+						Storage: &airunwayv1alpha1.StorageSpec{
+							Volumes: []airunwayv1alpha1.StorageVolume{
+								{Name: "custom", Purpose: airunwayv1alpha1.VolumePurposeCustom},
 							},
 						},
 					},
@@ -75,10 +75,10 @@ func TestNeedsDownloadJob(t *testing.T) {
 		},
 		{
 			name: "huggingface without storage",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Model: kubeairunwayv1alpha1.ModelSpec{
-						Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model: airunwayv1alpha1.ModelSpec{
+						Source: airunwayv1alpha1.ModelSourceHuggingFace,
 					},
 				},
 			},
@@ -86,13 +86,13 @@ func TestNeedsDownloadJob(t *testing.T) {
 		},
 		{
 			name: "huggingface with readOnly modelCache volume",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Model: kubeairunwayv1alpha1.ModelSpec{
-						Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
-						Storage: &kubeairunwayv1alpha1.StorageSpec{
-							Volumes: []kubeairunwayv1alpha1.StorageVolume{
-								{Name: "cache", Purpose: kubeairunwayv1alpha1.VolumePurposeModelCache, ReadOnly: true, ClaimName: "my-pvc"},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model: airunwayv1alpha1.ModelSpec{
+						Source: airunwayv1alpha1.ModelSourceHuggingFace,
+						Storage: &airunwayv1alpha1.StorageSpec{
+							Volumes: []airunwayv1alpha1.StorageVolume{
+								{Name: "cache", Purpose: airunwayv1alpha1.VolumePurposeModelCache, ReadOnly: true, ClaimName: "my-pvc"},
 							},
 						},
 					},
@@ -222,10 +222,10 @@ func TestEnsureDownloadJobCreation(t *testing.T) {
 	}
 
 	// Verify labels
-	if job.Labels[kubeairunwayv1alpha1.LabelJobType] != "model-download" {
+	if job.Labels[airunwayv1alpha1.LabelJobType] != "model-download" {
 		t.Error("expected job-type label")
 	}
-	if job.Labels[kubeairunwayv1alpha1.LabelManagedBy] != "kubeairunway" {
+	if job.Labels[airunwayv1alpha1.LabelManagedBy] != "airunway" {
 		t.Error("expected managed-by label")
 	}
 
@@ -248,7 +248,7 @@ func TestEnsureDownloadJobWithHFToken(t *testing.T) {
 	_ = batchv1.AddToScheme(scheme)
 
 	md := newDownloadMD("my-model", "default")
-	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{
+	md.Spec.Secrets = &airunwayv1alpha1.SecretsSpec{
 		HuggingFaceToken: "hf-token-secret",
 	}
 
@@ -291,7 +291,7 @@ func TestEnsureDownloadJobCompleted(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -335,7 +335,7 @@ func TestEnsureDownloadJobStillRunning(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -376,7 +376,7 @@ func TestEnsureDownloadJobFailed(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -424,7 +424,7 @@ func TestEnsureDownloadJobFailedByConditionOnly(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -475,7 +475,7 @@ func TestEnsureDownloadJobFailedAtBackoffLimit(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -505,7 +505,7 @@ func TestDeleteManagedJobs(t *testing.T) {
 	scheme := newScheme()
 	_ = batchv1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
@@ -519,12 +519,12 @@ func TestDeleteManagedJobs(t *testing.T) {
 			Name:      "my-model-model-download",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -538,8 +538,8 @@ func TestDeleteManagedJobs(t *testing.T) {
 			Name:      "other-model-download",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "other-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "other-model",
 			},
 		},
 	}
@@ -569,7 +569,7 @@ func TestDeleteManagedJobsSkipsNonOwned(t *testing.T) {
 	scheme := newScheme()
 	_ = batchv1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
@@ -583,12 +583,12 @@ func TestDeleteManagedJobsSkipsNonOwned(t *testing.T) {
 			Name:      "my-model-model-download",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "old-uid",
@@ -631,7 +631,7 @@ func TestEnsureDownloadJobStaleCompleted(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "old-uid",
@@ -675,7 +675,7 @@ func TestEnsureDownloadJobStaleFailed(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "old-uid",
@@ -721,7 +721,7 @@ func TestEnsureDownloadJobStaleRunning(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "old-uid",

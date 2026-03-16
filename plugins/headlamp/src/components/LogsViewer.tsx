@@ -5,7 +5,7 @@
  */
 
 import { useRef, useEffect } from 'react';
-import type { PodLogsResponse, PodStatus } from '@kubeairunway/shared';
+import type { PodLogsResponse, PodStatus } from '@airunway/shared';
 
 interface LogsViewerProps {
   logs: PodLogsResponse | null;

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,26 +32,26 @@ import (
 func TestHasManagedPVCs(t *testing.T) {
 	tests := []struct {
 		name string
-		md   *kubeairunwayv1alpha1.ModelDeployment
+		md   *airunwayv1alpha1.ModelDeployment
 		want bool
 	}{
 		{
 			name: "no storage",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Model: kubeairunwayv1alpha1.ModelSpec{ID: "test"},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model: airunwayv1alpha1.ModelSpec{ID: "test"},
 				},
 			},
 			want: false,
 		},
 		{
 			name: "pre-existing PVC only",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Model: kubeairunwayv1alpha1.ModelSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model: airunwayv1alpha1.ModelSpec{
 						ID: "test",
-						Storage: &kubeairunwayv1alpha1.StorageSpec{
-							Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						Storage: &airunwayv1alpha1.StorageSpec{
+							Volumes: []airunwayv1alpha1.StorageVolume{
 								{
 									Name:      "cache",
 									ClaimName: "existing-pvc",
@@ -65,12 +65,12 @@ func TestHasManagedPVCs(t *testing.T) {
 		},
 		{
 			name: "managed PVC with size",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Model: kubeairunwayv1alpha1.ModelSpec{
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model: airunwayv1alpha1.ModelSpec{
 						ID: "test",
-						Storage: &kubeairunwayv1alpha1.StorageSpec{
-							Volumes: []kubeairunwayv1alpha1.StorageVolume{
+						Storage: &airunwayv1alpha1.StorageSpec{
+							Volumes: []airunwayv1alpha1.StorageVolume{
 								{
 									Name: "cache",
 									Size: pvcSize("100Gi"),
@@ -99,22 +99,22 @@ func TestEnsurePVCsCreation(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "meta-llama/Llama-2-7b",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							Size:       &size,
 							AccessMode: corev1.ReadWriteMany,
-							Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+							Purpose:    airunwayv1alpha1.VolumePurposeModelCache,
 						},
 					},
 				},
@@ -148,10 +148,10 @@ func TestEnsurePVCsCreation(t *testing.T) {
 	}
 
 	// Verify labels
-	if pvc.Labels[kubeairunwayv1alpha1.LabelManagedBy] != "kubeairunway" {
+	if pvc.Labels[airunwayv1alpha1.LabelManagedBy] != "airunway" {
 		t.Error("expected managed-by label")
 	}
-	if pvc.Labels[kubeairunwayv1alpha1.LabelModelDeployment] != "my-model" {
+	if pvc.Labels[airunwayv1alpha1.LabelModelDeployment] != "my-model" {
 		t.Error("expected model-deployment label")
 	}
 
@@ -177,17 +177,17 @@ func TestEnsurePVCsWithStorageClass(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("200Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:             "model-cache",
 							Size:             &size,
@@ -225,17 +225,17 @@ func TestEnsurePVCsIdempotent(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							Size:       &size,
@@ -253,12 +253,12 @@ func TestEnsurePVCsIdempotent(t *testing.T) {
 			Name:      "my-model-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -294,17 +294,17 @@ func TestEnsurePVCsPending(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							Size:       &size,
@@ -323,7 +323,7 @@ func TestEnsurePVCsPending(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -349,13 +349,13 @@ func TestEnsurePVCsPending(t *testing.T) {
 }
 
 func TestEnsurePVCsNoStorage(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{ID: "test"},
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{ID: "test"},
 		},
 	}
 
@@ -372,7 +372,7 @@ func TestDeleteManagedPVCs(t *testing.T) {
 	scheme := newScheme()
 	_ = corev1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
@@ -386,12 +386,12 @@ func TestDeleteManagedPVCs(t *testing.T) {
 			Name:      "my-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "test-uid",
@@ -405,8 +405,8 @@ func TestDeleteManagedPVCs(t *testing.T) {
 			Name:      "unrelated-pvc",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "other-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "other-model",
 			},
 		},
 	}
@@ -436,7 +436,7 @@ func TestDeleteManagedPVCsSkipsNonOwned(t *testing.T) {
 	scheme := newScheme()
 	_ = corev1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
@@ -450,12 +450,12 @@ func TestDeleteManagedPVCsSkipsNonOwned(t *testing.T) {
 			Name:      "my-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "old-uid",
@@ -484,17 +484,17 @@ func TestEnsurePVCsWithEmptyStorageClass(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:             "model-cache",
 							Size:             &size,
@@ -529,14 +529,14 @@ func TestEnsurePVCsWithEmptyStorageClass(t *testing.T) {
 }
 
 func TestBuildPVCNilSize(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
 	}
-	vol := &kubeairunwayv1alpha1.StorageVolume{
+	vol := &airunwayv1alpha1.StorageVolume{
 		Name: "model-cache",
 		Size: nil,
 	}
@@ -557,17 +557,17 @@ func TestEnsurePVCsStaleBound(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							Size:       &size,
@@ -585,12 +585,12 @@ func TestEnsurePVCsStaleBound(t *testing.T) {
 			Name:      "my-model-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "old-uid",
@@ -625,17 +625,17 @@ func TestEnsurePVCsStalePending(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							Size:       &size,
@@ -653,12 +653,12 @@ func TestEnsurePVCsStalePending(t *testing.T) {
 			Name:      "my-model-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "my-model",
 					UID:        "old-uid",
@@ -693,17 +693,17 @@ func TestEnsurePVCsStaleNoOwnerRef(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							Size:       &size,
@@ -721,8 +721,8 @@ func TestEnsurePVCsStaleNoOwnerRef(t *testing.T) {
 			Name:      "my-model-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "my-model",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "my-model",
 			},
 		},
 		Status: corev1.PersistentVolumeClaimStatus{
@@ -753,17 +753,17 @@ func TestEnsurePVCsRefusesToDeleteUnmanagedPVC(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	size := resource.MustParse("100Gi")
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							Size:       &size,
@@ -775,7 +775,7 @@ func TestEnsurePVCsRefusesToDeleteUnmanagedPVC(t *testing.T) {
 		},
 	}
 
-	// Pre-create an unmanaged PVC (no kubeairunway labels, different UID)
+	// Pre-create an unmanaged PVC (no airunway labels, different UID)
 	unmanagedPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model-model-cache",
@@ -801,12 +801,12 @@ func TestEnsurePVCsRefusesToDeleteUnmanagedPVC(t *testing.T) {
 
 	_, err := EnsurePVCs(context.Background(), c, md)
 	if err == nil {
-		t.Fatal("expected error when PVC exists without kubeairunway managed-by label")
+		t.Fatal("expected error when PVC exists without airunway managed-by label")
 	}
 
 	// Verify the error message is actionable
-	if !strings.Contains(err.Error(), "was not created by kubeairunway") {
-		t.Errorf("expected error to mention 'was not created by kubeairunway', got: %s", err.Error())
+	if !strings.Contains(err.Error(), "was not created by airunway") {
+		t.Errorf("expected error to mention 'was not created by airunway', got: %s", err.Error())
 	}
 
 	// Verify the unmanaged PVC was NOT deleted
@@ -821,17 +821,17 @@ func TestEnsurePVCsPreExistingBound(t *testing.T) {
 	scheme := newScheme()
 	_ = corev1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:      "model-cache",
 							ClaimName: "existing-pvc",
@@ -869,17 +869,17 @@ func TestEnsurePVCsPreExistingPending(t *testing.T) {
 	scheme := newScheme()
 	_ = corev1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:      "model-cache",
 							ClaimName: "existing-pvc",
@@ -917,17 +917,17 @@ func TestEnsurePVCsPreExistingNotFound(t *testing.T) {
 	scheme := newScheme()
 	_ = corev1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:      "model-cache",
 							ClaimName: "nonexistent-pvc",
@@ -958,17 +958,17 @@ func TestEnsurePVCsPreExistingLost(t *testing.T) {
 	scheme := newScheme()
 	_ = corev1.AddToScheme(scheme)
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model",
 			Namespace: "default",
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID: "test-model",
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:      "model-cache",
 							ClaimName: "lost-pvc",

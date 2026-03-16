@@ -364,15 +364,15 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
 
 export function toModelDeploymentManifest(config: DeploymentConfig): ModelDeployment {
   return {
-    apiVersion: 'kubeairunway.ai/v1alpha1',
+    apiVersion: 'airunway.ai/v1alpha1',
     kind: 'ModelDeployment',
     metadata: {
       name: config.name,
       namespace: config.namespace,
       labels: {
-        'app.kubernetes.io/name': 'kubeairunway',
+        'app.kubernetes.io/name': 'airunway',
         'app.kubernetes.io/instance': config.name,
-        'app.kubernetes.io/managed-by': 'kubeairunway',
+        'app.kubernetes.io/managed-by': 'airunway',
       },
     },
     spec: toModelDeploymentSpec(config),

@@ -9,8 +9,8 @@ import { validateGpuFit, formatGpuWarnings } from '../services/gpuValidation';
 import { handleK8sError } from '../lib/k8s-errors';
 import models from '../data/models.json';
 import logger from '../lib/logger';
-import type { DeploymentStatus, DeploymentConfig } from '@kubeairunway/shared';
-import { toModelDeploymentManifest } from '@kubeairunway/shared';
+import type { DeploymentStatus, DeploymentConfig } from '@airunway/shared';
+import { toModelDeploymentManifest } from '@airunway/shared';
 import {
   namespaceSchema,
   resourceNameSchema,
@@ -423,11 +423,11 @@ const deployments = new Hono()
     return c.json({
       resources: [{
         kind: 'ModelDeployment',
-        apiVersion: 'kubeairunway.ai/v1alpha1',
+        apiVersion: 'airunway.ai/v1alpha1',
         name: config.name,
         manifest: manifest as unknown as Record<string, unknown>,
       }],
-      primaryResource: { kind: 'ModelDeployment', apiVersion: 'kubeairunway.ai/v1alpha1' },
+      primaryResource: { kind: 'ModelDeployment', apiVersion: 'airunway.ai/v1alpha1' },
     });
   })
   .get(
@@ -465,7 +465,7 @@ const deployments = new Hono()
       }
 
       const kind = (manifest.kind as string) || 'ModelDeployment';
-      const apiVersion = (manifest.apiVersion as string) || 'kubeairunway.ai/v1alpha1';
+      const apiVersion = (manifest.apiVersion as string) || 'airunway.ai/v1alpha1';
 
       // Build array of resources
       const resources: Array<{

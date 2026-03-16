@@ -3,7 +3,7 @@
  * Fetches and processes Prometheus metrics from inference deployments
  */
 
-import type { MetricsResponse, RawMetricValue } from '@kubeairunway/shared';
+import type { MetricsResponse, RawMetricValue } from '@airunway/shared';
 import { parsePrometheusText } from '../lib/prometheus-parser';
 import logger from '../lib/logger';
 import { kubernetesService } from './kubernetes';
@@ -23,7 +23,7 @@ const DEFAULT_METRICS_CONFIG = {
 };
 
 /**
- * Check if KubeAIRunway is running inside a Kubernetes cluster
+ * Check if AIRunway is running inside a Kubernetes cluster
  * This is determined by the presence of the service account token
  */
 function isRunningInCluster(): boolean {

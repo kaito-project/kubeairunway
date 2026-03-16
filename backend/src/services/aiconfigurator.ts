@@ -3,7 +3,7 @@ import type {
   AIConfiguratorResult,
   AIConfiguratorStatus,
   AIConfiguratorConfig,
-} from '@kubeairunway/shared';
+} from '@airunway/shared';
 import logger from '../lib/logger';
 import * as fs from 'fs';
 
@@ -11,7 +11,7 @@ import * as fs from 'fs';
 const K8S_SERVICE_ACCOUNT_TOKEN_PATH = '/var/run/secrets/kubernetes.io/serviceaccount/token';
 
 /**
- * Check if KubeAIRunway is running inside a Kubernetes cluster
+ * Check if AIRunway is running inside a Kubernetes cluster
  * AI Configurator is only available when running locally, not in-cluster
  */
 function isRunningInCluster(): boolean {
@@ -96,7 +96,7 @@ class AIConfiguratorService {
       return {
         available: false,
         runningInCluster: true,
-        error: 'AI Configurator is only available when running KubeAIRunway locally',
+        error: 'AI Configurator is only available when running AIRunway locally',
       };
     }
 
@@ -200,7 +200,7 @@ class AIConfiguratorService {
 
     // Create temp directory for output - aiconfigurator requires a directory in home or cwd
     const homeDir = process.env.HOME || process.env.USERPROFILE || '.';
-    const tempDir = `${homeDir}/.kubeairunway/aiconfigurator-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tempDir = `${homeDir}/.airunway/aiconfigurator-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     try {
       await Bun.$`mkdir -p ${tempDir}`;

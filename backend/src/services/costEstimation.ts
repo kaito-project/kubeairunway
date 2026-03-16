@@ -3,8 +3,8 @@ import type {
   CostEstimate,
   CostEstimateRequest,
   NodePoolCostEstimate,
-} from '@kubeairunway/shared';
-import type { NodePoolInfo } from '@kubeairunway/shared';
+} from '@airunway/shared';
+import type { NodePoolInfo } from '@airunway/shared';
 import { logger } from '../lib/logger';
 
 /** Hours per month assuming 24/7 operation */

@@ -1,13 +1,13 @@
 import * as k8s from '@kubernetes/client-node';
 import { configService } from './config';
-import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo, GatewayCRDStatus } from '@kubeairunway/shared';
-import { toModelDeploymentManifest, toDeploymentStatus } from '@kubeairunway/shared';
+import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo, GatewayCRDStatus } from '@airunway/shared';
+import { toModelDeploymentManifest, toDeploymentStatus } from '@airunway/shared';
 import { withRetry } from '../lib/retry';
 import logger from '../lib/logger';
 
 // ModelDeployment CRD configuration
 const MODEL_DEPLOYMENT_CRD = {
-  apiGroup: 'kubeairunway.ai',
+  apiGroup: 'airunway.ai',
   apiVersion: 'v1alpha1',
   plural: 'modeldeployments',
   kind: 'ModelDeployment',
@@ -89,7 +89,7 @@ class KubernetesService {
     this.customObjectsApi = this.kc.makeApiClient(k8s.CustomObjectsApi);
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
     this.apiExtensionsApi = this.kc.makeApiClient(k8s.ApiextensionsV1Api);
-    this.defaultNamespace = process.env.DEFAULT_NAMESPACE || 'kubeairunway-system';
+    this.defaultNamespace = process.env.DEFAULT_NAMESPACE || 'airunway-system';
   }
 
   async checkClusterConnection(): Promise<ClusterStatus> {
@@ -273,7 +273,7 @@ class KubernetesService {
     // Try multiple label selectors since different providers use different labels
     const labelSelectors = [
       `app.kubernetes.io/instance=${name}`,  // Standard K8s label (Dynamo, KubeRay)
-      `kubeairunway.ai/deployment=${name}`,  // KubeAIRunway label
+      `airunway.ai/deployment=${name}`,  // AIRunway label
       `kaito.sh/workspace=${name}`,          // KAITO workspace label
       `app=${name}`,                         // Common fallback
     ];
@@ -371,7 +371,7 @@ class KubernetesService {
         return {
           installed: false,
           crdFound: false,
-          message: 'ModelDeployment CRD not found. Please install KubeAIRunway controller.',
+          message: 'ModelDeployment CRD not found. Please install AIRunway controller.',
         };
       }
       logger.error({ error }, 'Error checking CRD installation');
@@ -405,7 +405,7 @@ class KubernetesService {
   async getRuntimesStatus(): Promise<RuntimeStatus[]> {
     const runtimes: RuntimeStatus[] = [];
 
-    // Check if KubeAIRunway controller is installed by checking for the CRD
+    // Check if AIRunway controller is installed by checking for the CRD
     const crdStatus = await this.checkCRDInstallation();
 
     // List InferenceProviderConfig resources to discover registered providers
@@ -730,7 +730,7 @@ class KubernetesService {
    * Get detailed GPU capacity including per-node pool breakdown.
    * This groups nodes by node pool labels and includes GPU model information.
    */
-  async getDetailedClusterGpuCapacity(): Promise<import('@kubeairunway/shared').DetailedClusterCapacity> {
+  async getDetailedClusterGpuCapacity(): Promise<import('@airunway/shared').DetailedClusterCapacity> {
     try {
       // Get basic capacity first
       const basicCapacity = await this.getClusterGpuCapacity();
@@ -821,7 +821,7 @@ class KubernetesService {
       }
 
       // Convert to array
-      const nodePools: import('@kubeairunway/shared').NodePoolInfo[] = [];
+      const nodePools: import('@airunway/shared').NodePoolInfo[] = [];
       for (const [name, info] of nodePoolMap) {
         nodePools.push({
           name,
@@ -862,7 +862,7 @@ class KubernetesService {
    * Get all node pools in the cluster (both CPU and GPU).
    * Used for cost estimation of CPU-based deployments.
    */
-  async getAllNodePools(): Promise<import('@kubeairunway/shared').NodePoolInfo[]> {
+  async getAllNodePools(): Promise<import('@airunway/shared').NodePoolInfo[]> {
     try {
       const nodesResponse = await withRetry(
         () => this.coreV1Api.listNode(),
@@ -937,7 +937,7 @@ class KubernetesService {
       }
 
       // Convert to array
-      const nodePools: import('@kubeairunway/shared').NodePoolInfo[] = [];
+      const nodePools: import('@airunway/shared').NodePoolInfo[] = [];
       for (const [name, info] of nodePoolMap) {
         nodePools.push({
           name,
@@ -963,7 +963,7 @@ class KubernetesService {
   async getPodFailureReasons(
     podName: string,
     namespace: string
-  ): Promise<import('@kubeairunway/shared').PodFailureReason[]> {
+  ): Promise<import('@airunway/shared').PodFailureReason[]> {
     try {
       // Get events for the pod
       const eventsResponse = await withRetry(
@@ -977,7 +977,7 @@ class KubernetesService {
         { operationName: 'getPodFailureReasons' }
       );
 
-      const reasons: import('@kubeairunway/shared').PodFailureReason[] = [];
+      const reasons: import('@airunway/shared').PodFailureReason[] = [];
 
       for (const event of eventsResponse.body.items) {
         // Focus on Warning events related to scheduling failures
@@ -1237,10 +1237,10 @@ class KubernetesService {
         name: `${name}-vllm`,
         namespace,
         labels: {
-          'app.kubernetes.io/name': 'kubeairunway',
+          'app.kubernetes.io/name': 'airunway',
           'app.kubernetes.io/instance': name,
-          'app.kubernetes.io/managed-by': 'kubeairunway',
-          'kubeairunway.ai/service-type': 'vllm',
+          'app.kubernetes.io/managed-by': 'airunway',
+          'airunway.ai/service-type': 'vllm',
         },
       },
       spec: {
@@ -1465,7 +1465,7 @@ class KubernetesService {
    * Also includes live gateway availability info.
    */
   async checkGatewayCRDStatus(): Promise<GatewayCRDStatus> {
-    const { PINNED_GAIE_VERSION, GAIE_CRD_URL, GATEWAY_API_CRD_URL } = await import('@kubeairunway/shared');
+    const { PINNED_GAIE_VERSION, GAIE_CRD_URL, GATEWAY_API_CRD_URL } = await import('@airunway/shared');
 
     const [gatewayApiInstalled, inferenceExtInstalled] = await Promise.all([
       this.checkCRDExists('gateways.gateway.networking.k8s.io'),

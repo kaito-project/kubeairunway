@@ -16,7 +16,7 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { DeploymentConfig, Engine, Model, RuntimeStatus, ModelTask } from '@kubeairunway/shared';
+import type { DeploymentConfig, Engine, Model, RuntimeStatus, ModelTask } from '@airunway/shared';
 import { getBadgeColors } from '../lib/theme';
 
 type RuntimeId = 'kaito' | 'kuberay' | 'dynamo';
@@ -252,7 +252,7 @@ export function CreateDeployment() {
       }
 
       await api.deployments.create(config);
-      history.push(Router.createRouteURL('KubeAIRunway Deployments'));
+      history.push(Router.createRouteURL('AIRunway Deployments'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create deployment');
     } finally {
@@ -281,7 +281,7 @@ export function CreateDeployment() {
             Please select a model from the catalog to deploy.
           </p>
           <button
-            onClick={() => history.push(Router.createRouteURL('KubeAIRunway Models'))}
+            onClick={() => history.push(Router.createRouteURL('AIRunway Models'))}
             style={{
               padding: '12px 24px',
               backgroundColor: '#1976d2',
@@ -308,7 +308,7 @@ export function CreateDeployment() {
       {/* Back button */}
       <div style={{ marginBottom: '24px' }}>
         <button
-          onClick={() => history.push(Router.createRouteURL('KubeAIRunway Models'))}
+          onClick={() => history.push(Router.createRouteURL('AIRunway Models'))}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -470,11 +470,11 @@ export function CreateDeployment() {
                     color: '#f57c00',
                   }}>
                     <a
-                      href={Router.createRouteURL('KubeAIRunway Runtimes')}
+                      href={Router.createRouteURL('AIRunway Runtimes')}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        history.push(Router.createRouteURL('KubeAIRunway Runtimes'));
+                        history.push(Router.createRouteURL('AIRunway Runtimes'));
                       }}
                       style={{
                         color: '#f57c00',
@@ -716,7 +716,7 @@ export function CreateDeployment() {
         <Button
           variant="contained"
           color="error"
-          onClick={() => history.push(Router.createRouteURL('KubeAIRunway Models'))}
+          onClick={() => history.push(Router.createRouteURL('AIRunway Models'))}
           sx={{ fontWeight: 600, px: 3, py: 1.5 }}
         >
           Cancel

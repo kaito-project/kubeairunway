@@ -31,8 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
-	"github.com/kaito-project/kubeairunway/controller/internal/gateway"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	"github.com/kaito-project/airunway/controller/internal/gateway"
 	inferencev1 "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -40,7 +40,7 @@ import (
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(s))
-	utilruntime.Must(kubeairunwayv1alpha1.AddToScheme(s))
+	utilruntime.Must(airunwayv1alpha1.AddToScheme(s))
 	utilruntime.Must(gatewayv1.Install(s))
 	utilruntime.Must(inferencev1.Install(s))
 	return s
@@ -51,7 +51,7 @@ func boolPtr(b bool) *bool { return &b }
 // newTestReconciler creates a ModelDeploymentReconciler with a fake client and
 // an optional gateway detector.
 func newTestReconciler(scheme *runtime.Scheme, detector *gateway.Detector, objs ...client.Object) *ModelDeploymentReconciler {
-	cb := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kubeairunwayv1alpha1.ModelDeployment{})
+	cb := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&airunwayv1alpha1.ModelDeployment{})
 	if len(objs) > 0 {
 		cb = cb.WithObjects(objs...)
 	}
@@ -62,21 +62,21 @@ func newTestReconciler(scheme *runtime.Scheme, detector *gateway.Detector, objs 
 	}
 }
 
-func newModelDeployment(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
-	return &kubeairunwayv1alpha1.ModelDeployment{
+func newModelDeployment(name, ns string) *airunwayv1alpha1.ModelDeployment {
+	return &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID:     "meta-llama/Llama-3-8B",
-				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
+				Source: airunwayv1alpha1.ModelSourceHuggingFace,
 			},
 		},
-		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
-			Phase: kubeairunwayv1alpha1.DeploymentPhaseRunning,
-			Endpoint: &kubeairunwayv1alpha1.EndpointStatus{
+		Status: airunwayv1alpha1.ModelDeploymentStatus{
+			Phase: airunwayv1alpha1.DeploymentPhaseRunning,
+			Endpoint: &airunwayv1alpha1.EndpointStatus{
 				Service: "test-model-svc",
 				Port:    8080,
 			},
@@ -128,7 +128,7 @@ func TestGateway_InferencePoolCreation(t *testing.T) {
 	}
 
 	// Check selector labels
-	expectedLabel := inferencev1.LabelKey(kubeairunwayv1alpha1.LabelModelDeployment)
+	expectedLabel := inferencev1.LabelKey(airunwayv1alpha1.LabelModelDeployment)
 	val, ok := pool.Spec.Selector.MatchLabels[expectedLabel]
 	if !ok {
 		t.Errorf("expected selector label %s not found", expectedLabel)
@@ -253,7 +253,7 @@ func TestGateway_HTTPRouteCreation(t *testing.T) {
 func TestGateway_DisabledSkipsCreation(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
-	md.Spec.Gateway = &kubeairunwayv1alpha1.GatewaySpec{
+	md.Spec.Gateway = &airunwayv1alpha1.GatewaySpec{
 		Enabled: boolPtr(false),
 	}
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
@@ -320,7 +320,7 @@ func TestGateway_DisabledCleansUpExistingResources(t *testing.T) {
 	// Verify GatewayReady condition is set to False
 	found := false
 	for _, c := range md.Status.Conditions {
-		if c.Type == kubeairunwayv1alpha1.ConditionTypeGatewayReady {
+		if c.Type == airunwayv1alpha1.ConditionTypeGatewayReady {
 			found = true
 			if c.Status != metav1.ConditionFalse {
 				t.Errorf("expected GatewayReady condition to be False after cleanup, got %s", c.Status)
@@ -339,8 +339,8 @@ func TestGateway_CleanupOnPhaseTransition(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
 	// Simulate a deployment that was Running with gateway resources
-	md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
-	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{
+	md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
+	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{
 		Endpoint:  "10.0.0.1",
 		ModelName: "some-model",
 	}
@@ -377,7 +377,7 @@ func TestGateway_CleanupOnPhaseTransition(t *testing.T) {
 		t.Error("expected gateway status to be nil after phase transition cleanup")
 	}
 	for _, c := range md.Status.Conditions {
-		if c.Type == kubeairunwayv1alpha1.ConditionTypeGatewayReady {
+		if c.Type == airunwayv1alpha1.ConditionTypeGatewayReady {
 			if c.Status != metav1.ConditionFalse {
 				t.Errorf("expected GatewayReady False after phase transition, got %s", c.Status)
 			}
@@ -447,7 +447,7 @@ func TestGateway_StatusUpdate(t *testing.T) {
 	// Check GatewayReady condition
 	found := false
 	for _, c := range md.Status.Conditions {
-		if c.Type == kubeairunwayv1alpha1.ConditionTypeGatewayReady {
+		if c.Type == airunwayv1alpha1.ConditionTypeGatewayReady {
 			found = true
 			if c.Status != metav1.ConditionTrue {
 				t.Errorf("expected GatewayReady condition to be True, got %s", c.Status)
@@ -496,7 +496,7 @@ func TestGateway_StatusEndpointFromGatewayAddress(t *testing.T) {
 func TestGateway_StatusModelNameOverride(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
-	md.Spec.Gateway = &kubeairunwayv1alpha1.GatewaySpec{
+	md.Spec.Gateway = &airunwayv1alpha1.GatewaySpec{
 		ModelName: "custom-model-name",
 	}
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
@@ -535,7 +535,7 @@ func TestGateway_ModelNameAutoDiscoveryFallsBackToModelID(t *testing.T) {
 	// When no server is reachable, resolveModelName should fall back to spec.model.id
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
-	md.Status.Endpoint = &kubeairunwayv1alpha1.EndpointStatus{
+	md.Status.Endpoint = &airunwayv1alpha1.EndpointStatus{
 		Service: "nonexistent-svc",
 		Port:    8080,
 	}
@@ -552,11 +552,11 @@ func TestGateway_ModelNameAutoDiscoveryFallsBackToModelID(t *testing.T) {
 func TestGateway_ModelNameExplicitOverrideTakesPriority(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
-	md.Spec.Gateway = &kubeairunwayv1alpha1.GatewaySpec{
+	md.Spec.Gateway = &airunwayv1alpha1.GatewaySpec{
 		ModelName: "my-override",
 	}
 	md.Spec.Model.ServedName = "should-not-use"
-	md.Status.Endpoint = &kubeairunwayv1alpha1.EndpointStatus{
+	md.Status.Endpoint = &airunwayv1alpha1.EndpointStatus{
 		Service: "some-svc",
 		Port:    8080,
 	}
@@ -574,7 +574,7 @@ func TestGateway_ModelNameServedNameSkipsDiscovery(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
 	md.Spec.Model.ServedName = "explicit-served"
-	md.Status.Endpoint = &kubeairunwayv1alpha1.EndpointStatus{
+	md.Status.Endpoint = &airunwayv1alpha1.EndpointStatus{
 		Service: "some-svc",
 		Port:    8080,
 	}
@@ -605,7 +605,7 @@ func TestGateway_ModelNameNoEndpointFallsBack(t *testing.T) {
 func TestGateway_CleanupNonExistentResourcesNoError(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
-	md.Status.Gateway = &kubeairunwayv1alpha1.GatewayStatus{Endpoint: "10.0.0.1"}
+	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{Endpoint: "10.0.0.1"}
 	r := newTestReconciler(scheme, nil, md)
 	ctx := context.Background()
 

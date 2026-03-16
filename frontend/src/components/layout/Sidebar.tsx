@@ -63,9 +63,9 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           className="flex items-center gap-2 min-w-0"
           onClick={handleNavClick}
         >
-          <img src="/logo.png" alt="KubeAIRunway" className="h-8 w-8 shrink-0" />
+          <img src="/logo.png" alt="AIRunway" className="h-8 w-8 shrink-0" />
           <span className="text-xl font-bold text-foreground whitespace-nowrap">
-            KubeAIRunway
+            AIRunway
           </span>
         </Link>
 

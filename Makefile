@@ -3,20 +3,20 @@
 .PHONY: model-downloader-docker-build
 
 # Controller image
-CONTROLLER_IMG ?= ghcr.io/kaito-project/kubeairunway/controller:latest
+CONTROLLER_IMG ?= ghcr.io/kaito-project/airunway/controller:latest
 
 # Dashboard image
-DASHBOARD_IMG ?= ghcr.io/kaito-project/kubeairunway/dashboard:latest
+DASHBOARD_IMG ?= ghcr.io/kaito-project/airunway/dashboard:latest
 
 # Model downloader image
-MODEL_DOWNLOADER_IMG ?= ghcr.io/kaito-project/kubeairunway/model-downloader:latest
+MODEL_DOWNLOADER_IMG ?= ghcr.io/kaito-project/airunway/model-downloader:latest
 
 # Gateway API Inference Extension version
 GAIE_VERSION ?= v1.3.1
 
 # Default target
 help:
-	@echo "KubeAIRunway Development Commands"
+	@echo "AIRunway Development Commands"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
@@ -68,8 +68,8 @@ build:
 compile:
 	bun run compile
 	@echo ""
-	@echo "✅ Binary created: dist/kubeairunway (includes frontend)"
-	@ls -lh dist/kubeairunway
+	@echo "✅ Binary created: dist/airunway (includes frontend)"
+	@ls -lh dist/airunway
 
 # Cross-compile for all platforms
 compile-all: compile-linux compile-darwin compile-windows

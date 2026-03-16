@@ -1,4 +1,4 @@
-import type { DeploymentConfig } from '@kubeairunway/shared';
+import type { DeploymentConfig } from '@airunway/shared';
 import type { ClusterGpuCapacity } from './kubernetes';
 
 /**

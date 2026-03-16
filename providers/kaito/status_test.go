@@ -3,7 +3,7 @@ package kaito
 import (
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -63,7 +63,7 @@ func TestTranslateStatusNoConditions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
+	if result.Phase != airunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase, got %s", result.Phase)
 	}
 	if result.ResourceName != "test-ws" {
@@ -87,7 +87,7 @@ func TestTranslateStatusWorkspaceSucceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 	if result.Replicas.Desired != 2 {
@@ -115,7 +115,7 @@ func TestTranslateStatusWorkspaceFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase, got %s", result.Phase)
 	}
 	if result.Message != "insufficient resources" {
@@ -136,7 +136,7 @@ func TestTranslateStatusResourceReadyOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying phase, got %s", result.Phase)
 	}
 }
@@ -159,7 +159,7 @@ func TestTranslateStatusResourceReadyAndInferenceReady(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Without WorkspaceSucceeded, should be Pending (falls through)
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
+	if result.Phase != airunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase (no WorkspaceSucceeded), got %s", result.Phase)
 	}
 }
@@ -429,7 +429,7 @@ func TestTranslateStatusWithStateReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 	if result.Message != "" {
@@ -445,7 +445,7 @@ func TestTranslateStatusWithStateNotReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying phase, got %s", result.Phase)
 	}
 }
@@ -458,7 +458,7 @@ func TestTranslateStatusWithStateFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase, got %s", result.Phase)
 	}
 }
@@ -471,7 +471,7 @@ func TestTranslateStatusWithStatePending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
+	if result.Phase != airunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase, got %s", result.Phase)
 	}
 }
@@ -484,7 +484,7 @@ func TestTranslateStatusWithStateRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying phase, got %s", result.Phase)
 	}
 	if result.Message != "fine-tuning in progress" {
@@ -500,7 +500,7 @@ func TestTranslateStatusWithStateSucceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 }
@@ -513,7 +513,7 @@ func TestTranslateStatusWithStateUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
+	if result.Phase != airunwayv1alpha1.DeploymentPhasePending {
 		t.Errorf("expected Pending phase, got %s", result.Phase)
 	}
 	if result.Message != "unknown state: SomeUnknown" {
@@ -535,7 +535,7 @@ func TestTranslateStatusWithEmptyState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase from condition fallback, got %s", result.Phase)
 	}
 }
@@ -556,7 +556,7 @@ func TestTranslateStatusStateWithReplicas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if result.Phase != airunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", result.Phase)
 	}
 	if result.Replicas == nil {

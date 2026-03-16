@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# KubeAIRunway Gateway Body-Based Routing (BBR) Demo
+# AIRunway Gateway Body-Based Routing (BBR) Demo
 # =============================================================================
 #
 # This script demonstrates deploying TWO models behind a single Gateway and
@@ -31,8 +31,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-CLUSTER_NAME="${CLUSTER_NAME:-kubeairunway-bbr-demo}"
-CONTROLLER_IMG="${CONTROLLER_IMG:-kubeairunway-controller:demo}"
+CLUSTER_NAME="${CLUSTER_NAME:-airunway-bbr-demo}"
+CONTROLLER_IMG="${CONTROLLER_IMG:-airunway-controller:demo}"
 KAITO_PROVIDER_IMG="${KAITO_PROVIDER_IMG:-kaito-provider:demo}"
 NAMESPACE="${NAMESPACE:-default}"
 GATEWAY_NAME="inference-gateway"
@@ -190,7 +190,7 @@ wait_for "KAITO operator to be ready" 24 5 \
     -l app.kubernetes.io/name=workspace --timeout=5s
 
 # ---------------------------------------------------------------------------
-# Step 6: Build & deploy KubeAIRunway controller + KAITO provider
+# Step 6: Build & deploy AIRunway controller + KAITO provider
 # ---------------------------------------------------------------------------
 echo ""
 echo "============================================================"
@@ -214,13 +214,13 @@ kind load docker-image "${KAITO_PROVIDER_IMG}" --name "${CLUSTER_NAME}"
 info "Deploying controller..."
 make controller-deploy CONTROLLER_IMG="${CONTROLLER_IMG}"
 wait_for "controller to be ready" 24 5 \
-  kubectl wait --for=condition=Available deployment -n kubeairunway-system \
+  kubectl wait --for=condition=Available deployment -n airunway-system \
     -l control-plane=controller-manager --timeout=5s
 
 info "Deploying KAITO provider..."
 make kaito-provider-deploy KAITO_PROVIDER_IMG="${KAITO_PROVIDER_IMG}"
 wait_for "KAITO provider to be ready" 24 5 \
-  kubectl wait --for=condition=Available deployment -n kubeairunway-system \
+  kubectl wait --for=condition=Available deployment -n airunway-system \
     -l control-plane=kaito-provider --timeout=5s
 
 wait_for "KAITO InferenceProviderConfig to be registered" 24 5 \
@@ -315,7 +315,7 @@ verify_inference_pool() {
     kubectl get inferencepool "${name}" -n "${NAMESPACE}"
 
   SELECTOR=$(kubectl get inferencepool "${name}" -n "${NAMESPACE}" \
-    -o jsonpath='{.spec.selector.matchLabels.kubeairunway\.ai/model-deployment}')
+    -o jsonpath='{.spec.selector.matchLabels.airunway\.ai/model-deployment}')
   [[ "${SELECTOR}" == "${name}" ]] || fail "InferencePool '${name}' selector mismatch: got '${SELECTOR}'"
   ok "InferencePool '${name}' selector correct"
 }

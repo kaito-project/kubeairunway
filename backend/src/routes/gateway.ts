@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { kubernetesService } from '../services/kubernetes';
 import logger from '../lib/logger';
-import type { GatewayInfo, GatewayModelInfo } from '@kubeairunway/shared';
+import type { GatewayInfo, GatewayModelInfo } from '@airunway/shared';
 
 const gateway = new Hono()
   .get('/status', async (c) => {

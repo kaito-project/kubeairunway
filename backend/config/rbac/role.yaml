@@ -1,9 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubeairunway
+  name: airunway
   labels:
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
 rules:
   # Core API - Pods, Services (full CRUD for deployment management)
   - apiGroups: [""]
@@ -40,15 +40,15 @@ rules:
       - replicasets
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
-  # KubeAIRunway CRDs - ModelDeployments
-  - apiGroups: ["kubeairunway.ai"]
+  # AIRunway CRDs - ModelDeployments
+  - apiGroups: ["airunway.ai"]
     resources:
       - modeldeployments
       - modeldeployments/status
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
-  # KubeAIRunway CRDs - InferenceProviderConfigs (read + delete for uninstall)
-  - apiGroups: ["kubeairunway.ai"]
+  # AIRunway CRDs - InferenceProviderConfigs (read + delete for uninstall)
+  - apiGroups: ["airunway.ai"]
     resources:
       - inferenceproviderconfigs
     verbs: ["get", "list", "watch", "delete"]

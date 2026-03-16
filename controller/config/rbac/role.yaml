@@ -93,7 +93,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -101,7 +101,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments
   verbs:
@@ -113,13 +113,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/finalizers
   verbs:
   - update
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/status
   verbs:

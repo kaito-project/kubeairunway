@@ -74,8 +74,8 @@ pods to pull images and start serving).
 
 | Environment Variable | Default | Description |
 |---|---|---|
-| `CLUSTER_NAME` | `kubeairunway-bbr-demo` | Kind cluster name |
-| `CONTROLLER_IMG` | `kubeairunway-controller:demo` | Controller image tag |
+| `CLUSTER_NAME` | `airunway-bbr-demo` | Kind cluster name |
+| `CONTROLLER_IMG` | `airunway-controller:demo` | Controller image tag |
 | `KAITO_PROVIDER_IMG` | `kaito-provider:demo` | KAITO provider image tag |
 | `SKIP_BUILD` | _(unset)_ | Set to `1` to skip Docker image builds (useful for re-runs) |
 | `CLEANUP_ONLY` | _(unset)_ | Set to `1` to only delete the Kind cluster |
@@ -84,7 +84,7 @@ pods to pull images and start serving).
 
 | Resource | Name | Description |
 |---|---|---|
-| Kind cluster | `kubeairunway-bbr-demo` | Local Kubernetes cluster |
+| Kind cluster | `airunway-bbr-demo` | Local Kubernetes cluster |
 | Gateway | `inference-gateway` | Istio-backed inference gateway |
 | ModelDeployment | `model-a` | First model (Llama 3.2 1B via KAITO) |
 | ModelDeployment | `model-b` | Second model (Gemma 2 2B via KAITO) |
@@ -106,7 +106,7 @@ For more information, see [Using Gateway API with Azure](https://istio.io/latest
 
 ## BYO HTTPRoute Explained
 
-By default, the KubeAIRunway controller auto-creates an HTTPRoute per
+By default, the AIRunway controller auto-creates an HTTPRoute per
 `ModelDeployment`. When two models share one gateway, this can cause route
 conflicts. The **BYO HTTPRoute** pattern solves this:
 
@@ -153,7 +153,7 @@ CLEANUP_ONLY=1 ./demos/gateway-bbr/demo.sh
 Or manually:
 
 ```bash
-kind delete cluster --name kubeairunway-bbr-demo
+kind delete cluster --name airunway-bbr-demo
 ```
 
 ## Troubleshooting
@@ -163,7 +163,7 @@ kind delete cluster --name kubeairunway-bbr-demo
 kubectl get modeldeployments -o wide
 kubectl get workspaces
 kubectl describe workspace model-a
-kubectl get pods -l kubeairunway.ai/model-deployment
+kubectl get pods -l airunway.ai/model-deployment
 ```
 
 **Gateway not routing correctly:**

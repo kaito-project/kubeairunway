@@ -4,16 +4,16 @@ metadata:
   labels:
     app.kubernetes.io/component: kuberay-provider
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway-kuberay-provider
-  namespace: kubeairunway-system
+    app.kubernetes.io/name: airunway
+  name: airunway-kuberay-provider
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway-hf-secret
+    app.kubernetes.io/name: airunway
+  name: airunway-hf-secret
   namespace: kuberay-system
 rules:
 - apiGroups:
@@ -28,10 +28,10 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubeairunway-kuberay-provider-role
+  name: airunway-kuberay-provider-role
 rules:
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments
   verbs:
@@ -41,7 +41,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/status
   verbs:
@@ -49,13 +49,13 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments/finalizers
   verbs:
   - update
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -66,7 +66,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs/status
   verbs:
@@ -115,30 +115,30 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway-hf-secret
+    app.kubernetes.io/name: airunway
+  name: airunway-hf-secret
   namespace: kuberay-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: kubeairunway-hf-secret
+  name: airunway-hf-secret
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway
-  namespace: kubeairunway-system
+  name: airunway
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubeairunway-kuberay-provider-rolebinding
+  name: airunway-kuberay-provider-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubeairunway-kuberay-provider-role
+  name: airunway-kuberay-provider-role
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway-kuberay-provider
-  namespace: kubeairunway-system
+  name: airunway-kuberay-provider
+  namespace: airunway-system
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -146,15 +146,15 @@ metadata:
   labels:
     app.kubernetes.io/component: kuberay-provider
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/name: airunway
     control-plane: kuberay-provider
-  name: kubeairunway-kuberay-provider
-  namespace: kubeairunway-system
+  name: airunway-kuberay-provider
+  namespace: airunway-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: kubeairunway
+      app.kubernetes.io/name: airunway
       control-plane: kuberay-provider
   template:
     metadata:
@@ -162,7 +162,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         app.kubernetes.io/component: kuberay-provider
-        app.kubernetes.io/name: kubeairunway
+        app.kubernetes.io/name: airunway
         control-plane: kuberay-provider
     spec:
       containers:
@@ -171,7 +171,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /provider
-        image: ghcr.io/kaito-project/kubeairunway/kuberay-provider:latest
+        image: ghcr.io/kaito-project/airunway/kuberay-provider:latest
         livenessProbe:
           httpGet:
             path: /healthz
@@ -208,5 +208,5 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: kubeairunway-kuberay-provider
+      serviceAccountName: airunway-kuberay-provider
       terminationGracePeriodSeconds: 10

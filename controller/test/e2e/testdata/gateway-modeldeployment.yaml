@@ -1,4 +1,4 @@
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: llama-gw-e2e

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -24,26 +24,26 @@ import (
 
 func newScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = kubeairunwayv1alpha1.AddToScheme(s)
+	_ = airunwayv1alpha1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	_ = batchv1.AddToScheme(s)
 	return s
 }
 
-func newMDForController(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
-	return &kubeairunwayv1alpha1.ModelDeployment{
+func newMDForController(name, ns string) *airunwayv1alpha1.ModelDeployment {
+	return &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model:     kubeairunwayv1alpha1.ModelSpec{ID: "test-model", Source: kubeairunwayv1alpha1.ModelSourceHuggingFace},
-			Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-			Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model:     airunwayv1alpha1.ModelSpec{ID: "test-model", Source: airunwayv1alpha1.ModelSourceHuggingFace},
+			Engine:    airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+			Resources: &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}},
 		},
-		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
-			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: ProviderName},
+		Status: airunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &airunwayv1alpha1.ProviderStatus{Name: ProviderName},
 		},
 	}
 }
@@ -73,46 +73,46 @@ func TestValidateCompatibility(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		md      *kubeairunwayv1alpha1.ModelDeployment
+		md      *airunwayv1alpha1.ModelDeployment
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "vllm with GPU is compatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Resources: &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "sglang with GPU is compatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeSGLang},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeSGLang},
+					Resources: &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "trtllm with GPU is compatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeTRTLLM},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeTRTLLM},
+					Resources: &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "llamacpp is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeLlamaCpp},
-					Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine:    airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeLlamaCpp},
+					Resources: &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}},
 				},
 			},
 			wantErr: true,
@@ -120,9 +120,9 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "no GPU is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
 				},
 			},
 			wantErr: true,
@@ -130,15 +130,15 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated with prefill GPU is compatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{
-						Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{
+						Mode: airunwayv1alpha1.ServingModeDisaggregated,
 					},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{
-						Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
-							GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 2},
+					Scaling: &airunwayv1alpha1.ScalingSpec{
+						Prefill: &airunwayv1alpha1.ComponentScalingSpec{
+							GPU: &airunwayv1alpha1.GPUSpec{Count: 2},
 						},
 					},
 				},
@@ -147,13 +147,13 @@ func TestValidateCompatibility(t *testing.T) {
 		},
 		{
 			name: "disaggregated without GPU is incompatible",
-			md: &kubeairunwayv1alpha1.ModelDeployment{
-				Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-					Engine: kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-					Serving: &kubeairunwayv1alpha1.ServingSpec{
-						Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+			md: &airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+					Serving: &airunwayv1alpha1.ServingSpec{
+						Mode: airunwayv1alpha1.ServingModeDisaggregated,
 					},
-					Scaling: &kubeairunwayv1alpha1.ScalingSpec{},
+					Scaling: &airunwayv1alpha1.ScalingSpec{},
 				},
 			},
 			wantErr: true,
@@ -182,7 +182,7 @@ func TestValidateCompatibility(t *testing.T) {
 
 func TestSetCondition(t *testing.T) {
 	r := &DynamoProviderReconciler{}
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 
 	r.setCondition(md, "TestCondition", "True", "TestReason", "test message")
 	if len(md.Status.Conditions) != 1 {
@@ -215,8 +215,8 @@ func TestControllerConstants(t *testing.T) {
 	if ProviderName != "dynamo" {
 		t.Errorf("expected provider name 'dynamo', got %s", ProviderName)
 	}
-	if FinalizerName != "kubeairunway.ai/dynamo-provider" {
-		t.Errorf("expected finalizer 'kubeairunway.ai/dynamo-provider', got %s", FinalizerName)
+	if FinalizerName != "airunway.ai/dynamo-provider" {
+		t.Errorf("expected finalizer 'airunway.ai/dynamo-provider', got %s", FinalizerName)
 	}
 }
 
@@ -258,7 +258,7 @@ func TestReconcileWrongProvider(t *testing.T) {
 func TestReconcilePaused(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
-	md.Annotations = map[string]string{"kubeairunway.ai/reconcile-paused": "true"}
+	md.Annotations = map[string]string{"airunway.ai/reconcile-paused": "true"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
@@ -291,7 +291,7 @@ func TestReconcileAddsFinalizer(t *testing.T) {
 		t.Error("should requeue after adding finalizer")
 	}
 
-	var updated kubeairunwayv1alpha1.ModelDeployment
+	var updated airunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
 	if !controllerutil.ContainsFinalizer(&updated, FinalizerName) {
 		t.Error("expected finalizer to be added")
@@ -301,7 +301,7 @@ func TestReconcileAddsFinalizer(t *testing.T) {
 func TestReconcileIncompatibleEngine(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
-	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
 	controllerutil.AddFinalizer(md, FinalizerName)
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md).WithStatusSubresource(md).Build()
@@ -314,9 +314,9 @@ func TestReconcileIncompatibleEngine(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var updated kubeairunwayv1alpha1.ModelDeployment
+	var updated airunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
-	if updated.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
+	if updated.Status.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed phase, got %s", updated.Status.Phase)
 	}
 }
@@ -383,7 +383,7 @@ func TestReconcileHandleDeletion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var updated kubeairunwayv1alpha1.ModelDeployment
+	var updated airunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
 	if controllerutil.ContainsFinalizer(&updated, FinalizerName) {
 		t.Error("expected finalizer to be removed")
@@ -423,10 +423,10 @@ func TestReconcileDeletionWithUpstreamResource(t *testing.T) {
 	dgd.SetName("test")
 	dgd.SetNamespace("default")
 	dgd.SetLabels(map[string]string{
-		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+		airunwayv1alpha1.LabelManagedBy: "airunway",
 	})
 	dgd.SetOwnerReferences([]metav1.OwnerReference{
-		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
+		{APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(md, dgd).WithStatusSubresource(md).Build()
@@ -448,7 +448,7 @@ func TestCreateOrUpdateResourceNew(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 	md.Name = "test"
 	md.Namespace = "default"
 
@@ -472,17 +472,17 @@ func TestCreateOrUpdateResourceUpdate(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+		airunwayv1alpha1.LabelManagedBy: "airunway",
 	})
 	existing.SetOwnerReferences([]metav1.OwnerReference{
-		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
+		{APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 	md.Name = "test"
 	md.Namespace = "default"
 	md.UID = "test-uid"
@@ -507,17 +507,17 @@ func TestCreateOrUpdateResourceNoChange(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+		airunwayv1alpha1.LabelManagedBy: "airunway",
 	})
 	existing.SetOwnerReferences([]metav1.OwnerReference{
-		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
+		{APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 	existing.Object["spec"] = map[string]interface{}{"backendFramework": "vllm"}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 	md.Name = "test"
 	md.Namespace = "default"
 	md.UID = "test-uid"
@@ -539,7 +539,7 @@ func TestSyncStatusNotFound(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setDGDGVK(desired)
 	desired.SetName("test")
@@ -563,7 +563,7 @@ func TestSyncStatusRunning(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dgd).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setDGDGVK(desired)
 	desired.SetName("test")
@@ -573,7 +573,7 @@ func TestSyncStatusRunning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+	if md.Status.Phase != airunwayv1alpha1.DeploymentPhaseRunning {
 		t.Errorf("expected Running phase, got %s", md.Status.Phase)
 	}
 }
@@ -590,7 +590,7 @@ func TestSyncStatusFailed(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dgd).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setDGDGVK(desired)
 	desired.SetName("test")
@@ -600,7 +600,7 @@ func TestSyncStatusFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
+	if md.Status.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
 		t.Errorf("expected Failed, got %s", md.Status.Phase)
 	}
 }
@@ -617,7 +617,7 @@ func TestSyncStatusDeploying(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dgd).Build()
 	r := NewDynamoProviderReconciler(c, scheme, "")
 
-	md := &kubeairunwayv1alpha1.ModelDeployment{}
+	md := &airunwayv1alpha1.ModelDeployment{}
 	desired := &unstructured.Unstructured{}
 	setDGDGVK(desired)
 	desired.SetName("test")
@@ -627,42 +627,42 @@ func TestSyncStatusDeploying(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
+	if md.Status.Phase != airunwayv1alpha1.DeploymentPhaseDeploying {
 		t.Errorf("expected Deploying, got %s", md.Status.Phase)
 	}
 }
 
 // --- 3-phase orchestration tests ---
 
-func newMDWithStorage(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
+func newMDWithStorage(name, ns string) *airunwayv1alpha1.ModelDeployment {
 	size := resource.MustParse("100Gi")
-	return &kubeairunwayv1alpha1.ModelDeployment{
+	return &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID:     "meta-llama/Llama-2-7b-chat-hf",
-				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Source: airunwayv1alpha1.ModelSourceHuggingFace,
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							MountPath:  "/model-cache",
-							Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+							Purpose:    airunwayv1alpha1.VolumePurposeModelCache,
 							Size:       &size,
 							AccessMode: corev1.ReadWriteMany,
 						},
 					},
 				},
 			},
-			Engine:    kubeairunwayv1alpha1.EngineSpec{Type: kubeairunwayv1alpha1.EngineTypeVLLM},
-			Resources: &kubeairunwayv1alpha1.ResourceSpec{GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1}},
+			Engine:    airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+			Resources: &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}},
 		},
-		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
-			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: ProviderName},
+		Status: airunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &airunwayv1alpha1.ProviderStatus{Name: ProviderName},
 		},
 	}
 }
@@ -703,13 +703,13 @@ func TestReconcilePVCNotBound(t *testing.T) {
 	}
 
 	// Verify conditions were set correctly
-	var updated kubeairunwayv1alpha1.ModelDeployment
+	var updated airunwayv1alpha1.ModelDeployment
 	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); err != nil {
 		t.Fatalf("failed to get updated MD: %v", err)
 	}
-	assertCondition(t, updated.Status.Conditions, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCsPending")
+	assertCondition(t, updated.Status.Conditions, airunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCsPending")
 	// ModelDownloaded should NOT be set (download phase was never reached)
-	if meta.FindStatusCondition(updated.Status.Conditions, kubeairunwayv1alpha1.ConditionTypeModelDownloaded) != nil {
+	if meta.FindStatusCondition(updated.Status.Conditions, airunwayv1alpha1.ConditionTypeModelDownloaded) != nil {
 		t.Error("expected ModelDownloaded condition to NOT be set (download phase not reached)")
 	}
 }
@@ -726,7 +726,7 @@ func TestReconcileDownloadNotComplete(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -772,12 +772,12 @@ func TestReconcileDownloadNotComplete(t *testing.T) {
 	}
 
 	// Verify conditions were set correctly
-	var updated kubeairunwayv1alpha1.ModelDeployment
+	var updated airunwayv1alpha1.ModelDeployment
 	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); err != nil {
 		t.Fatalf("failed to get updated MD: %v", err)
 	}
-	assertCondition(t, updated.Status.Conditions, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionTrue, "PVCsBound")
-	assertCondition(t, updated.Status.Conditions, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadInProgress")
+	assertCondition(t, updated.Status.Conditions, airunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionTrue, "PVCsBound")
+	assertCondition(t, updated.Status.Conditions, airunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadInProgress")
 }
 
 func TestReconcileFullPipeline(t *testing.T) {
@@ -792,7 +792,7 @@ func TestReconcileFullPipeline(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -811,7 +811,7 @@ func TestReconcileFullPipeline(t *testing.T) {
 			Namespace: "default",
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: "kubeairunway.ai/v1alpha1",
+					APIVersion: "airunway.ai/v1alpha1",
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -847,12 +847,12 @@ func TestReconcileFullPipeline(t *testing.T) {
 	}
 
 	// Verify conditions were set correctly
-	var updated kubeairunwayv1alpha1.ModelDeployment
+	var updated airunwayv1alpha1.ModelDeployment
 	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); err != nil {
 		t.Fatalf("failed to get updated MD: %v", err)
 	}
-	assertCondition(t, updated.Status.Conditions, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionTrue, "PVCsBound")
-	assertCondition(t, updated.Status.Conditions, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionTrue, "DownloadComplete")
+	assertCondition(t, updated.Status.Conditions, airunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionTrue, "PVCsBound")
+	assertCondition(t, updated.Status.Conditions, airunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionTrue, "DownloadComplete")
 }
 
 func TestReconcileNoStorageSkipsPhases(t *testing.T) {
@@ -897,12 +897,12 @@ func TestReconcileDeletionCleansUpResources(t *testing.T) {
 			Name:      "test-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "test",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -917,12 +917,12 @@ func TestReconcileDeletionCleansUpResources(t *testing.T) {
 			Name:      "test-model-download",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "test",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -969,12 +969,12 @@ func TestReconcileDeletionRetriesOnCleanupFailure(t *testing.T) {
 			Name:      "test-model-download",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "test",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -1014,7 +1014,7 @@ func TestReconcileDeletionRetriesOnCleanupFailure(t *testing.T) {
 	}
 
 	// Verify the finalizer is still present (cleanup failure should prevent removal)
-	var updated kubeairunwayv1alpha1.ModelDeployment
+	var updated airunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated)
 	if !controllerutil.ContainsFinalizer(&updated, FinalizerName) {
 		t.Error("expected finalizer to still be present after cleanup failure")
@@ -1034,10 +1034,10 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 	dgd.SetName("test")
 	dgd.SetNamespace("default")
 	dgd.SetLabels(map[string]string{
-		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+		airunwayv1alpha1.LabelManagedBy: "airunway",
 	})
 	dgd.SetOwnerReferences([]metav1.OwnerReference{
-		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
+		{APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test", UID: "test-uid"},
 	})
 
 	// Create managed PVC with OwnerReference matching the ModelDeployment UID
@@ -1046,12 +1046,12 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 			Name:      "test-model-cache",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "test",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -1066,12 +1066,12 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 			Name:      "test-model-download",
 			Namespace: "default",
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: "test",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: "test",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion: airunwayv1alpha1.GroupVersion.String(),
 					Kind:       "ModelDeployment",
 					Name:       "test",
 					UID:        "test-uid",
@@ -1117,7 +1117,7 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 	}
 
 	// Verify finalizer still present
-	var mdAfterFirst kubeairunwayv1alpha1.ModelDeployment
+	var mdAfterFirst airunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &mdAfterFirst)
 	if !controllerutil.ContainsFinalizer(&mdAfterFirst, FinalizerName) {
 		t.Error("expected finalizer to still be present after first reconcile")
@@ -1144,7 +1144,7 @@ func TestReconcileDeletionWithDGDDelaysCleanup(t *testing.T) {
 	}
 
 	// Verify finalizer was removed
-	var mdAfterSecond kubeairunwayv1alpha1.ModelDeployment
+	var mdAfterSecond airunwayv1alpha1.ModelDeployment
 	_ = c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &mdAfterSecond)
 	if controllerutil.ContainsFinalizer(&mdAfterSecond, FinalizerName) {
 		t.Error("expected finalizer to be removed after second reconcile")
@@ -1157,10 +1157,10 @@ func TestVerifyDynamoOwnershipRejectsWrongUID(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+		airunwayv1alpha1.LabelManagedBy: "airunway",
 	})
 	existing.SetOwnerReferences([]metav1.OwnerReference{
-		{APIVersion: "kubeairunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "other-md", UID: "other-uid"},
+		{APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "other-md", UID: "other-uid"},
 	})
 
 	err := verifyDynamoOwnership(existing, "test-uid")
@@ -1178,7 +1178,7 @@ func TestVerifyDynamoOwnershipRejectsNoOwnerRef(t *testing.T) {
 	existing.SetName("test")
 	existing.SetNamespace("default")
 	existing.SetLabels(map[string]string{
-		kubeairunwayv1alpha1.LabelManagedBy: "kubeairunway",
+		airunwayv1alpha1.LabelManagedBy: "airunway",
 	})
 	// No OwnerReferences set — simulates a manually created resource with the label
 
@@ -1228,10 +1228,10 @@ func TestDynamoProviderPredicatePassesUnstructuredDGD(t *testing.T) {
 }
 
 func TestDynamoProviderPredicatePassesDynamoProviderInStatus(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
-			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: ProviderName},
+		Status: airunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &airunwayv1alpha1.ProviderStatus{Name: ProviderName},
 		},
 	}
 	if !dynamoProviderPredicate(md) {
@@ -1240,10 +1240,10 @@ func TestDynamoProviderPredicatePassesDynamoProviderInStatus(t *testing.T) {
 }
 
 func TestDynamoProviderPredicatePassesDynamoProviderInSpec(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Provider: &kubeairunwayv1alpha1.ProviderSpec{Name: ProviderName},
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Provider: &airunwayv1alpha1.ProviderSpec{Name: ProviderName},
 		},
 	}
 	if !dynamoProviderPredicate(md) {
@@ -1252,7 +1252,7 @@ func TestDynamoProviderPredicatePassesDynamoProviderInSpec(t *testing.T) {
 }
 
 func TestDynamoProviderPredicatePassesWithFinalizer(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "test",
 			Namespace:  "default",
@@ -1265,10 +1265,10 @@ func TestDynamoProviderPredicatePassesWithFinalizer(t *testing.T) {
 }
 
 func TestDynamoProviderPredicateRejectsOtherProvider(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
-			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: "kaito"},
+		Status: airunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &airunwayv1alpha1.ProviderStatus{Name: "kaito"},
 		},
 	}
 	if dynamoProviderPredicate(md) {
@@ -1277,7 +1277,7 @@ func TestDynamoProviderPredicateRejectsOtherProvider(t *testing.T) {
 }
 
 func TestDynamoProviderPredicateRejectsNoProviderNoFinalizer(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
 	}
 	if dynamoProviderPredicate(md) {
@@ -1286,13 +1286,13 @@ func TestDynamoProviderPredicateRejectsNoProviderNoFinalizer(t *testing.T) {
 }
 
 func TestDynamoProviderPredicateRejectsOtherProviderInSpecAndStatus(t *testing.T) {
-	md := &kubeairunwayv1alpha1.ModelDeployment{
+	md := &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Provider: &kubeairunwayv1alpha1.ProviderSpec{Name: "kuberay"},
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Provider: &airunwayv1alpha1.ProviderSpec{Name: "kuberay"},
 		},
-		Status: kubeairunwayv1alpha1.ModelDeploymentStatus{
-			Provider: &kubeairunwayv1alpha1.ProviderStatus{Name: "kuberay"},
+		Status: airunwayv1alpha1.ModelDeploymentStatus{
+			Provider: &airunwayv1alpha1.ProviderStatus{Name: "kuberay"},
 		},
 	}
 	if dynamoProviderPredicate(md) {

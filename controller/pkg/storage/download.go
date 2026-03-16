@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -34,7 +34,7 @@ import (
 const (
 	// DefaultDownloadJobImage is the default container image for model download jobs.
 	// This image has huggingface_hub (with hf_xet) pre-installed.
-	DefaultDownloadJobImage = "ghcr.io/kaito-project/kubeairunway/model-downloader:latest"
+	DefaultDownloadJobImage = "ghcr.io/kaito-project/airunway/model-downloader:latest"
 
 	// downloadJobSuffix is the suffix appended to the ModelDeployment name to form the Job name
 	downloadJobSuffix = "-model-download"
@@ -55,8 +55,8 @@ const (
 // - Model source is huggingface
 // - A volume with purpose=modelCache exists
 // - The modelCache volume is not readOnly (readOnly implies pre-populated data)
-func NeedsDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment) bool {
-	if md.Spec.Model.Source != kubeairunwayv1alpha1.ModelSourceHuggingFace {
+func NeedsDownloadJob(md *airunwayv1alpha1.ModelDeployment) bool {
+	if md.Spec.Model.Source != airunwayv1alpha1.ModelSourceHuggingFace {
 		return false
 	}
 	vol := findModelCacheVolume(md)
@@ -71,12 +71,12 @@ func NeedsDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment) bool {
 }
 
 // findModelCacheVolume returns the first volume with purpose=modelCache, or nil.
-func findModelCacheVolume(md *kubeairunwayv1alpha1.ModelDeployment) *kubeairunwayv1alpha1.StorageVolume {
+func findModelCacheVolume(md *airunwayv1alpha1.ModelDeployment) *airunwayv1alpha1.StorageVolume {
 	if md.Spec.Model.Storage == nil {
 		return nil
 	}
 	for i, vol := range md.Spec.Model.Storage.Volumes {
-		if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeModelCache {
+		if vol.Purpose == airunwayv1alpha1.VolumePurposeModelCache {
 			return &md.Spec.Model.Storage.Volumes[i]
 		}
 	}
@@ -100,7 +100,7 @@ func deleteStaleJob(ctx context.Context, c client.Client, job *batchv1.Job) erro
 
 // EnsureDownloadJob ensures a model download Job exists and tracks its completion.
 // Returns completed=true when the Job has succeeded.
-func EnsureDownloadJob(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment, downloadJobImage string) (bool, error) {
+func EnsureDownloadJob(ctx context.Context, c client.Client, md *airunwayv1alpha1.ModelDeployment, downloadJobImage string) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	vol := findModelCacheVolume(md)
@@ -181,7 +181,7 @@ func EnsureDownloadJob(ctx context.Context, c client.Client, md *kubeairunwayv1a
 }
 
 // buildDownloadJob creates a batch Job that downloads a HuggingFace model.
-func buildDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwayv1alpha1.StorageVolume, downloadJobImage string) *batchv1.Job {
+func buildDownloadJob(md *airunwayv1alpha1.ModelDeployment, vol *airunwayv1alpha1.StorageVolume, downloadJobImage string) *batchv1.Job {
 	claimName := vol.ResolvedClaimName(md.Name)
 	backoffLimit := defaultBackoffLimit
 	completions := int32(1)
@@ -199,13 +199,13 @@ func buildDownloadJob(md *kubeairunwayv1alpha1.ModelDeployment, vol *kubeairunwa
 			Name:      downloadJobName(md.Name),
 			Namespace: md.Namespace,
 			Labels: map[string]string{
-				kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-				kubeairunwayv1alpha1.LabelModelDeployment: md.Name,
-				kubeairunwayv1alpha1.LabelJobType:         "model-download",
+				airunwayv1alpha1.LabelManagedBy:       "airunway",
+				airunwayv1alpha1.LabelModelDeployment: md.Name,
+				airunwayv1alpha1.LabelJobType:         "model-download",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion:         kubeairunwayv1alpha1.GroupVersion.String(),
+					APIVersion:         airunwayv1alpha1.GroupVersion.String(),
 					Kind:               "ModelDeployment",
 					Name:               md.Name,
 					UID:                md.UID,
@@ -283,15 +283,15 @@ func downloadJobName(mdName string) string {
 // DeleteManagedJobs deletes all Jobs managed by the given ModelDeployment.
 // Only Jobs whose OwnerReference UID matches the ModelDeployment's UID are deleted,
 // preventing accidental deletion of Jobs adopted by a recreated ModelDeployment.
-func DeleteManagedJobs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func DeleteManagedJobs(ctx context.Context, c client.Client, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	jobList := &batchv1.JobList{}
 	if err := c.List(ctx, jobList,
 		client.InNamespace(md.Namespace),
 		client.MatchingLabels{
-			kubeairunwayv1alpha1.LabelManagedBy:       "kubeairunway",
-			kubeairunwayv1alpha1.LabelModelDeployment: md.Name,
+			airunwayv1alpha1.LabelManagedBy:       "airunway",
+			airunwayv1alpha1.LabelModelDeployment: md.Name,
 		},
 	); err != nil {
 		return fmt.Errorf("failed to list managed Jobs: %w", err)

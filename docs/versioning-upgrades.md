@@ -32,10 +32,10 @@ When moving between versions, conversion webhooks will handle:
 
 ```bash
 # Option A: kubectl
-kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/deploy/controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/airunway/main/deploy/controller.yaml
 
 # Rollback to previous version
-kubectl rollout undo deployment/kubeairunway-controller-manager -n kubeairunway-system
+kubectl rollout undo deployment/airunway-controller-manager -n airunway-system
 ```
 
 **Behavior during upgrade:**
@@ -51,7 +51,7 @@ kubectl rollout undo deployment/kubeairunway-controller-manager -n kubeairunway-
 
 ### Version Compatibility Matrix
 
-| KubeAIRunway Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
+| AIRunway Controller | Kubernetes | KAITO Operator | Dynamo Operator | KubeRay Operator |
 |------------------------|------------|----------------|-----------------|------------------|
 | v0.1.x                 | 1.26-1.30  | v0.3.x         | v0.1.x          | v1.1.x           |
 

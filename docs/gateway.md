@@ -2,9 +2,9 @@
 
 ## Overview
 
-KubeAIRunway integrates with the [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) to provide a unified inference gateway. Instead of accessing each model's Service individually, you deploy a single Gateway and call **all** models through one endpoint using the standard OpenAI-compatible API. The Gateway routes requests to the correct model based on the `model` field in the request body.
+AIRunway integrates with the [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) to provide a unified inference gateway. Instead of accessing each model's Service individually, you deploy a single Gateway and call **all** models through one endpoint using the standard OpenAI-compatible API. The Gateway routes requests to the correct model based on the `model` field in the request body.
 
-When gateway integration is active, KubeAIRunway automatically creates an **InferencePool**, **Endpoint Picker (EPP)**, and an **HTTPRoute** for each `ModelDeployment`. You only need to provide the Gateway itself.
+When gateway integration is active, AIRunway automatically creates an **InferencePool**, **Endpoint Picker (EPP)**, and an **HTTPRoute** for each `ModelDeployment`. You only need to provide the Gateway itself.
 
 ## Architecture
 
@@ -41,8 +41,8 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
 
 **Request flow:** Client → Gateway (+BBR) → HTTPRoute → InferencePool → Endpoint Picker (EPP) → Model Server Pod
 
-**What KubeAIRunway creates automatically** (when `gateway.enabled` is `true` or omitted, and Gateway CRDs are detected):
-- `InferencePool` — selects pods labeled with `kubeairunway.ai/model-deployment: <name>` on the model's serving port
+**What AIRunway creates automatically** (when `gateway.enabled` is `true` or omitted, and Gateway CRDs are detected):
+- `InferencePool` — selects pods labeled with `airunway.ai/model-deployment: <name>` on the model's serving port
 - `HTTPRoute` — routes from the Gateway to the InferencePool (unless `httpRouteRef` is set)
 - `EPP` — Endpoint Picker Proxy for intelligent endpoint selection
 
@@ -57,7 +57,7 @@ When gateway integration is active, KubeAIRunway automatically creates an **Infe
 
 ## Gateway Implementations
 
-KubeAIRunway works with any Gateway API implementation that supports the [Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension). You are responsible for installing and managing your own gateway. Some known implementations:
+AIRunway works with any Gateway API implementation that supports the [Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension). You are responsible for installing and managing your own gateway. Some known implementations:
 
 | Implementation | `gatewayClassName` | Docs |
 |---|---|---|
@@ -66,7 +66,7 @@ KubeAIRunway works with any Gateway API implementation that supports the [Infere
 | [kgateway](https://kgateway.dev/) | `kgateway` | [Inference Extension guide](https://kgateway.dev/docs/ai/gateway-api-inference-extension/) |
 | [GKE Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) | `gke-l7-rilb` | [GKE Inference guide](https://cloud.google.com/kubernetes-engine/docs/how-to/serve-llms-with-gateway-api) |
 
-> **Note:** The only difference between implementations is the `gatewayClassName` in your Gateway resource. All KubeAIRunway-managed resources (InferencePool, HTTPRoute) are identical regardless of which gateway you use.
+> **Note:** The only difference between implementations is the `gatewayClassName` in your Gateway resource. All AIRunway-managed resources (InferencePool, HTTPRoute) are identical regardless of which gateway you use.
 
 ## Setup
 
@@ -114,15 +114,15 @@ If you have multiple Gateways in the cluster, label the one to use for inference
 ```yaml
 metadata:
   labels:
-    kubeairunway.ai/inference-gateway: "true"
+    airunway.ai/inference-gateway: "true"
 ```
 
 ### Step 5: Deploy Models
 
-Deploy models as usual. KubeAIRunway automatically creates the InferencePool, EPP, and HTTPRoute:
+Deploy models as usual. AIRunway automatically creates the InferencePool, EPP, and HTTPRoute:
 
 ```yaml
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: qwen3
@@ -180,7 +180,7 @@ helm install body-based-router \
 ```
 
 > [!NOTE]
-> It is recommended that BBR chart version to match the GAIE version used by KubeAIRunway (currently v1.3.1). Check the [go.mod](https://github.com/kaito-project/kubeairunway/blob/main/controller/go.mod) for the `sigs.k8s.io/gateway-api-inference-extension` dependency version.
+> It is recommended that BBR chart version to match the GAIE version used by AIRunway (currently v1.3.1). Check the [go.mod](https://github.com/kaito-project/airunway/blob/main/controller/go.mod) for the `sigs.k8s.io/gateway-api-inference-extension` dependency version.
 
 Replace `provider.name` with your gateway implementation (`istio`, `gke`, or omit for others). The chart deploys the BBR container and any provider-specific resources (e.g. EnvoyFilter for Istio).
 
@@ -191,7 +191,7 @@ See the [upstream multi-model guide](https://gateway-api-inference-extension.sig
 When no explicit gateway is configured and multiple Gateway resources exist in the cluster, the controller looks for one labeled with:
 
 ```yaml
-kubeairunway.ai/inference-gateway: "true"
+airunway.ai/inference-gateway: "true"
 ```
 
 If no labeled Gateway is found, the controller skips gateway reconciliation and sets the `GatewayReady` condition to `False`.
@@ -315,7 +315,7 @@ curl http://${GATEWAY_IP}/v1/chat/completions \
    ```
 2. Check controller logs for detection messages:
    ```bash
-   kubectl logs -n kubeairunway-system deploy/kubeairunway-controller-manager | grep -i gateway
+   kubectl logs -n airunway-system deploy/airunway-controller-manager | grep -i gateway
    ```
 3. If CRDs were installed after the controller started, restart the controller to refresh detection.
 
@@ -329,7 +329,7 @@ curl http://${GATEWAY_IP}/v1/chat/completions \
    ```
 2. Common reasons:
    - **NoGateway** — No Gateway resource found. Create one or set `--gateway-name`/`--gateway-namespace`.
-   - **Multiple Gateways** — Multiple Gateways exist but none is labeled `kubeairunway.ai/inference-gateway=true`.
+   - **Multiple Gateways** — Multiple Gateways exist but none is labeled `airunway.ai/inference-gateway=true`.
    - **InferencePoolFailed** / **HTTPRouteFailed** — RBAC issue or CRD version mismatch.
 
 ### Requests return 404 or connection refused
@@ -345,5 +345,5 @@ curl http://${GATEWAY_IP}/v1/chat/completions \
 3. Verify the InferencePool matches running pods:
    ```bash
    kubectl get inferencepool <deployment-name> -o yaml
-   kubectl get pods -l kubeairunway.ai/model-deployment=<deployment-name>
+   kubectl get pods -l airunway.ai/model-deployment=<deployment-name>
    ```

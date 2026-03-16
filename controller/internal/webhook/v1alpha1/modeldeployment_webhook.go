@@ -28,7 +28,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 )
 
 // nolint:unused
@@ -37,42 +37,42 @@ var modeldeploymentlog = logf.Log.WithName("modeldeployment-resource")
 
 // SetupModelDeploymentWebhookWithManager registers the webhook for ModelDeployment in the manager.
 func SetupModelDeploymentWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &kubeairunwayv1alpha1.ModelDeployment{}).
+	return ctrl.NewWebhookManagedBy(mgr, &airunwayv1alpha1.ModelDeployment{}).
 		WithValidator(&ModelDeploymentCustomValidator{}).
 		WithDefaulter(&ModelDeploymentCustomDefaulter{}).
 		Complete()
 }
 
-// +kubebuilder:webhook:path=/mutate-kubeairunway-ai-v1alpha1-modeldeployment,mutating=true,failurePolicy=fail,sideEffects=None,groups=kubeairunway.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=mmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-airunway-ai-v1alpha1-modeldeployment,mutating=true,failurePolicy=fail,sideEffects=None,groups=airunway.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=mmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ModelDeploymentCustomDefaulter struct is responsible for setting default values on the custom resource of the
 // Kind ModelDeployment when those are created or updated.
 type ModelDeploymentCustomDefaulter struct{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind ModelDeployment.
-func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeairunwayv1alpha1.ModelDeployment) error {
+func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *airunwayv1alpha1.ModelDeployment) error {
 	modeldeploymentlog.Info("Defaulting for ModelDeployment", "name", obj.GetName())
 
 	spec := &obj.Spec
 
 	// Default model source to huggingface
 	if spec.Model.Source == "" {
-		spec.Model.Source = kubeairunwayv1alpha1.ModelSourceHuggingFace
+		spec.Model.Source = airunwayv1alpha1.ModelSourceHuggingFace
 	}
 
 	// Default serving mode to aggregated
 	if spec.Serving == nil {
-		spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-			Mode: kubeairunwayv1alpha1.ServingModeAggregated,
+		spec.Serving = &airunwayv1alpha1.ServingSpec{
+			Mode: airunwayv1alpha1.ServingModeAggregated,
 		}
 	} else if spec.Serving.Mode == "" {
-		spec.Serving.Mode = kubeairunwayv1alpha1.ServingModeAggregated
+		spec.Serving.Mode = airunwayv1alpha1.ServingModeAggregated
 	}
 
 	// Default scaling replicas to 1 for aggregated mode
-	if spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeAggregated {
+	if spec.Serving.Mode == airunwayv1alpha1.ServingModeAggregated {
 		if spec.Scaling == nil {
-			spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
+			spec.Scaling = &airunwayv1alpha1.ScalingSpec{
 				Replicas: 1,
 			}
 		} else if spec.Scaling.Replicas == 0 {
@@ -82,9 +82,9 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeair
 	}
 
 	// Default GPU to 1 in aggregated mode when resources are unspecified
-	if spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeAggregated && spec.Resources == nil {
-		spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
-			GPU: &kubeairunwayv1alpha1.GPUSpec{
+	if spec.Serving.Mode == airunwayv1alpha1.ServingModeAggregated && spec.Resources == nil {
+		spec.Resources = &airunwayv1alpha1.ResourceSpec{
+			GPU: &airunwayv1alpha1.GPUSpec{
 				Count: 1,
 				Type:  "nvidia.com/gpu",
 			},
@@ -112,14 +112,14 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeair
 			vol := &spec.Model.Storage.Volumes[i]
 			// Default purpose to custom if empty
 			if vol.Purpose == "" {
-				vol.Purpose = kubeairunwayv1alpha1.VolumePurposeCustom
+				vol.Purpose = airunwayv1alpha1.VolumePurposeCustom
 			}
 			// Default mountPath based on purpose
 			if vol.MountPath == "" {
 				switch vol.Purpose {
-				case kubeairunwayv1alpha1.VolumePurposeModelCache:
+				case airunwayv1alpha1.VolumePurposeModelCache:
 					vol.MountPath = "/model-cache"
-				case kubeairunwayv1alpha1.VolumePurposeCompilationCache:
+				case airunwayv1alpha1.VolumePurposeCompilationCache:
 					vol.MountPath = "/compilation-cache"
 				}
 			}
@@ -140,14 +140,14 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *kubeair
 	return nil
 }
 
-// +kubebuilder:webhook:path=/validate-kubeairunway-ai-v1alpha1-modeldeployment,mutating=false,failurePolicy=fail,sideEffects=None,groups=kubeairunway.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=vmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-airunway-ai-v1alpha1-modeldeployment,mutating=false,failurePolicy=fail,sideEffects=None,groups=airunway.ai,resources=modeldeployments,verbs=create;update,versions=v1alpha1,name=vmodeldeployment-v1alpha1.kb.io,admissionReviewVersions=v1
 
 // ModelDeploymentCustomValidator struct is responsible for validating the ModelDeployment resource
 // when it is created, updated, or deleted.
 type ModelDeploymentCustomValidator struct{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ModelDeployment.
-func (v *ModelDeploymentCustomValidator) ValidateCreate(_ context.Context, obj *kubeairunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
+func (v *ModelDeploymentCustomValidator) ValidateCreate(_ context.Context, obj *airunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
 	modeldeploymentlog.Info("Validation for ModelDeployment upon creation", "name", obj.GetName())
 
 	var warnings admission.Warnings
@@ -175,7 +175,7 @@ func (v *ModelDeploymentCustomValidator) ValidateCreate(_ context.Context, obj *
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type ModelDeployment.
-func (v *ModelDeploymentCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *kubeairunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
+func (v *ModelDeploymentCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj *airunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
 	modeldeploymentlog.Info("Validation for ModelDeployment upon update", "name", newObj.GetName())
 
 	var warnings admission.Warnings
@@ -197,7 +197,7 @@ func (v *ModelDeploymentCustomValidator) ValidateUpdate(_ context.Context, oldOb
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type ModelDeployment.
-func (v *ModelDeploymentCustomValidator) ValidateDelete(_ context.Context, obj *kubeairunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
+func (v *ModelDeploymentCustomValidator) ValidateDelete(_ context.Context, obj *airunwayv1alpha1.ModelDeployment) (admission.Warnings, error) {
 	modeldeploymentlog.Info("Validation for ModelDeployment upon deletion", "name", obj.GetName())
 
 	// No validation on delete
@@ -205,13 +205,13 @@ func (v *ModelDeploymentCustomValidator) ValidateDelete(_ context.Context, obj *
 }
 
 // validateSpec validates the ModelDeployment spec
-func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.ModelDeployment) field.ErrorList {
+func (v *ModelDeploymentCustomValidator) validateSpec(obj *airunwayv1alpha1.ModelDeployment) field.ErrorList {
 	var allErrs field.ErrorList
 	spec := &obj.Spec
 	specPath := field.NewPath("spec")
 
 	// Validate model.id is required for huggingface source
-	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
+	if spec.Model.Source == airunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
 		if spec.Model.ID == "" {
 			allErrs = append(allErrs, field.Required(
 				specPath.Child("model", "id"),
@@ -231,15 +231,15 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.
 		gpuCount = spec.Resources.GPU.Count
 	}
 
-	servingMode := kubeairunwayv1alpha1.ServingModeAggregated
+	servingMode := airunwayv1alpha1.ServingModeAggregated
 	if spec.Serving != nil && spec.Serving.Mode != "" {
 		servingMode = spec.Serving.Mode
 	}
 
 	switch spec.Engine.Type {
-	case kubeairunwayv1alpha1.EngineTypeVLLM, kubeairunwayv1alpha1.EngineTypeSGLang, kubeairunwayv1alpha1.EngineTypeTRTLLM:
+	case airunwayv1alpha1.EngineTypeVLLM, airunwayv1alpha1.EngineTypeSGLang, airunwayv1alpha1.EngineTypeTRTLLM:
 		// These engines require GPU (unless in disaggregated mode with component-level GPUs)
-		if servingMode == kubeairunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
+		if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
 			allErrs = append(allErrs, field.Invalid(
 				specPath.Child("resources", "gpu", "count"),
 				gpuCount,
@@ -249,7 +249,7 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.
 	}
 
 	// Validate disaggregated mode configuration
-	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if servingMode == airunwayv1alpha1.ServingModeDisaggregated {
 		// Cannot specify resources.gpu in disaggregated mode
 		if spec.Resources != nil && spec.Resources.GPU != nil && spec.Resources.GPU.Count > 0 {
 			allErrs = append(allErrs, field.Invalid(
@@ -304,7 +304,7 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *kubeairunwayv1alpha1.
 
 // validateImmutableFields checks if any immutable (identity) fields have been changed
 // Changing these fields triggers a delete+recreate of the provider resource
-func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj *kubeairunwayv1alpha1.ModelDeployment) field.ErrorList {
+func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj *airunwayv1alpha1.ModelDeployment) field.ErrorList {
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
 
@@ -356,8 +356,8 @@ func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj 
 	}
 
 	// serving.mode is an identity field
-	oldMode := kubeairunwayv1alpha1.ServingModeAggregated
-	newMode := kubeairunwayv1alpha1.ServingModeAggregated
+	oldMode := airunwayv1alpha1.ServingModeAggregated
+	newMode := airunwayv1alpha1.ServingModeAggregated
 	if oldSpec.Serving != nil && oldSpec.Serving.Mode != "" {
 		oldMode = oldSpec.Serving.Mode
 	}
@@ -377,7 +377,7 @@ func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj 
 	// Two bypass scenarios are prevented:
 	// 1. Dropping a managed volume from the list (would orphan its PVC)
 	// 2. Setting model.storage to nil (would orphan all managed PVCs)
-	oldManagedVolumes := make(map[string]kubeairunwayv1alpha1.StorageVolume)
+	oldManagedVolumes := make(map[string]airunwayv1alpha1.StorageVolume)
 	if oldSpec.Model.Storage != nil {
 		for _, vol := range oldSpec.Model.Storage.Volumes {
 			if vol.Size != nil {
@@ -430,12 +430,12 @@ func (v *ModelDeploymentCustomValidator) validateImmutableFields(oldObj, newObj 
 }
 
 // checkWarnings returns non-fatal warnings for the spec
-func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubeairunwayv1alpha1.ModelDeployment) admission.Warnings {
+func (v *ModelDeploymentCustomValidator) checkWarnings(obj *airunwayv1alpha1.ModelDeployment) admission.Warnings {
 	var warnings admission.Warnings
 	spec := &obj.Spec
 
 	// Warn if servedName is specified with custom source
-	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceCustom && spec.Model.ServedName != "" {
+	if spec.Model.Source == airunwayv1alpha1.ModelSourceCustom && spec.Model.ServedName != "" {
 		warnings = append(warnings, "servedName is ignored for custom source (model name is defined by the container)")
 	}
 
@@ -445,14 +445,14 @@ func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubeairunwayv1alpha1
 	}
 
 	// Warn if contextLength is set for trtllm
-	if spec.Engine.Type == kubeairunwayv1alpha1.EngineTypeTRTLLM && spec.Engine.ContextLength != nil {
+	if spec.Engine.Type == airunwayv1alpha1.EngineTypeTRTLLM && spec.Engine.ContextLength != nil {
 		warnings = append(warnings, "contextLength is ignored for TensorRT-LLM (must be configured at engine build time)")
 	}
 
 	// Warn if readOnly is true on a compilationCache volume
 	if spec.Model.Storage != nil {
 		for _, vol := range spec.Model.Storage.Volumes {
-			if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeCompilationCache && vol.ReadOnly {
+			if vol.Purpose == airunwayv1alpha1.VolumePurposeCompilationCache && vol.ReadOnly {
 				warnings = append(warnings, fmt.Sprintf(
 					"storage volume %q has purpose=compilationCache with readOnly=true; compilation cache requires write access",
 					vol.Name,
@@ -462,9 +462,9 @@ func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubeairunwayv1alpha1
 	}
 
 	// Warn if readOnly is true on a modelCache volume with huggingface source (download will be skipped)
-	if spec.Model.Source == kubeairunwayv1alpha1.ModelSourceHuggingFace && spec.Model.Storage != nil {
+	if spec.Model.Source == airunwayv1alpha1.ModelSourceHuggingFace && spec.Model.Storage != nil {
 		for _, vol := range spec.Model.Storage.Volumes {
-			if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeModelCache && vol.ReadOnly {
+			if vol.Purpose == airunwayv1alpha1.VolumePurposeModelCache && vol.ReadOnly {
 				warnings = append(warnings, fmt.Sprintf(
 					"storage volume %q has purpose=modelCache with readOnly=true; model download will be skipped (ensure the PVC already contains the model data)",
 					vol.Name,
@@ -477,7 +477,7 @@ func (v *ModelDeploymentCustomValidator) checkWarnings(obj *kubeairunwayv1alpha1
 }
 
 // validateStorage validates the model storage configuration
-func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alpha1.ModelDeployment) field.ErrorList {
+func (v *ModelDeploymentCustomValidator) validateStorage(obj *airunwayv1alpha1.ModelDeployment) field.ErrorList {
 	var allErrs field.ErrorList
 	storage := obj.Spec.Model.Storage
 
@@ -627,7 +627,7 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 		}
 
 		// custom purpose requires explicit mountPath
-		if vol.Purpose == kubeairunwayv1alpha1.VolumePurposeCustom && vol.MountPath == "" {
+		if vol.Purpose == airunwayv1alpha1.VolumePurposeCustom && vol.MountPath == "" {
 			allErrs = append(allErrs, field.Required(
 				volPath.Child("mountPath"),
 				"mountPath is required when purpose is custom",
@@ -648,12 +648,12 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *kubeairunwayv1alph
 
 		// Count purposes
 		switch vol.Purpose {
-		case kubeairunwayv1alpha1.VolumePurposeModelCache:
+		case airunwayv1alpha1.VolumePurposeModelCache:
 			modelCacheCount++
 			if vol.Size != nil && !vol.ReadOnly {
 				hasManagedModelCache = true
 			}
-		case kubeairunwayv1alpha1.VolumePurposeCompilationCache:
+		case airunwayv1alpha1.VolumePurposeCompilationCache:
 			compilationCacheCount++
 		}
 	}

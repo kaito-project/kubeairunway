@@ -1,6 +1,6 @@
-# KubeAIRunway Kubernetes Deployment
+# AIRunway Kubernetes Deployment
 
-This directory contains Kubernetes manifests for deploying KubeAIRunway to a cluster. The deployment is split into two manifests:
+This directory contains Kubernetes manifests for deploying AIRunway to a cluster. The deployment is split into two manifests:
 
 - **`controller.yaml`** — CRDs, controller, webhooks, and RBAC (required)
 - **`dashboard.yaml`** — Web UI dashboard deployment and service (optional)
@@ -11,9 +11,9 @@ This directory contains Kubernetes manifests for deploying KubeAIRunway to a clu
 # 1. Install CRDs and controller (required)
 kubectl apply -f controller.yaml
 
-# 2. Install one or more provider shims (required — registers providers with KubeAIRunway)
+# 2. Install one or more provider shims (required — registers providers with AIRunway)
 # See "Available provider shims" below for the full list
-kubectl apply -f https://raw.githubusercontent.com/kaito-project/kubeairunway/main/providers/<provider>/deploy/<provider>.yaml
+kubectl apply -f https://raw.githubusercontent.com/kaito-project/airunway/main/providers/<provider>/deploy/<provider>.yaml
 
 # 3. Install dashboard UI (optional)
 kubectl apply -f dashboard.yaml
@@ -27,12 +27,12 @@ Available provider shims:
 - [kuberay.yaml](../providers/kuberay/deploy/kuberay.yaml)
 - [llmd.yaml](../providers/llmd/deploy/llmd.yaml)
 
-## Access KubeAIRunway
+## Access AIRunway
 
-After deploying the dashboard, access KubeAIRunway using port-forward:
+After deploying the dashboard, access AIRunway using port-forward:
 
 ```bash
-kubectl port-forward -n kubeairunway-system svc/kubeairunway 3001:80
+kubectl port-forward -n airunway-system svc/airunway 3001:80
 ```
 
 Then open http://localhost:3001 in your browser.
@@ -43,7 +43,7 @@ Then open http://localhost:3001 in your browser.
 
 | Resource | Description |
 |----------|-------------|
-| `Namespace` | `kubeairunway-system` — dedicated namespace |
+| `Namespace` | `airunway-system` — dedicated namespace |
 | `CustomResourceDefinition` | `ModelDeployment` CRD |
 | `CustomResourceDefinition` | `InferenceProviderConfig` CRD |
 | `Deployment` | Controller manager deployment |
@@ -93,19 +93,19 @@ env:
 
 ```bash
 # Check all pods
-kubectl get pods -n kubeairunway-system
+kubectl get pods -n airunway-system
 
 # Check services
-kubectl get svc -n kubeairunway-system
+kubectl get svc -n airunway-system
 
 # View controller logs
-kubectl logs -n kubeairunway-system -l control-plane=controller-manager -f
+kubectl logs -n airunway-system -l control-plane=controller-manager -f
 
 # View dashboard logs
-kubectl logs -n kubeairunway-system -l app.kubernetes.io/name=kubeairunway -f
+kubectl logs -n airunway-system -l app.kubernetes.io/name=airunway -f
 
 # Test dashboard health endpoint
-kubectl exec -it -n kubeairunway-system deploy/kubeairunway -- curl localhost:3001/api/health
+kubectl exec -it -n airunway-system deploy/airunway -- curl localhost:3001/api/health
 ```
 
 ## Uninstall
@@ -120,4 +120,4 @@ kubectl delete -f controller.yaml
 
 ## Metrics Feature
 
-Once deployed in-cluster, KubeAIRunway can fetch real-time metrics from inference deployments (vLLM, Ray Serve). This feature requires in-cluster deployment as it uses Kubernetes service DNS to reach metrics endpoints.
+Once deployed in-cluster, AIRunway can fetch real-time metrics from inference deployments (vLLM, Ray Serve). This feature requires in-cluster deployment as it uses Kubernetes service DNS to reach metrics endpoints.

@@ -74,6 +74,6 @@ export interface AIConfiguratorStatus {
   available: boolean;
   version?: string;
   error?: string;
-  /** True when KubeAIRunway is running inside a Kubernetes cluster (AI Configurator not applicable) */
+  /** True when AIRunway is running inside a Kubernetes cluster (AI Configurator not applicable) */
   runningInCluster?: boolean;
 }

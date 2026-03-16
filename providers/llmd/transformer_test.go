@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -12,10 +12,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func newTestMD(name, namespace string) *kubeairunwayv1alpha1.ModelDeployment {
-	return &kubeairunwayv1alpha1.ModelDeployment{
+func newTestMD(name, namespace string) *airunwayv1alpha1.ModelDeployment {
+	return &airunwayv1alpha1.ModelDeployment{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "kubeairunway.ai/v1alpha1",
+			APIVersion: "airunway.ai/v1alpha1",
 			Kind:       "ModelDeployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -23,16 +23,16 @@ func newTestMD(name, namespace string) *kubeairunwayv1alpha1.ModelDeployment {
 			Namespace: namespace,
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID:     "meta-llama/Llama-3.1-8B-Instruct",
-				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
+				Source: airunwayv1alpha1.ModelSourceHuggingFace,
 			},
-			Engine: kubeairunwayv1alpha1.EngineSpec{
-				Type: kubeairunwayv1alpha1.EngineTypeVLLM,
+			Engine: airunwayv1alpha1.EngineSpec{
+				Type: airunwayv1alpha1.EngineTypeVLLM,
 			},
-			Resources: &kubeairunwayv1alpha1.ResourceSpec{
-				GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			Resources: &airunwayv1alpha1.ResourceSpec{
+				GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
 			},
 		},
 	}
@@ -113,21 +113,21 @@ func TestTransformAggregatedLabels(t *testing.T) {
 
 	deploy := resources[0]
 	labels := deploy.GetLabels()
-	if labels["kubeairunway.ai/managed-by"] != "kubeairunway" {
-		t.Errorf("expected managed-by label 'kubeairunway', got %s", labels["kubeairunway.ai/managed-by"])
+	if labels["airunway.ai/managed-by"] != "airunway" {
+		t.Errorf("expected managed-by label 'airunway', got %s", labels["airunway.ai/managed-by"])
 	}
-	if labels["kubeairunway.ai/deployment"] != "test-model" {
-		t.Errorf("expected deployment label 'test-model', got %s", labels["kubeairunway.ai/deployment"])
+	if labels["airunway.ai/deployment"] != "test-model" {
+		t.Errorf("expected deployment label 'test-model', got %s", labels["airunway.ai/deployment"])
 	}
-	if labels["kubeairunway.ai/engine-type"] != "vllm" {
-		t.Errorf("expected engine-type label 'vllm', got %s", labels["kubeairunway.ai/engine-type"])
+	if labels["airunway.ai/engine-type"] != "vllm" {
+		t.Errorf("expected engine-type label 'vllm', got %s", labels["airunway.ai/engine-type"])
 	}
 }
 
 func TestTransformAggregatedReplicas(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{Replicas: 3}
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{Replicas: 3}
 
 	resources, err := tr.Transform(context.Background(), md)
 	if err != nil {
@@ -188,8 +188,8 @@ func TestTransformAggregatedVLLMArgs(t *testing.T) {
 func TestTransformAggregatedTensorParallelism(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
-		GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 4},
 	}
 
 	resources, err := tr.Transform(context.Background(), md)
@@ -265,8 +265,8 @@ func TestTransformAggregatedCustomImage(t *testing.T) {
 func TestTransformAggregatedGPUResources(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Resources = &kubeairunwayv1alpha1.ResourceSpec{
-		GPU:    &kubeairunwayv1alpha1.GPUSpec{Count: 2},
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU:    &airunwayv1alpha1.GPUSpec{Count: 2},
 		Memory: "32Gi",
 	}
 
@@ -294,7 +294,7 @@ func TestTransformAggregatedGPUResources(t *testing.T) {
 func TestTransformAggregatedHFTokenSecret(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Secrets = &kubeairunwayv1alpha1.SecretsSpec{
+	md.Spec.Secrets = &airunwayv1alpha1.SecretsSpec{
 		HuggingFaceToken: "my-hf-secret",
 	}
 
@@ -389,8 +389,8 @@ func TestTransformAggregatedNodeSelector(t *testing.T) {
 func TestTransformAggregatedPodTemplateLabels(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.PodTemplate = &kubeairunwayv1alpha1.PodTemplateSpec{
-		Metadata: &kubeairunwayv1alpha1.PodTemplateMetadata{
+	md.Spec.PodTemplate = &airunwayv1alpha1.PodTemplateSpec{
+		Metadata: &airunwayv1alpha1.PodTemplateMetadata{
 			Labels: map[string]string{
 				"custom-label": "custom-value",
 			},
@@ -479,7 +479,7 @@ func TestTransformAggregatedInvalidEngineArgKey(t *testing.T) {
 func TestTransformUnsupportedEngine(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Engine.Type = kubeairunwayv1alpha1.EngineTypeSGLang
+	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeSGLang
 
 	_, err := tr.Transform(context.Background(), md)
 	if err == nil {
@@ -490,17 +490,17 @@ func TestTransformUnsupportedEngine(t *testing.T) {
 func TestTransformDisaggregatedBasic(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
-		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 4,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 		},
-		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 4},
 		},
 	}
 
@@ -535,17 +535,17 @@ func TestTransformDisaggregatedBasic(t *testing.T) {
 func TestTransformDisaggregatedKVTransferConfig(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
-		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 2,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 		},
-		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 2},
 		},
 	}
 
@@ -567,17 +567,17 @@ func TestTransformDisaggregatedKVTransferConfig(t *testing.T) {
 func TestTransformDisaggregatedReplicas(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
-		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 4,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 		},
-		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 2,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 2},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 2},
 		},
 	}
 
@@ -603,8 +603,8 @@ func TestTransformDisaggregatedReplicas(t *testing.T) {
 func TestTransformDisaggregatedMissingScaling(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
 	// No scaling spec
 
@@ -617,7 +617,7 @@ func TestTransformDisaggregatedMissingScaling(t *testing.T) {
 func TestTransformAggregatedOverride(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
+	md.Spec.Provider = &airunwayv1alpha1.ProviderSpec{
 		Overrides: &runtime.RawExtension{
 			Raw: []byte(`{"spec": {"replicas": 5}}`),
 		},
@@ -639,7 +639,7 @@ func TestTransformAggregatedOverride(t *testing.T) {
 func TestTransformOverrideBlocksMetadata(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.Provider = &kubeairunwayv1alpha1.ProviderSpec{
+	md.Spec.Provider = &airunwayv1alpha1.ProviderSpec{
 		Overrides: &runtime.RawExtension{
 			Raw: []byte(`{"metadata": {"name": "evil-name"}}`),
 		},
@@ -660,8 +660,8 @@ func TestBuildResourceLimits(t *testing.T) {
 	}
 
 	// GPU only
-	r := tr.buildResourceLimits(&kubeairunwayv1alpha1.ResourceSpec{
-		GPU: &kubeairunwayv1alpha1.GPUSpec{Count: 2},
+	r := tr.buildResourceLimits(&airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 2},
 	})
 	limits := r["limits"].(map[string]interface{})
 	if limits[GPUResourceKey] != "2" {
@@ -669,7 +669,7 @@ func TestBuildResourceLimits(t *testing.T) {
 	}
 
 	// Memory only
-	r = tr.buildResourceLimits(&kubeairunwayv1alpha1.ResourceSpec{Memory: "16Gi"})
+	r = tr.buildResourceLimits(&airunwayv1alpha1.ResourceSpec{Memory: "16Gi"})
 	limits = r["limits"].(map[string]interface{})
 	if limits["memory"] != "16Gi" {
 		t.Errorf("expected memory 16Gi, got %v", limits["memory"])
@@ -734,17 +734,17 @@ func TestTransformDisaggregatedTensorParallelism(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
 	md.Spec.Resources = nil // no top-level resources
-	md.Spec.Serving = &kubeairunwayv1alpha1.ServingSpec{
-		Mode: kubeairunwayv1alpha1.ServingModeDisaggregated,
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
 	}
-	md.Spec.Scaling = &kubeairunwayv1alpha1.ScalingSpec{
-		Prefill: &kubeairunwayv1alpha1.ComponentScalingSpec{
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 4,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 1},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
 		},
-		Decode: &kubeairunwayv1alpha1.ComponentScalingSpec{
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
 			Replicas: 1,
-			GPU:      &kubeairunwayv1alpha1.GPUSpec{Count: 4},
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 4},
 		},
 	}
 
@@ -768,11 +768,11 @@ func TestTransformDisaggregatedTensorParallelism(t *testing.T) {
 func TestTransformUserLabelsCannotClobberSelectors(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
-	md.Spec.PodTemplate = &kubeairunwayv1alpha1.PodTemplateSpec{
-		Metadata: &kubeairunwayv1alpha1.PodTemplateMetadata{
+	md.Spec.PodTemplate = &airunwayv1alpha1.PodTemplateSpec{
+		Metadata: &airunwayv1alpha1.PodTemplateMetadata{
 			Labels: map[string]string{
 				"app":                        "my-custom-app",
-				"kubeairunway.ai/deployment": "my-custom-deployment",
+				"airunway.ai/deployment": "my-custom-deployment",
 				"my-label":                   "my-value",
 			},
 		},
@@ -791,8 +791,8 @@ func TestTransformUserLabelsCannotClobberSelectors(t *testing.T) {
 	if selectorLabels["app"] != podLabels["app"] {
 		t.Errorf("selector app=%v but pod app=%v — selector won't match pods", selectorLabels["app"], podLabels["app"])
 	}
-	if selectorLabels["kubeairunway.ai/deployment"] != podLabels["kubeairunway.ai/deployment"] {
-		t.Errorf("selector deployment=%v but pod deployment=%v", selectorLabels["kubeairunway.ai/deployment"], podLabels["kubeairunway.ai/deployment"])
+	if selectorLabels["airunway.ai/deployment"] != podLabels["airunway.ai/deployment"] {
+		t.Errorf("selector deployment=%v but pod deployment=%v", selectorLabels["airunway.ai/deployment"], podLabels["airunway.ai/deployment"])
 	}
 
 	// Custom labels should still be present

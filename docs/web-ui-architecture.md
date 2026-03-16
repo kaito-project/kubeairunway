@@ -38,7 +38,7 @@ The same backend API supports multiple frontends simultaneously:
 | Frontend                   | How it connects                 | Notes                                 |
 | -------------------------- | ------------------------------- | ------------------------------------- |
 | **Bundled React UI**       | Same-origin (served by backend) | Default, ships in container           |
-| **Headlamp Plugin**        | In-cluster service URL          | Uses `@kubeairunway/shared` API client |
+| **Headlamp Plugin**        | In-cluster service URL          | Uses `@airunway/shared` API client |
 | **Custom UI / CLI**        | Any HTTP client                 | Backend is a standard REST API        |
 | **kubectl**                | Bypasses backend entirely       | Works directly with CRDs on K8s API   |
 
@@ -47,7 +47,7 @@ The same backend API supports multiple frontends simultaneously:
 When `AUTH_ENABLED=true`, the system uses Kubernetes OIDC tokens:
 
 ```
-┌──────────┐    kubeairunway login    ┌─────────────┐
+┌──────────┐    airunway login    ┌─────────────┐
 │   CLI    │ ───────────────────────▶│  kubeconfig │
 │          │◀───────────────────────│  (OIDC)     │
 └────┬─────┘    extract token        └─────────────┘
@@ -134,12 +134,12 @@ Settings are persisted in a Kubernetes ConfigMap:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kubeairunway-config
-  namespace: kubeairunway-system
+  name: airunway-config
+  namespace: airunway-system
 data:
   config.json: |
     {
-      "defaultNamespace": "kubeairunway-system"
+      "defaultNamespace": "airunway-system"
     }
 ```
 
@@ -223,7 +223,7 @@ Handles authentication when `AUTH_ENABLED=true`:
 - Validate tokens via Kubernetes TokenReview API
 - Extract OIDC tokens from kubeconfig (for CLI login)
 - Generate magic link URLs for browser authentication
-- Store/load/clear credentials locally (`~/.kubeairunway/credentials.json`)
+- Store/load/clear credentials locally (`~/.airunway/credentials.json`)
 
 ### RegistryService
 Manages in-cluster container registry for KAITO image builds:

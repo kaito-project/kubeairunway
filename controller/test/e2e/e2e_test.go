@@ -31,20 +31,20 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/kaito-project/kubeairunway/controller/test/utils"
+	"github.com/kaito-project/airunway/controller/test/utils"
 )
 
 // namespace where the project is deployed in
-const namespace = "kubeairunway-system"
+const namespace = "airunway-system"
 
 // serviceAccountName created for the project
-const serviceAccountName = "kubeairunway-controller-manager"
+const serviceAccountName = "airunway-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "kubeairunway-controller-manager-metrics-service"
+const metricsServiceName = "airunway-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "kubeairunway-metrics-binding"
+const metricsRoleBindingName = "airunway-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -191,7 +191,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=kubeairunway-metrics-reader",
+				"--clusterrole=airunway-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)
@@ -230,7 +230,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("waiting for the webhook service endpoints to be ready")
 			verifyWebhookEndpointsReady := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "endpointslices.discovery.k8s.io", "-n", namespace,
-					"-l", "kubernetes.io/service-name=kubeairunway-webhook-service",
+					"-l", "kubernetes.io/service-name=airunway-webhook-service",
 					"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Webhook endpoints should exist")
@@ -295,7 +295,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should have the webhook server cert secret", func() {
 			By("validating that the webhook server cert Secret exists")
 			verifyWebhookCert := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "secrets", "kubeairunway-webhook-server-cert", "-n", namespace)
+				cmd := exec.Command("kubectl", "get", "secrets", "airunway-webhook-server-cert", "-n", namespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 			}
@@ -307,7 +307,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"mutatingwebhookconfigurations.admissionregistration.k8s.io",
-					"kubeairunway-mutating-webhook-configuration",
+					"airunway-mutating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				mwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -321,7 +321,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"kubeairunway-validating-webhook-configuration",
+					"airunway-validating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -485,7 +485,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 		It("should reject invalid ModelDeployment (KAITO context)", func() {
 			By("attempting to create a ModelDeployment with missing model.id for huggingface source")
-			invalidYAML := `apiVersion: kubeairunway.ai/v1alpha1
+			invalidYAML := `apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: invalid-test
@@ -535,7 +535,7 @@ spec:
 
 			By("waiting for llm-d provider deployment to be available")
 			cmd = exec.Command("kubectl", "wait", "--for=condition=Available", "deployment",
-				"-n", "kubeairunway-system", "-l", "control-plane=llmd-provider", "--timeout=120s")
+				"-n", "airunway-system", "-l", "control-plane=llmd-provider", "--timeout=120s")
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "llm-d provider not available within 120s")
 		})
@@ -684,7 +684,7 @@ spec:
 
 		It("should reject invalid ModelDeployment", func() {
 			By("attempting to create a ModelDeployment with explicit llmd provider but no GPU")
-			invalidYAML := `apiVersion: kubeairunway.ai/v1alpha1
+			invalidYAML := `apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: invalid-llmd-test

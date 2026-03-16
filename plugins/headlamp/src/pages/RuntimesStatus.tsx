@@ -16,7 +16,7 @@ import {
   StatusLabelProps,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { useApiClient } from '../lib/api-client';
-import type { RuntimesStatusResponse, RuntimeStatus } from '@kubeairunway/shared';
+import type { RuntimesStatusResponse, RuntimeStatus } from '@airunway/shared';
 import { ConnectionError } from '../components/ConnectionBanner';
 
 function getStatusColor(runtime: RuntimeStatus): StatusLabelProps['status'] {
@@ -271,7 +271,7 @@ export function RuntimesStatus() {
 
       {runtimes.length === 0 && (
         <div style={{ padding: '24px', textAlign: 'center', opacity: 0.7 }}>
-          No runtimes found. Check your connection to the KubeAIRunway backend.
+          No runtimes found. Check your connection to the AIRunway backend.
         </div>
       )}
     </SectionBox>

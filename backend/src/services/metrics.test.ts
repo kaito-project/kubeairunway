@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import type { RawMetricValue, MetricsResponse } from '@kubeairunway/shared';
+import type { RawMetricValue, MetricsResponse } from '@airunway/shared';
 
 describe('MetricsService - buildMetricsUrl', () => {
   // Test the URL building logic (unit test the pattern)
@@ -109,7 +109,7 @@ describe('MetricsService - MetricsResponse structure', () => {
   test('creates unavailable response for off-cluster', () => {
     const response: MetricsResponse = {
       available: false,
-      error: 'Metrics are only available when KubeAIRunway is deployed inside the Kubernetes cluster.',
+      error: 'Metrics are only available when AIRunway is deployed inside the Kubernetes cluster.',
       timestamp: new Date().toISOString(),
       metrics: [],
       runningOffCluster: true,

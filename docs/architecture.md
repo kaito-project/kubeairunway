@@ -2,9 +2,9 @@
 
 ## System Overview
 
-KubeAIRunway is a **fully decoupled** platform. The core value lives in the Kubernetes controller and CRDs. The UI is an optional, swappable layer that communicates exclusively through a REST API. Any frontend (Headlamp, a custom CLI, or the bundled React UI) can drive the same backend.
+AIRunway is a **fully decoupled** platform. The core value lives in the Kubernetes controller and CRDs. The UI is an optional, swappable layer that communicates exclusively through a REST API. Any frontend (Headlamp, a custom CLI, or the bundled React UI) can drive the same backend.
 
-![KubeAIRunway Architecture](architecture.png)
+![AIRunway Architecture](architecture.png)
 
 ### Components at a Glance
 
@@ -17,7 +17,7 @@ Note: The UI layer shown above includes the Frontend layer and the Backend layer
 | **Backend API**          | TypeScript (Hono/Bun) | REST API — proxies K8s operations, auth, model catalog      | Optional         |
 | **React Frontend**       | React/TypeScript      | Bundled Web UI                                              | ❌ Swappable      |
 | **Headlamp Plugin**      | React/TypeScript      | Alternative UI inside Headlamp dashboard                    | ❌ Swappable      |
-| **Shared Types**         | TypeScript            | Shared API client & type contracts (`@kubeairunway/shared`)  | Library          |
+| **Shared Types**         | TypeScript            | Shared API client & type contracts (`@airunway/shared`)  | Library          |
 | **kubectl / API**        | —                     | Direct CRD access via Kubernetes API                        | Always available |
 
 ### Component Architecture Diagram
@@ -62,7 +62,7 @@ Note: The UI layer shown above includes the Frontend layer and the Backend layer
  │                    KUBERNETES CLUSTER                                     │
  │                             │                                             │
  │              ┌──────────────▼──────────────┐                             │
- │              │    KubeAIRunway Controller   │  (core operator)           │
+ │              │    AIRunway Controller   │  (core operator)           │
  │              │    • Validates specs         │                             │
  │              │    • Selects providers (CEL) │                             │
  │              │    • Manages CRD lifecycle   │                             │
@@ -93,14 +93,14 @@ Note: The UI layer shown above includes the Frontend layer and the Backend layer
 ### Why the Frontend Is Fully Decoupled
 
 1. **REST-only contract** — The frontend communicates with the backend exclusively via `HTTP/JSON`. There is no shared state, no server-side rendering, and no session affinity.
-2. **Shared type library** — `@kubeairunway/shared` provides a typed API client and TypeScript types that any frontend can import. The Headlamp plugin already does this.
+2. **Shared type library** — `@airunway/shared` provides a typed API client and TypeScript types that any frontend can import. The Headlamp plugin already does this.
 3. **Backend is optional** — The core platform (controller + CRDs) works without the backend/frontend. Users can manage `ModelDeployment` resources directly via `kubectl`, Terraform, GitOps, or any Kubernetes API client.
 4. **Swappable frontends** — The bundled React UI, the Headlamp plugin, or any custom UI can all drive the same backend API simultaneously. No code changes needed.
 5. **Auth is delegated** — Authentication uses Kubernetes `TokenReview`; the frontend simply passes a bearer token. Any UI that can obtain a K8s token works.
 
 ## Gateway API Integration
 
-KubeAIRunway optionally integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8s.io/geps/gep-3567/) to provide a unified inference gateway. When Gateway API Custom Resources are detected in the cluster, the controller automatically creates an **InferencePool** and **HTTPRoute** for each `ModelDeployment`, allowing all models to be called through a single Gateway endpoint using body-based routing on the `model` field.
+AIRunway optionally integrates with the [Gateway API Inference Extension](https://gateway-api.sigs.k8s.io/geps/gep-3567/) to provide a unified inference gateway. When Gateway API Custom Resources are detected in the cluster, the controller automatically creates an **InferencePool** and **HTTPRoute** for each `ModelDeployment`, allowing all models to be called through a single Gateway endpoint using body-based routing on the `model` field.
 
 The feature is auto-detected at startup and silently disabled if the required CRDs are not present. See [Gateway Integration](gateway.md) for full details.
 

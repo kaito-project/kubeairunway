@@ -22,7 +22,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@kubeairunway/shared';
+import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@airunway/shared';
 import { MetricsPanel } from '../components/MetricsPanel';
 import { LogsViewer } from '../components/LogsViewer';
 import { ConnectionError } from '../components/ConnectionBanner';
@@ -139,7 +139,7 @@ export function DeploymentDetails() {
     setDeleting(true);
     try {
       await api.deployments.delete(deployment.name, deployment.namespace);
-      history.push(Router.createRouteURL('KubeAIRunway Deployments'));
+      history.push(Router.createRouteURL('AIRunway Deployments'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete deployment');
     } finally {
@@ -282,7 +282,7 @@ export function DeploymentDetails() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Tooltip title="Back to Deployments">
             <IconButton
-              onClick={() => history.push(Router.createRouteURL('KubeAIRunway Deployments'))}
+              onClick={() => history.push(Router.createRouteURL('AIRunway Deployments'))}
               size="small"
               sx={{
                 border: '1px solid rgba(128, 128, 128, 0.3)',

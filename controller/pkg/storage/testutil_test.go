@@ -17,7 +17,7 @@ limitations under the License.
 package storage
 
 import (
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -28,7 +28,7 @@ import (
 
 func newScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
-	_ = kubeairunwayv1alpha1.AddToScheme(s)
+	_ = airunwayv1alpha1.AddToScheme(s)
 	_ = corev1.AddToScheme(s)
 	_ = batchv1.AddToScheme(s)
 	return s
@@ -42,24 +42,24 @@ func pvcSize(s string) *resource.Quantity {
 
 func stringPtr(s string) *string { return &s }
 
-func newDownloadMD(name, ns string) *kubeairunwayv1alpha1.ModelDeployment {
+func newDownloadMD(name, ns string) *airunwayv1alpha1.ModelDeployment {
 	size := pvcSize("100Gi")
-	return &kubeairunwayv1alpha1.ModelDeployment{
+	return &airunwayv1alpha1.ModelDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 			UID:       types.UID("test-uid"),
 		},
-		Spec: kubeairunwayv1alpha1.ModelDeploymentSpec{
-			Model: kubeairunwayv1alpha1.ModelSpec{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{
 				ID:     "meta-llama/Llama-2-7b-chat-hf",
-				Source: kubeairunwayv1alpha1.ModelSourceHuggingFace,
-				Storage: &kubeairunwayv1alpha1.StorageSpec{
-					Volumes: []kubeairunwayv1alpha1.StorageVolume{
+				Source: airunwayv1alpha1.ModelSourceHuggingFace,
+				Storage: &airunwayv1alpha1.StorageSpec{
+					Volumes: []airunwayv1alpha1.StorageVolume{
 						{
 							Name:       "model-cache",
 							MountPath:  "/model-cache",
-							Purpose:    kubeairunwayv1alpha1.VolumePurposeModelCache,
+							Purpose:    airunwayv1alpha1.VolumePurposeModelCache,
 							Size:       size,
 							AccessMode: corev1.ReadWriteMany,
 						},

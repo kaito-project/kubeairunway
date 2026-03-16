@@ -51,7 +51,7 @@ describe('Deployment Routes', () => {
       expect(data.resources[0].kind).toBe('ModelDeployment');
       expect(data.resources[0].name).toBe('test-deploy');
       expect(data.primaryResource.kind).toBe('ModelDeployment');
-      expect(data.primaryResource.apiVersion).toBe('kubeairunway.ai/v1alpha1');
+      expect(data.primaryResource.apiVersion).toBe('airunway.ai/v1alpha1');
       // No storage in manifest
       expect(data.resources[0].manifest.spec.model.storage).toBeUndefined();
     });
@@ -483,7 +483,7 @@ describe('Deployment Routes', () => {
       expect(data.resources.length).toBeGreaterThan(0);
       expect(data.primaryResource).toBeDefined();
       expect(data.primaryResource.kind).toBe('ModelDeployment');
-      expect(data.primaryResource.apiVersion).toBe('kubeairunway.ai/v1alpha1');
+      expect(data.primaryResource.apiVersion).toBe('airunway.ai/v1alpha1');
     });
 
     test('returns 404 when manifest not found', async () => {

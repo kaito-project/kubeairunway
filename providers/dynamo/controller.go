@@ -40,8 +40,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
-	"github.com/kaito-project/kubeairunway/controller/pkg/storage"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	"github.com/kaito-project/airunway/controller/pkg/storage"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 	ProviderName = "dynamo"
 
 	// FinalizerName is the finalizer used by this controller
-	FinalizerName = "kubeairunway.ai/dynamo-provider"
+	FinalizerName = "airunway.ai/dynamo-provider"
 
 	// FieldManager is the server-side apply field manager name
 	FieldManager = "dynamo-provider"
@@ -84,11 +84,11 @@ func NewDynamoProviderReconciler(client client.Client, scheme *runtime.Scheme, d
 	}
 }
 
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=modeldeployments/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=kubeairunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=airunway.ai,resources=inferenceproviderconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=nvidia.com,resources=dynamographdeployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
@@ -98,7 +98,7 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger := log.FromContext(ctx)
 
 	// Fetch the ModelDeployment
-	var md kubeairunwayv1alpha1.ModelDeployment
+	var md airunwayv1alpha1.ModelDeployment
 	if err := r.Get(ctx, req.NamespacedName, &md); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -111,7 +111,7 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger.Info("Reconciling ModelDeployment for Dynamo provider", "name", md.Name, "namespace", md.Namespace)
 
 	// Check for pause annotation
-	if md.Annotations != nil && md.Annotations["kubeairunway.ai/reconcile-paused"] == "true" {
+	if md.Annotations != nil && md.Annotations["airunway.ai/reconcile-paused"] == "true" {
 		logger.Info("Reconciliation paused", "name", md.Name)
 		return ctrl.Result{}, nil
 	}
@@ -133,33 +133,33 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// Validate provider compatibility
 	if err := r.validateCompatibility(&md); err != nil {
 		logger.Error(err, "Provider compatibility check failed", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionFalse, "IncompatibleConfiguration", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = err.Error()
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with Dynamo")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderCompatible, metav1.ConditionTrue, "CompatibilityVerified", "Configuration compatible with Dynamo")
 
 	// --- Phase 1: Ensure PVCs ---
 	if storage.HasStorageVolumes(&md) {
 		allReady, err := storage.EnsurePVCs(ctx, r.Client, &md)
 		if err != nil {
 			logger.Error(err, "Failed to ensure PVCs", "name", md.Name)
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCFailed", err.Error())
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCFailed", err.Error())
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Failed to ensure PVCs: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
 		}
 		if !allReady {
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCsPending", "Waiting for PVCs to be bound")
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhasePending
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionFalse, "PVCsPending", "Waiting for PVCs to be bound")
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhasePending
 			md.Status.Message = "Waiting for PVCs to be bound"
 			if statusErr := r.Status().Update(ctx, &md); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionTrue, "PVCsBound", "All managed PVCs are bound")
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeStorageReady, metav1.ConditionTrue, "PVCsBound", "All managed PVCs are bound")
 	}
 
 	// --- Phase 2: Ensure model download ---
@@ -167,21 +167,21 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		completed, err := storage.EnsureDownloadJob(ctx, r.Client, &md, r.DownloadJobImage)
 		if err != nil {
 			logger.Error(err, "Failed to ensure download Job", "name", md.Name)
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadFailed", err.Error())
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadFailed", err.Error())
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Model download failed: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
 		}
 		if !completed {
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadInProgress", "Model download in progress")
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhasePending
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionFalse, "DownloadInProgress", "Model download in progress")
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhasePending
 			md.Status.Message = "Model download in progress"
 			if statusErr := r.Status().Update(ctx, &md); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 		}
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionTrue, "DownloadComplete", "Model download completed")
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeModelDownloaded, metav1.ConditionTrue, "DownloadComplete", "Model download completed")
 	}
 
 	// --- Phase 3: Create/update DGD ---
@@ -190,8 +190,8 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	resources, err := r.Transformer.Transform(ctx, &md)
 	if err != nil {
 		logger.Error(err, "Failed to transform ModelDeployment", "name", md.Name)
-		r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, "TransformFailed", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 		md.Status.Message = fmt.Sprintf("Failed to generate Dynamo resources: %s", err.Error())
 		return ctrl.Result{}, r.Status().Update(ctx, &md)
 	}
@@ -203,16 +203,16 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			reason := "CreateFailed"
 			if isResourceConflict(err) {
 				reason = "ResourceConflict"
-				r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
+				r.setCondition(&md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "ResourceConflict", err.Error())
 			}
-			r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
-			md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseFailed
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionFalse, reason, err.Error())
+			md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
 			md.Status.Message = fmt.Sprintf("Failed to create DynamoGraphDeployment: %s", err.Error())
 			return ctrl.Result{}, r.Status().Update(ctx, &md)
 		}
 	}
 
-	r.setCondition(&md, kubeairunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "DynamoGraphDeployment created successfully")
+	r.setCondition(&md, airunwayv1alpha1.ConditionTypeResourceCreated, metav1.ConditionTrue, "ResourceCreated", "DynamoGraphDeployment created successfully")
 
 	// Update provider status
 	md.Status.Provider.ResourceName = md.Name
@@ -227,9 +227,9 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Set phase to Deploying if not already Running or Failed
-	if md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning &&
-		md.Status.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseDeploying
+	if md.Status.Phase != airunwayv1alpha1.DeploymentPhaseRunning &&
+		md.Status.Phase != airunwayv1alpha1.DeploymentPhaseFailed {
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseDeploying
 		md.Status.Message = "DynamoGraphDeployment created, waiting for pods to be ready"
 	}
 
@@ -244,9 +244,9 @@ func (r *DynamoProviderReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // validateCompatibility checks if the ModelDeployment configuration is compatible with Dynamo
-func (r *DynamoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *DynamoProviderReconciler) validateCompatibility(md *airunwayv1alpha1.ModelDeployment) error {
 	// Dynamo doesn't support llamacpp
-	if md.ResolvedEngineType() == kubeairunwayv1alpha1.EngineTypeLlamaCpp {
+	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeLlamaCpp {
 		return fmt.Errorf("Dynamo does not support llamacpp engine")
 	}
 
@@ -255,7 +255,7 @@ func (r *DynamoProviderReconciler) validateCompatibility(md *kubeairunwayv1alpha
 	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
 		hasGPU = true
 	}
-	if md.Spec.Serving != nil && md.Spec.Serving.Mode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if md.Spec.Serving != nil && md.Spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		// Disaggregated mode always has GPU in prefill/decode
 		if md.Spec.Scaling != nil {
 			if md.Spec.Scaling.Prefill != nil && md.Spec.Scaling.Prefill.GPU != nil && md.Spec.Scaling.Prefill.GPU.Count > 0 {
@@ -298,7 +298,7 @@ func verifyDynamoOwnership(existing *unstructured.Unstructured, mdUID types.UID)
 }
 
 // createOrUpdateResource creates or updates an unstructured resource
-func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *kubeairunwayv1alpha1.ModelDeployment) error {
+func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, resource *unstructured.Unstructured, md *airunwayv1alpha1.ModelDeployment) error {
 	logger := log.FromContext(ctx)
 
 	// Check if resource exists
@@ -338,7 +338,7 @@ func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, r
 }
 
 // syncStatus fetches the upstream resource and syncs its status to the ModelDeployment
-func (r *DynamoProviderReconciler) syncStatus(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
+func (r *DynamoProviderReconciler) syncStatus(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, desired *unstructured.Unstructured) error {
 	// Fetch the current state of the upstream resource
 	upstream := &unstructured.Unstructured{}
 	upstream.SetGroupVersionKind(desired.GroupVersionKind())
@@ -370,19 +370,19 @@ func (r *DynamoProviderReconciler) syncStatus(ctx context.Context, md *kubeairun
 	md.Status.Endpoint = statusResult.Endpoint
 
 	// Update Ready condition based on phase
-	if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseRunning {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
-	} else if statusResult.Phase == kubeairunwayv1alpha1.DeploymentPhaseFailed {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
+	if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseRunning {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
+	} else if statusResult.Phase == airunwayv1alpha1.DeploymentPhaseFailed {
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentFailed", statusResult.Message)
 	} else {
-		r.setCondition(md, kubeairunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
+		r.setCondition(md, airunwayv1alpha1.ConditionTypeReady, metav1.ConditionFalse, "DeploymentInProgress", "Deployment is in progress")
 	}
 
 	return nil
 }
 
 // handleDeletion handles the deletion of a ModelDeployment
-func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
+func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(md, FinalizerName) {
@@ -392,7 +392,7 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubea
 	logger.Info("Handling deletion", "name", md.Name, "namespace", md.Namespace)
 
 	// Update phase to Terminating
-	md.Status.Phase = kubeairunwayv1alpha1.DeploymentPhaseTerminating
+	md.Status.Phase = airunwayv1alpha1.DeploymentPhaseTerminating
 	if err := r.Status().Update(ctx, md); err != nil {
 		logger.Error(err, "Failed to update status to Terminating")
 	}
@@ -479,7 +479,7 @@ func (r *DynamoProviderReconciler) handleDeletion(ctx context.Context, md *kubea
 }
 
 // setCondition updates a condition on the ModelDeployment
-func (r *DynamoProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
+func (r *DynamoProviderReconciler) setCondition(md *airunwayv1alpha1.ModelDeployment, conditionType string, status metav1.ConditionStatus, reason, message string) {
 	condition := metav1.Condition{
 		Type:               conditionType,
 		Status:             status,
@@ -497,7 +497,7 @@ func (r *DynamoProviderReconciler) setCondition(md *kubeairunwayv1alpha1.ModelDe
 // Owns()/Watches() events through — the owner-reference handler will resolve them to the
 // correct ModelDeployment.
 func dynamoProviderPredicate(obj client.Object) bool {
-	md, ok := obj.(*kubeairunwayv1alpha1.ModelDeployment)
+	md, ok := obj.(*airunwayv1alpha1.ModelDeployment)
 	if !ok {
 		return true // Allow Owns()/Watches() events (PVCs, Jobs, DGDs) through
 	}
@@ -516,7 +516,7 @@ func dynamoProviderPredicate(obj client.Object) bool {
 // SetupWithManager sets up the controller with the Manager.
 func (r *DynamoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kubeairunwayv1alpha1.ModelDeployment{}).
+		For(&airunwayv1alpha1.ModelDeployment{}).
 		// Watch PVCs and Jobs owned by ModelDeployments (auto-reconcile on status changes)
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&batchv1.Job{}).
@@ -531,7 +531,7 @@ func (r *DynamoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 				// Check owner references first
 				for _, ref := range obj.GetOwnerReferences() {
-					if ref.APIVersion == kubeairunwayv1alpha1.GroupVersion.String() &&
+					if ref.APIVersion == airunwayv1alpha1.GroupVersion.String() &&
 						ref.Kind == "ModelDeployment" {
 						return []reconcile.Request{
 							{
@@ -545,8 +545,8 @@ func (r *DynamoProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				}
 				// Fall back to label-based lookup
 				labels := obj.GetLabels()
-				if labels[kubeairunwayv1alpha1.LabelManagedBy] == "kubeairunway" {
-					if deployment := labels[kubeairunwayv1alpha1.LabelModelDeployment]; deployment != "" {
+				if labels[airunwayv1alpha1.LabelManagedBy] == "airunway" {
+					if deployment := labels[airunwayv1alpha1.LabelModelDeployment]; deployment != "" {
 						return []reconcile.Request{
 							{
 								NamespacedName: types.NamespacedName{

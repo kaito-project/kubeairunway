@@ -4,7 +4,7 @@
 Unified API for deploying ML models.
 
 ```yaml
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: ModelDeployment
 metadata:
   name: my-model
@@ -38,7 +38,7 @@ spec:
 Cluster-scoped resource for provider registration. Each provider controller self-registers its `InferenceProviderConfig` at startup, declaring capabilities, selection rules, and installation info:
 
 ```yaml
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: InferenceProviderConfig
 metadata:
   name: dynamo

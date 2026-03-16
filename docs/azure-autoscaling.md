@@ -1,10 +1,10 @@
-# Azure Cluster Autoscaling for KubeAIRunway
+# Azure Cluster Autoscaling for AIRunway
 
-This guide explains how to enable cluster autoscaling for GPU workloads in Azure Kubernetes Service (AKS), allowing your cluster to automatically provision GPU nodes when KubeAIRunway deployments require more resources than currently available.
+This guide explains how to enable cluster autoscaling for GPU workloads in Azure Kubernetes Service (AKS), allowing your cluster to automatically provision GPU nodes when AIRunway deployments require more resources than currently available.
 
 ## Overview
 
-KubeAIRunway integrates with Kubernetes cluster autoscaling to provide visibility and guidance when deploying models that exceed available GPU capacity.
+AIRunway integrates with Kubernetes cluster autoscaling to provide visibility and guidance when deploying models that exceed available GPU capacity.
 
 ## Prerequisites
 
@@ -98,9 +98,9 @@ az aks nodepool update \
 
 ## Verification
 
-### Check Autoscaler Detection in KubeAIRunway
+### Check Autoscaler Detection in AIRunway
 
-1. Navigate to **Settings** page in KubeAIRunway
+1. Navigate to **Settings** page in AIRunway
 2. Look for **Cluster Autoscaling** section
 3. Expected status: **Cluster Autoscaler running on X node group(s)**
 
@@ -117,7 +117,7 @@ az aks nodepool show \
 
 ### Check Autoscaler Status ConfigMap
 
-KubeAIRunway detects the autoscaler using AKS-specific node labels (`cluster-autoscaler.kubernetes.io/enabled`) first, then falls back to checking the `cluster-autoscaler-status` ConfigMap:
+AIRunway detects the autoscaler using AKS-specific node labels (`cluster-autoscaler.kubernetes.io/enabled`) first, then falls back to checking the `cluster-autoscaler-status` ConfigMap:
 
 ```bash
 kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
@@ -127,7 +127,7 @@ kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml
 
 ## Troubleshooting
 
-### Issue: KubeAIRunway Shows "Not Detected"
+### Issue: AIRunway Shows "Not Detected"
 
 **Check if autoscaling is enabled:**
 ```bash

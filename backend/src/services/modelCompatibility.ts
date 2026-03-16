@@ -1,4 +1,4 @@
-import type { Engine, HfApiModelResult, HfModelSearchResult } from '@kubeairunway/shared';
+import type { Engine, HfApiModelResult, HfModelSearchResult } from '@airunway/shared';
 import { estimateGpuMemory, formatGpuMemory } from './gpuValidation';
 
 /**

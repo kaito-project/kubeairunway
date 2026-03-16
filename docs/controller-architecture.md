@@ -1,16 +1,16 @@
 # Controller Architecture
 
-The KubeAIRunway controller follows a **two-tier reconciliation model**, inspired by the Kubernetes Container Runtime Interface (CRI) and Cluster API provider patterns:
+The AIRunway controller follows a **two-tier reconciliation model**, inspired by the Kubernetes Container Runtime Interface (CRI) and Cluster API provider patterns:
 
 ```
 CRI Pattern:
    kubelet ──► CRI Interface ──► containerd/CRI-O/dockershim ──► containers
 
-KubeAIRunway Provider Pattern:
+AIRunway Provider Pattern:
    core ──► Provider Interface ──► kaito-provider/dynamo-provider ──► provider CRs
 ```
 
-Just as `dockershim` was an adapter that made Docker work with the CRI interface, `kaito-provider` is an adapter that makes KAITO (which doesn't know about KubeAIRunway) work with the KubeAIRunway provider interface.
+Just as `dockershim` was an adapter that made Docker work with the CRI interface, `kaito-provider` is an adapter that makes KAITO (which doesn't know about AIRunway) work with the AIRunway provider interface.
 
 ### Lessons from Dockershim
 
@@ -52,7 +52,7 @@ This separation allows:
                                              │
                                              ▼
                                     ┌─────────────────┐
-                                    │ kubeairunway-    │
+                                    │ airunway-    │
                                     │ core webhooks   │
                                     │ (validation)    │
                                     └────────┬────────┘
@@ -152,7 +152,7 @@ The controller enforces the `ModelDeployment` spec on provider resources. If som
 ```yaml
 metadata:
   annotations:
-    kubeairunway.ai/reconcile-paused: "true"
+    airunway.ai/reconcile-paused: "true"
 ```
 
 ## Owner References & Garbage Collection
@@ -162,7 +162,7 @@ The controller sets `ownerReferences` on created provider resources:
 ```yaml
 metadata:
   ownerReferences:
-    - apiVersion: kubeairunway.ai/v1alpha1
+    - apiVersion: airunway.ai/v1alpha1
       kind: ModelDeployment
       name: my-llm
       uid: abc-123
@@ -247,9 +247,9 @@ The controller extracts meaningful error messages from provider status:
 
 Labels from `ModelDeployment.metadata.labels` are selectively propagated:
 
-- **To provider resource:** Only labels with `kubeairunway.ai/` prefix are copied
+- **To provider resource:** Only labels with `airunway.ai/` prefix are copied
 - **To pods:** Use `spec.podTemplate.metadata.labels` for pod-level labels
-- **Controller-managed:** The controller always adds `kubeairunway.ai/managed-by: kubeairunway`
+- **Controller-managed:** The controller always adds `airunway.ai/managed-by: airunway`
 
 ## Provider Overrides
 
@@ -331,7 +331,7 @@ The controller ServiceAccount requires permissions for ModelDeployments, Inferen
 
 ```yaml
 rules:
-  - apiGroups: ["kubeairunway.ai"]
+  - apiGroups: ["airunway.ai"]
     resources: ["modeldeployments", "modeldeployments/status"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["kaito.sh"]

@@ -2,16 +2,16 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway
-  namespace: kubeairunway-system
+    app.kubernetes.io/name: airunway
+  name: airunway
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway-hf-secret
+    app.kubernetes.io/name: airunway
+  name: airunway-hf-secret
   namespace: default
 rules:
 - apiGroups:
@@ -27,8 +27,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway
+    app.kubernetes.io/name: airunway
+  name: airunway
 rules:
 - apiGroups:
   - ""
@@ -86,7 +86,7 @@ rules:
   - patch
   - delete
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - modeldeployments
   - modeldeployments/status
@@ -99,7 +99,7 @@ rules:
   - patch
   - delete
 - apiGroups:
-  - kubeairunway.ai
+  - airunway.ai
   resources:
   - inferenceproviderconfigs
   verbs:
@@ -181,40 +181,40 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway-hf-secret
+    app.kubernetes.io/name: airunway
+  name: airunway-hf-secret
   namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: kubeairunway-hf-secret
+  name: airunway-hf-secret
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway
-  namespace: kubeairunway-system
+  name: airunway
+  namespace: airunway-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway
+    app.kubernetes.io/name: airunway
+  name: airunway
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubeairunway
+  name: airunway
 subjects:
 - kind: ServiceAccount
-  name: kubeairunway
-  namespace: kubeairunway-system
+  name: airunway
+  namespace: airunway-system
 ---
 apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway
-  namespace: kubeairunway-system
+    app.kubernetes.io/name: airunway
+  name: airunway
+  namespace: airunway-system
 spec:
   ports:
   - name: http
@@ -222,8 +222,8 @@ spec:
     protocol: TCP
     targetPort: http
   selector:
-    app.kubernetes.io/instance: kubeairunway
-    app.kubernetes.io/name: kubeairunway
+    app.kubernetes.io/instance: airunway
+    app.kubernetes.io/name: airunway
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -231,22 +231,22 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/component: dashboard
-    app.kubernetes.io/instance: kubeairunway
-    app.kubernetes.io/name: kubeairunway
-  name: kubeairunway
-  namespace: kubeairunway-system
+    app.kubernetes.io/instance: airunway
+    app.kubernetes.io/name: airunway
+  name: airunway
+  namespace: airunway-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/instance: kubeairunway
-      app.kubernetes.io/name: kubeairunway
+      app.kubernetes.io/instance: airunway
+      app.kubernetes.io/name: airunway
   template:
     metadata:
       labels:
         app.kubernetes.io/component: dashboard
-        app.kubernetes.io/instance: kubeairunway
-        app.kubernetes.io/name: kubeairunway
+        app.kubernetes.io/instance: airunway
+        app.kubernetes.io/name: airunway
     spec:
       containers:
       - env:
@@ -254,7 +254,7 @@ spec:
           value: "3001"
         - name: LOG_LEVEL
           value: info
-        image: ghcr.io/kaito-project/kubeairunway/dashboard:latest
+        image: ghcr.io/kaito-project/airunway/dashboard:latest
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3
@@ -264,7 +264,7 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 5
-        name: kubeairunway
+        name: airunway
         ports:
         - containerPort: 3001
           name: http
@@ -295,4 +295,4 @@ spec:
         runAsGroup: 65532
         runAsNonRoot: true
         runAsUser: 65532
-      serviceAccountName: kubeairunway
+      serviceAccountName: airunway

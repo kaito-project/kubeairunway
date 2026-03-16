@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strings"
 
-	kubeairunwayv1alpha1 "github.com/kaito-project/kubeairunway/controller/api/v1alpha1"
+	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -55,7 +55,7 @@ func NewTransformer() *Transformer {
 }
 
 // Transform converts a ModelDeployment to a RayService
-func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
+func (t *Transformer) Transform(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) ([]*unstructured.Unstructured, error) {
 	rs := &unstructured.Unstructured{}
 	rs.SetAPIVersion(fmt.Sprintf("%s/%s", RayAPIGroup, RayAPIVersion))
 	rs.SetKind(RayServiceKind)
@@ -76,10 +76,10 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 
 	// Set labels
 	labels := map[string]string{
-		"kubeairunway.ai/managed-by":   "kubeairunway",
-		"kubeairunway.ai/deployment":   md.Name,
-		"kubeairunway.ai/model-source": string(md.Spec.Model.Source),
-		"kubeairunway.ai/engine-type":  string(md.ResolvedEngineType()),
+		"airunway.ai/managed-by":   "airunway",
+		"airunway.ai/deployment":   md.Name,
+		"airunway.ai/model-source": string(md.Spec.Model.Source),
+		"airunway.ai/engine-type":  string(md.ResolvedEngineType()),
 	}
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil {
 		for k, v := range md.Spec.PodTemplate.Metadata.Labels {
@@ -107,7 +107,7 @@ func (t *Transformer) Transform(ctx context.Context, md *kubeairunwayv1alpha1.Mo
 }
 
 // buildSpec creates the spec for a RayService
-func (t *Transformer) buildSpec(md *kubeairunwayv1alpha1.ModelDeployment) (map[string]interface{}, error) {
+func (t *Transformer) buildSpec(md *airunwayv1alpha1.ModelDeployment) (map[string]interface{}, error) {
 	spec := map[string]interface{}{}
 
 	// Build serveConfigV2
@@ -138,19 +138,19 @@ func (t *Transformer) buildSpec(md *kubeairunwayv1alpha1.ModelDeployment) (map[s
 }
 
 // buildRayClusterConfig creates the rayClusterConfig section
-func (t *Transformer) buildRayClusterConfig(md *kubeairunwayv1alpha1.ModelDeployment) (map[string]interface{}, error) {
+func (t *Transformer) buildRayClusterConfig(md *airunwayv1alpha1.ModelDeployment) (map[string]interface{}, error) {
 	config := map[string]interface{}{}
 
 	// Build head group spec
 	config["headGroupSpec"] = t.buildHeadGroupSpec(md)
 
 	// Build worker group specs
-	servingMode := kubeairunwayv1alpha1.ServingModeAggregated
+	servingMode := airunwayv1alpha1.ServingModeAggregated
 	if md.Spec.Serving != nil && md.Spec.Serving.Mode != "" {
 		servingMode = md.Spec.Serving.Mode
 	}
 
-	if servingMode == kubeairunwayv1alpha1.ServingModeDisaggregated {
+	if servingMode == airunwayv1alpha1.ServingModeDisaggregated {
 		config["workerGroupSpecs"] = t.buildDisaggregatedWorkerGroups(md)
 	} else {
 		config["workerGroupSpecs"] = t.buildAggregatedWorkerGroup(md)
@@ -160,7 +160,7 @@ func (t *Transformer) buildRayClusterConfig(md *kubeairunwayv1alpha1.ModelDeploy
 }
 
 // buildHeadGroupSpec creates the head group spec
-func (t *Transformer) buildHeadGroupSpec(md *kubeairunwayv1alpha1.ModelDeployment) map[string]interface{} {
+func (t *Transformer) buildHeadGroupSpec(md *airunwayv1alpha1.ModelDeployment) map[string]interface{} {
 	image := t.getImage(md)
 	headMemory := DefaultHeadMemory
 	if md.Spec.Resources != nil && md.Spec.Resources.Memory != "" {
@@ -192,7 +192,7 @@ func (t *Transformer) buildHeadGroupSpec(md *kubeairunwayv1alpha1.ModelDeploymen
 		"template": map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"labels": map[string]interface{}{
-					"kubeairunway.ai/model-deployment": md.Name,
+					"airunway.ai/model-deployment": md.Name,
 				},
 			},
 			"spec": map[string]interface{}{
@@ -217,7 +217,7 @@ func (t *Transformer) buildHeadGroupSpec(md *kubeairunwayv1alpha1.ModelDeploymen
 }
 
 // buildAggregatedWorkerGroup creates worker group specs for aggregated mode
-func (t *Transformer) buildAggregatedWorkerGroup(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
+func (t *Transformer) buildAggregatedWorkerGroup(md *airunwayv1alpha1.ModelDeployment) []interface{} {
 	image := t.getImage(md)
 	replicas := int64(1)
 	if md.Spec.Scaling != nil && md.Spec.Scaling.Replicas > 0 {
@@ -250,7 +250,7 @@ func (t *Transformer) buildAggregatedWorkerGroup(md *kubeairunwayv1alpha1.ModelD
 		"template": map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"labels": map[string]interface{}{
-					"kubeairunway.ai/model-deployment": md.Name,
+					"airunway.ai/model-deployment": md.Name,
 				},
 			},
 			"spec": map[string]interface{}{
@@ -271,7 +271,7 @@ func (t *Transformer) buildAggregatedWorkerGroup(md *kubeairunwayv1alpha1.ModelD
 }
 
 // buildDisaggregatedWorkerGroups creates separate prefill and decode worker groups
-func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
+func (t *Transformer) buildDisaggregatedWorkerGroups(md *airunwayv1alpha1.ModelDeployment) []interface{} {
 	image := t.getImage(md)
 	var workerGroups []interface{}
 
@@ -301,7 +301,7 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 			"template": map[string]interface{}{
 				"metadata": map[string]interface{}{
 					"labels": map[string]interface{}{
-						"kubeairunway.ai/model-deployment": md.Name,
+						"airunway.ai/model-deployment": md.Name,
 					},
 				},
 				"spec": map[string]interface{}{
@@ -346,7 +346,7 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 			"template": map[string]interface{}{
 				"metadata": map[string]interface{}{
 					"labels": map[string]interface{}{
-						"kubeairunway.ai/model-deployment": md.Name,
+						"airunway.ai/model-deployment": md.Name,
 					},
 				},
 				"spec": map[string]interface{}{
@@ -369,7 +369,7 @@ func (t *Transformer) buildDisaggregatedWorkerGroups(md *kubeairunwayv1alpha1.Mo
 }
 
 // buildEngineArgs constructs the vLLM engine arguments string
-func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) string {
+func (t *Transformer) buildEngineArgs(md *airunwayv1alpha1.ModelDeployment) string {
 	var args []string
 
 	args = append(args, "--model", md.Spec.Model.ID)
@@ -408,7 +408,7 @@ func (t *Transformer) buildEngineArgs(md *kubeairunwayv1alpha1.ModelDeployment) 
 }
 
 // buildEnvVars constructs environment variables including HF_TOKEN from secrets
-func (t *Transformer) buildEnvVars(md *kubeairunwayv1alpha1.ModelDeployment) []interface{} {
+func (t *Transformer) buildEnvVars(md *airunwayv1alpha1.ModelDeployment) []interface{} {
 	var envVars []interface{}
 
 	// Add user-specified env vars
@@ -447,7 +447,7 @@ func (t *Transformer) buildEnvVars(md *kubeairunwayv1alpha1.ModelDeployment) []i
 }
 
 // getImage returns the container image to use
-func (t *Transformer) getImage(md *kubeairunwayv1alpha1.ModelDeployment) string {
+func (t *Transformer) getImage(md *airunwayv1alpha1.ModelDeployment) string {
 	if md.Spec.Image != "" {
 		return md.Spec.Image
 	}

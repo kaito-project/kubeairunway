@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GpuFitIndicator } from './GpuFitIndicator';
-import type { HfModelSearchResult } from '@kubeairunway/shared';
+import type { HfModelSearchResult } from '@airunway/shared';
 import { Download, Heart, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
