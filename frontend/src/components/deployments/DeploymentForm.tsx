@@ -93,6 +93,9 @@ type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
 type KaitoComputeType = 'cpu' | 'gpu'
 type GgufRunMode = 'build' | 'direct'
 
+const TENSOR_PARALLEL_SIZE_ARG = 'tensor-parallel-size'
+const PIPELINE_PARALLEL_SIZE_ARG = 'pipeline-parallel-size'
+
 // Runtime metadata for display
 const RUNTIME_INFO: Record<RuntimeId, { name: string; description: string; defaultNamespace: string }> = {
   dynamo: {
@@ -147,6 +150,47 @@ function getNodeCountFromOverrides(overrides?: Record<string, unknown>): number 
   return nodeCount && nodeCount > 1 ? nodeCount : 1;
 }
 
+function getNumericEngineArg(engineArgs: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = engineArgs?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function buildDynamoMultiNodeOverrides(nodeCount: number): Record<string, unknown> {
+  return {
+    spec: {
+      services: {
+        VllmWorker: {
+          multinode: {
+            nodeCount,
+          },
+        },
+      },
+    },
+  };
+}
+
+function setDynamoParallelismEngineArgs(
+  engineArgs: Record<string, unknown> | undefined,
+  multiNode: MultiNodeRecommendation | null
+): Record<string, unknown> | undefined {
+  const nextEngineArgs = { ...(engineArgs || {}) };
+
+  if (multiNode) {
+    nextEngineArgs[TENSOR_PARALLEL_SIZE_ARG] = String(multiNode.gpusPerNode);
+    nextEngineArgs[PIPELINE_PARALLEL_SIZE_ARG] = String(multiNode.pipelineParallelSize);
+  } else {
+    delete nextEngineArgs[TENSOR_PARALLEL_SIZE_ARG];
+    delete nextEngineArgs[PIPELINE_PARALLEL_SIZE_ARG];
+  }
+
+  return Object.keys(nextEngineArgs).length > 0 ? nextEngineArgs : undefined;
+}
+
 export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }: DeploymentFormProps) {
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -194,6 +238,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   const [aiConfigSupportedBackends, setAiConfigSupportedBackends] = useState<string[] | null>(null)
   const [aiConfigRecommendedBackend, setAiConfigRecommendedBackend] = useState<string | null>(null)
   const [aiConfigRecommendedMode, setAiConfigRecommendedMode] = useState<DeploymentMode | null>(null)
+  const [topologyManagedByAIConfig, setTopologyManagedByAIConfig] = useState(false)
   // Track AI Configurator recommended values for disaggregated mode
   const [aiConfigRecommendedValues, setAiConfigRecommendedValues] = useState<{
     prefillReplicas?: number
@@ -282,6 +327,9 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
   // Calculate GPU recommendation based on model characteristics
   const gpuRecommendation = calculateGpuRecommendation(model, detailedCapacity)
+  const currentNodeCount = getNodeCountFromOverrides(config.providerOverrides)
+  const currentTensorParallel = getNumericEngineArg(config.engineArgs, TENSOR_PARALLEL_SIZE_ARG)
+  const currentPipelineParallel = getNumericEngineArg(config.engineArgs, PIPELINE_PARALLEL_SIZE_ARG)
 
   // Set initial GPU value from recommendation when component mounts
   useEffect(() => {
@@ -298,57 +346,74 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   }, [gpuRecommendation.recommendedGpus])
 
   // Separate effect: apply/clear multi-node config when recommendation changes (e.g. after capacity loads)
-  // Only applies to aggregated-mode Dynamo deployments (disaggregated has its own prefill/decode topology).
+  // Only applies to aggregated-mode Dynamo + vLLM deployments.
   useEffect(() => {
-    if (selectedRuntime !== 'dynamo') return;
-    if (config.mode !== 'aggregated') return;
+    const shouldManageDynamoParallelism =
+      selectedRuntime === 'dynamo' &&
+      config.mode === 'aggregated' &&
+      config.engine === 'vllm';
 
-    const currentNodeCount = getNodeCountFromOverrides(config.providerOverrides);
-    const recNodeCount = gpuRecommendation.multiNode?.nodeCount;
+    if (!shouldManageDynamoParallelism) {
+      if (currentNodeCount > 1 || currentTensorParallel !== undefined || currentPipelineParallel !== undefined) {
+        setConfig(prev => ({
+          ...prev,
+          providerOverrides: undefined,
+          engineArgs: setDynamoParallelismEngineArgs(prev.engineArgs, null),
+        }))
+      }
+      return;
+    }
+
+    if (topologyManagedByAIConfig) {
+      return;
+    }
 
     if (gpuRecommendation.multiNode) {
+      const recommendedPipelineParallel = gpuRecommendation.multiNode.pipelineParallelSize;
+      const gpuCount = config.resources?.gpu ?? 0;
+
       // Apply multi-node settings if they differ from current state.
-      // Also sync resources.gpu to recommendedGpus so GPU count, TP, and nodeCount stay consistent.
-      if (currentNodeCount !== recNodeCount) {
+      // Also sync resources.gpu to recommendedGpus so GPU count, TP, PP, and nodeCount stay consistent.
+      if (
+        currentNodeCount !== gpuRecommendation.multiNode.nodeCount ||
+        currentTensorParallel !== gpuRecommendation.multiNode.gpusPerNode ||
+        currentPipelineParallel !== recommendedPipelineParallel ||
+        gpuCount !== gpuRecommendation.recommendedGpus
+      ) {
         setConfig(prev => ({
           ...prev,
           resources: {
             ...prev.resources,
             gpu: gpuRecommendation.recommendedGpus,
           },
-          providerOverrides: {
-            spec: {
-              services: {
-                VllmWorker: {
-                  multinode: {
-                    nodeCount: gpuRecommendation.multiNode!.nodeCount
-                  }
-                }
-              }
-            }
-          },
-          engineArgs: {
-            ...prev.engineArgs,
-            'tensor-parallel-size': String(gpuRecommendation.multiNode!.gpusPerNode),
-          },
+          providerOverrides: buildDynamoMultiNodeOverrides(gpuRecommendation.multiNode!.nodeCount),
+          engineArgs: setDynamoParallelismEngineArgs(prev.engineArgs, gpuRecommendation.multiNode!),
         }))
       }
-    } else {
-      // Clear multi-node settings if recommendation no longer needs them
-      if (currentNodeCount > 1) {
-        setConfig(prev => {
-          const newEngineArgs = { ...prev.engineArgs };
-          delete newEngineArgs['tensor-parallel-size'];
-          return {
-            ...prev,
-            providerOverrides: undefined,
-            engineArgs: Object.keys(newEngineArgs).length > 0 ? newEngineArgs : undefined,
-          };
-        })
-      }
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpuRecommendation.multiNode?.nodeCount, gpuRecommendation.recommendedGpus, selectedRuntime, config.mode])
+
+    if (currentNodeCount > 1 || currentTensorParallel !== undefined || currentPipelineParallel !== undefined) {
+      setConfig(prev => ({
+        ...prev,
+        providerOverrides: undefined,
+        engineArgs: setDynamoParallelismEngineArgs(prev.engineArgs, null),
+      }))
+    }
+  }, [
+    gpuRecommendation.multiNode?.gpusPerNode,
+    gpuRecommendation.multiNode?.nodeCount,
+    gpuRecommendation.multiNode?.pipelineParallelSize,
+    gpuRecommendation.recommendedGpus,
+    selectedRuntime,
+    config.engine,
+    config.mode,
+    config.resources?.gpu,
+    currentNodeCount,
+    currentPipelineParallel,
+    currentTensorParallel,
+    topologyManagedByAIConfig,
+  ])
 
   // Auto-select matching premade model when navigating with a KAITO model from Models page
   useEffect(() => {
@@ -370,6 +435,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
   // Handle runtime change - update namespace and engine
   const handleRuntimeChange = (runtime: RuntimeId) => {
+    setTopologyManagedByAIConfig(false)
     setSelectedRuntime(runtime)
     const newAvailableEngines = model.supportedEngines.filter(
       (e): e is TraditionalEngine => RUNTIME_ENGINES[runtime].includes(e as TraditionalEngine)
@@ -377,16 +443,17 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     const currentEngineSupported = newAvailableEngines.includes(config.engine as TraditionalEngine)
 
     setConfig(prev => {
-      // Build new engine args, removing tensor-parallel-size when switching away from Dynamo
-      const newEngineArgs = { ...prev.engineArgs };
-      if (runtime !== 'dynamo') {
-        delete newEngineArgs['tensor-parallel-size'];
-      }
+      const nextEngine = currentEngineSupported ? prev.engine : (newAvailableEngines[0] || 'vllm')
+      const shouldManageDynamoParallelism =
+        runtime === 'dynamo' &&
+        prev.mode === 'aggregated' &&
+        nextEngine === 'vllm'
 
-      let newProviderOverrides = runtime === 'dynamo' ? prev.providerOverrides : undefined;
+      let newEngineArgs = setDynamoParallelismEngineArgs(prev.engineArgs, null)
+      let newProviderOverrides = shouldManageDynamoParallelism ? prev.providerOverrides : undefined
 
-      // When switching TO Dynamo, recalculate multi-node from current GPU config
-      if (runtime === 'dynamo') {
+      // When switching TO Dynamo + vLLM, recalculate multi-node from current GPU config.
+      if (shouldManageDynamoParallelism) {
         const estimatedMem = gpuRecommendation.estimatedMemoryGb;
         const gpuMem = detailedCapacity?.totalMemoryGb;
         const currentGpu = prev.resources?.gpu || gpuRecommendation.recommendedGpus || 1;
@@ -394,19 +461,10 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         if (estimatedMem && gpuMem) {
           const multiNodeResult = calculateMultiNode(estimatedMem, gpuMem, currentGpu);
           if (multiNodeResult) {
-            newProviderOverrides = {
-              spec: {
-                services: {
-                  VllmWorker: {
-                    multinode: { nodeCount: multiNodeResult.nodeCount }
-                  }
-                }
-              }
-            };
-            newEngineArgs['tensor-parallel-size'] = String(currentGpu);
+            newProviderOverrides = buildDynamoMultiNodeOverrides(multiNodeResult.nodeCount)
+            newEngineArgs = setDynamoParallelismEngineArgs(newEngineArgs, multiNodeResult)
           } else {
             newProviderOverrides = undefined;
-            delete newEngineArgs['tensor-parallel-size'];
           }
         }
       }
@@ -416,13 +474,13 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         provider: runtime,
         namespace: RUNTIME_INFO[runtime].defaultNamespace,
         // Reset engine if current one isn't supported by new runtime
-        engine: currentEngineSupported ? prev.engine : (newAvailableEngines[0] || 'vllm'),
+        engine: nextEngine,
         // Reset router mode if switching away from Dynamo
         routerMode: runtime === 'dynamo' ? prev.routerMode : 'none',
         // Reset to aggregated mode if switching to KAITO (disaggregated not supported)
         mode: runtime === 'kaito' ? 'aggregated' : prev.mode,
         providerOverrides: newProviderOverrides,
-        engineArgs: Object.keys(newEngineArgs).length > 0 ? newEngineArgs : undefined,
+        engineArgs: newEngineArgs,
       }
     })
 
@@ -637,41 +695,70 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       decodeGpus: cfg.decodeTensorParallel || cfg.tensorParallelDegree,
       gpuPerReplica: cfg.tensorParallelDegree,
     })
+    setTopologyManagedByAIConfig(true)
 
-    setConfig(prev => ({
-      ...prev,
-      mode: result.mode,
-      replicas: result.replicas,
-      contextLength: cfg.maxModelLen,
-      // Set engine if AI Configurator recommended one
-      ...(recommendedEngine && { engine: recommendedEngine }),
-      resources: {
-        ...prev.resources,
-        gpu: cfg.tensorParallelDegree,
-      },
-      // Disaggregated mode settings
-      ...(result.mode === 'disaggregated' && {
-        prefillReplicas: cfg.prefillReplicas || 1,
-        decodeReplicas: cfg.decodeReplicas || 1,
-        prefillGpus: cfg.prefillTensorParallel || cfg.tensorParallelDegree,
-        decodeGpus: cfg.decodeTensorParallel || cfg.tensorParallelDegree,
-      }),
-      // Engine args for advanced settings
-      engineArgs: {
-        ...prev.engineArgs,
-        'max-num-batched-tokens': cfg.maxBatchSize,
-        'gpu-memory-utilization': cfg.gpuMemoryUtilization,
-        ...(cfg.maxNumSeqs && { 'max-num-seqs': cfg.maxNumSeqs }),
-      },
-    }))
+    setConfig(prev => {
+      const nextEngine = recommendedEngine || prev.engine
+      const pipelineParallelDegree = Math.max(1, cfg.pipelineParallelDegree || 1)
+      const shouldApplyDynamoParallelism =
+        selectedRuntime === 'dynamo' &&
+        result.mode === 'aggregated' &&
+        nextEngine === 'vllm' &&
+        pipelineParallelDegree > 1
+
+      const multiNodeConfig: MultiNodeRecommendation | null = shouldApplyDynamoParallelism
+        ? {
+            nodeCount: pipelineParallelDegree,
+            gpusPerNode: cfg.tensorParallelDegree,
+            totalGpus: pipelineParallelDegree * cfg.tensorParallelDegree,
+            pipelineParallelSize: pipelineParallelDegree,
+          }
+        : null
+
+      const engineArgs = setDynamoParallelismEngineArgs(
+        {
+          ...prev.engineArgs,
+          'max-num-batched-tokens': cfg.maxBatchSize,
+          'gpu-memory-utilization': cfg.gpuMemoryUtilization,
+          ...(cfg.maxNumSeqs && { 'max-num-seqs': cfg.maxNumSeqs }),
+        },
+        multiNodeConfig
+      )
+
+      return {
+        ...prev,
+        mode: result.mode,
+        replicas: result.replicas,
+        contextLength: cfg.maxModelLen,
+        // Set engine if AI Configurator recommended one
+        ...(recommendedEngine && { engine: recommendedEngine }),
+        resources: {
+          ...prev.resources,
+          gpu: cfg.tensorParallelDegree,
+        },
+        providerOverrides: multiNodeConfig ? buildDynamoMultiNodeOverrides(multiNodeConfig.nodeCount) : undefined,
+        // Disaggregated mode settings
+        ...(result.mode === 'disaggregated' && {
+          prefillReplicas: cfg.prefillReplicas || 1,
+          decodeReplicas: cfg.decodeReplicas || 1,
+          prefillGpus: cfg.prefillTensorParallel || cfg.tensorParallelDegree,
+          decodeGpus: cfg.decodeTensorParallel || cfg.tensorParallelDegree,
+        }),
+        // Engine args for advanced settings
+        engineArgs,
+      }
+    })
 
     const engineInfo = recommendedEngine ? `, Engine=${recommendedEngine.toUpperCase()}` : ''
+    const pipelineInfo = cfg.pipelineParallelDegree && cfg.pipelineParallelDegree > 1
+      ? `, PP=${cfg.pipelineParallelDegree}`
+      : ''
     toast({
       title: 'Configuration Applied',
-      description: `AI Configurator recommendations applied. TP=${cfg.tensorParallelDegree}, Context=${cfg.maxModelLen}${engineInfo}`,
+      description: `AI Configurator recommendations applied. TP=${cfg.tensorParallelDegree}${pipelineInfo}, Context=${cfg.maxModelLen}${engineInfo}`,
       variant: 'success',
     })
-  }, [toast])
+  }, [selectedRuntime, toast])
 
   // Calculate total GPUs needed for the deployment
   const calculateSelectedGpus = (): number => {
@@ -686,18 +773,21 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     const replicas = config.replicas || 1;
 
     // Account for multi-node: nodeCount multiplies the per-replica GPU count
-    const nodeCount = getNodeCountFromOverrides(config.providerOverrides);
-    return gpusPerReplica * replicas * nodeCount;
+    return gpusPerReplica * replicas * currentNodeCount;
   }
 
   const selectedGpus = calculateSelectedGpus()
 
   // Compute current multi-node state from providerOverrides
   const currentMultiNode: MultiNodeRecommendation | null = (() => {
-    const nodeCount = getNodeCountFromOverrides(config.providerOverrides);
-    if (nodeCount <= 1) return null;
+    if (currentNodeCount <= 1) return null;
     const gpusPerNode = config.resources?.gpu || gpuRecommendation.recommendedGpus || 1;
-    return { nodeCount, gpusPerNode, totalGpus: nodeCount * gpusPerNode };
+    return {
+      nodeCount: currentNodeCount,
+      gpusPerNode,
+      totalGpus: currentNodeCount * gpusPerNode,
+      pipelineParallelSize: currentPipelineParallel || currentNodeCount,
+    };
   })()
 
   // Calculate the maximum GPUs per single pod (for node placement constraints)
@@ -905,6 +995,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
           onApplyConfig={handleApplyAIConfig}
           onDiscard={() => {
             // Clear AI Configurator state when discarding
+            setTopologyManagedByAIConfig(false)
             setAiConfigSupportedBackends(null)
             setAiConfigRecommendedBackend(null)
             setAiConfigRecommendedMode(null)
@@ -976,6 +1067,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                 onValueChange={(value) => {
                   // Only allow changing to supported backends if AI Configurator has set restrictions
                   if (!aiConfigSupportedBackends || aiConfigSupportedBackends.includes(value)) {
+                    setTopologyManagedByAIConfig(false)
                     updateConfig('engine', value as Engine)
                   }
                 }}
@@ -1268,16 +1360,15 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               // Only allow changing mode for non-KAITO runtimes
               if (selectedRuntime !== 'kaito') {
                 const newMode = value as DeploymentMode;
+                setTopologyManagedByAIConfig(false)
                 // Clear aggregated-only multi-node overrides when switching to disaggregated
                 if (newMode === 'disaggregated') {
                   setConfig(prev => {
-                    const newEngineArgs = { ...prev.engineArgs };
-                    delete newEngineArgs['tensor-parallel-size'];
                     return {
                       ...prev,
                       mode: newMode,
                       providerOverrides: undefined,
-                      engineArgs: Object.keys(newEngineArgs).length > 0 ? newEngineArgs : undefined,
+                      engineArgs: setDynamoParallelismEngineArgs(prev.engineArgs, null),
                     };
                   })
                 } else {
@@ -1361,43 +1452,29 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                 id="gpusPerReplica"
                 value={config.resources?.gpu || gpuRecommendation.recommendedGpus}
                 onChange={(value) => {
-                  // Recalculate multi-node when GPU count changes (Dynamo only)
+                  setTopologyManagedByAIConfig(false)
+                  // Recalculate multi-node when GPU count changes (Dynamo + vLLM only)
                   const estimatedMem = gpuRecommendation.estimatedMemoryGb;
                   const gpuMem = detailedCapacity?.totalMemoryGb;
 
-                  if (selectedRuntime === 'dynamo' && estimatedMem && gpuMem) {
+                  if (selectedRuntime === 'dynamo' && config.engine === 'vllm' && estimatedMem && gpuMem) {
                     const multiNodeResult = calculateMultiNode(estimatedMem, gpuMem, value);
                     if (multiNodeResult) {
                       // Model needs multi-node
                       setConfig(prev => ({
                         ...prev,
                         resources: { ...prev.resources, gpu: value },
-                        providerOverrides: {
-                          spec: {
-                            services: {
-                              VllmWorker: {
-                                multinode: {
-                                  nodeCount: multiNodeResult.nodeCount
-                                }
-                              }
-                            }
-                          }
-                        },
-                        engineArgs: {
-                          ...prev.engineArgs,
-                          'tensor-parallel-size': String(value),
-                        },
+                        providerOverrides: buildDynamoMultiNodeOverrides(multiNodeResult.nodeCount),
+                        engineArgs: setDynamoParallelismEngineArgs(prev.engineArgs, multiNodeResult),
                       }))
                     } else {
-                      // Model fits on single node - clear both overrides and tensor-parallel-size
+                      // Model fits on a single node - clear multi-node overrides and Dynamo parallel args.
                       setConfig(prev => {
-                        const newEngineArgs = { ...prev.engineArgs };
-                        delete newEngineArgs['tensor-parallel-size'];
                         return {
                           ...prev,
                           resources: { ...prev.resources, gpu: value },
                           providerOverrides: undefined,
-                          engineArgs: Object.keys(newEngineArgs).length > 0 ? newEngineArgs : undefined,
+                          engineArgs: setDynamoParallelismEngineArgs(prev.engineArgs, null),
                         };
                       })
                     }
