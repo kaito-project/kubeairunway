@@ -371,12 +371,15 @@ wait_for_epp "${MODEL_A_NAME}"
 wait_for_epp "${MODEL_B_NAME}"
 
 # ---------------------------------------------------------------------------
-# Step 13: Confirm Istio DestinationRules were created for EPPs
+# Step 13: Apply demo-specific Istio DestinationRules for EPPs
 # ---------------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo " Step 13: Confirm Istio DestinationRules were created for EPPs"
+echo " Step 13: Apply demo-specific Istio DestinationRules for EPPs"
 echo "============================================================"
+
+kubectl apply -f "${SCRIPT_DIR}/manifests/destinationrules.yaml"
+ok "Demo DestinationRules applied"
 
 wait_for_dr() {
   local name="$1"

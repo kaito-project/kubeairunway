@@ -10,6 +10,11 @@ create the HTTPRoute yourself and reference it via `spec.gateway.httpRouteRef`.
 This prevents the controller from auto-creating routes and gives you full control
 over routing rules, which is important when multiple models share one gateway.
 
+Because this demo is Istio-based, it also applies demo-owned
+`DestinationRule` resources for the EPP services. Those mesh-specific resources
+live under [`manifests/destinationrules.yaml`](manifests/destinationrules.yaml)
+instead of being reconciled by the core controller.
+
 ## Architecture
 
 ```
@@ -94,6 +99,8 @@ pods to pull images and start serving).
 | InferencePool | `model-b` | Auto-created by controller |
 | Deployment | `model-a-epp` | Endpoint Picker Proxy for model-a |
 | Deployment | `model-b-epp` | Endpoint Picker Proxy for model-b |
+| DestinationRule | `model-a-epp` | Demo-managed Istio TLS config for EPP |
+| DestinationRule | `model-b-epp` | Demo-managed Istio TLS config for EPP |
 
 ## BYO Gateway Configurations
 If you are using Gateway API with AKS, you might also need add the following configuration to the Gateway resource: 
@@ -121,6 +128,11 @@ conflicts. The **BYO HTTPRoute** pattern solves this:
    ```
 3. The controller still creates the `InferencePool` and `EPP`, but skips HTTPRoute
    creation/deletion for that deployment
+
+For this demo, Istio-specific `DestinationRule` resources are also created from
+[manifests/destinationrules.yaml](manifests/destinationrules.yaml) after the
+EPP workloads come up. That keeps the demo working without teaching the core
+controller about a specific gateway provider.
 
 Each BYO HTTPRoute matches on the `X-Gateway-Model-Name` header (set by BBR)
 so only the correct model's route is matched:
