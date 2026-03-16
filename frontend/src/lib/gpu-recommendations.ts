@@ -1,9 +1,18 @@
 import type { Model, DetailedClusterCapacity } from './api';
 
+export interface MultiNodeRecommendation {
+  nodeCount: number;
+  gpusPerNode: number;
+  totalGpus: number;
+}
+
 export interface GpuRecommendation {
   recommendedGpus: number;
   reason: string;
   alternatives?: number[];
+  multiNode?: MultiNodeRecommendation;
+  /** Estimated GPU memory needed in GB (for recalculation on GPU change) */
+  estimatedMemoryGb?: number;
 }
 
 /**
@@ -41,10 +50,19 @@ export function calculateGpuRecommendation(
   if (!parameterCount) {
     if (model.estimatedGpuMemoryGb && gpuMemoryGb) {
       const gpusNeeded = Math.ceil(model.estimatedGpuMemoryGb / gpuMemoryGb);
-      const capped = Math.min(gpusNeeded, maxNodeGpus);
+      if (gpusNeeded > maxNodeGpus) {
+        const multiNode = buildMultiNode(gpusNeeded, maxNodeGpus);
+        return {
+          recommendedGpus: multiNode.gpusPerNode,
+          reason: `Model needs ~${model.estimatedGpuMemoryGb}GB memory - distributed across ${multiNode.nodeCount} nodes`,
+          multiNode,
+          estimatedMemoryGb: model.estimatedGpuMemoryGb,
+        };
+      }
       return {
-        recommendedGpus: capped,
+        recommendedGpus: gpusNeeded,
         reason: `Model needs ~${model.estimatedGpuMemoryGb}GB memory`,
+        estimatedMemoryGb: model.estimatedGpuMemoryGb,
       };
     }
     return {
@@ -72,19 +90,30 @@ export function calculateGpuRecommendation(
   // If we know GPU memory, use memory-based calculation
   if (gpuMemoryGb && gpuMemoryGb > 0) {
     const gpusNeeded = Math.ceil(estimatedMemoryGb / gpuMemoryGb);
-    const cappedRecommendation = Math.min(gpusNeeded, maxNodeGpus);
+
+    let multiNode: MultiNodeRecommendation | undefined;
+    let cappedRecommendation: number;
+
+    if (gpusNeeded > maxNodeGpus) {
+      multiNode = buildMultiNode(gpusNeeded, maxNodeGpus);
+      cappedRecommendation = multiNode.gpusPerNode;
+    } else {
+      cappedRecommendation = gpusNeeded;
+    }
 
     const alternatives = generateAlternatives(cappedRecommendation, maxNodeGpus);
 
     let reason = `~${estimatedMemoryGb.toFixed(0)}GB needed (${paramsInBillions.toFixed(1)}B params)`;
-    if (cappedRecommendation < gpusNeeded) {
-      reason += ` - needs ${gpusNeeded} GPUs but cluster nodes only have ${maxNodeGpus}`;
+    if (multiNode) {
+      reason += ` - distributed across ${multiNode.nodeCount} nodes`;
     }
 
     return {
       recommendedGpus: cappedRecommendation,
       reason,
       alternatives: alternatives.length > 0 ? alternatives : undefined,
+      multiNode,
+      estimatedMemoryGb,
     };
   }
 
@@ -106,8 +135,15 @@ export function calculateGpuRecommendation(
     sizeCategory = 'very large';
   }
 
-  // Cap at node capacity
-  const cappedRecommendation = Math.min(baseRecommendation, maxNodeGpus);
+  let multiNode: MultiNodeRecommendation | undefined;
+  let cappedRecommendation: number;
+
+  if (baseRecommendation > maxNodeGpus) {
+    multiNode = buildMultiNode(baseRecommendation, maxNodeGpus);
+    cappedRecommendation = multiNode.gpusPerNode;
+  } else {
+    cappedRecommendation = baseRecommendation;
+  }
 
   // Generate alternatives based on node pool optimization
   const alternatives = generateAlternatives(cappedRecommendation, maxNodeGpus);
@@ -115,14 +151,55 @@ export function calculateGpuRecommendation(
   // Build reason message
   let reason = `${sizeCategory} model (${paramsInBillions.toFixed(1)}B params)`;
 
-  if (cappedRecommendation < baseRecommendation) {
-    reason += ` - needs ${baseRecommendation} GPUs, but cluster nodes only have ${maxNodeGpus}`;
+  if (multiNode) {
+    reason += ` - distributed across ${multiNode.nodeCount} nodes`;
   }
 
   return {
     recommendedGpus: cappedRecommendation,
     reason,
     alternatives: alternatives.length > 0 ? alternatives : undefined,
+    multiNode,
+    estimatedMemoryGb,
+  };
+}
+
+/**
+ * Build a MultiNodeRecommendation from total GPUs needed and max per node
+ */
+function buildMultiNode(gpusNeeded: number, maxNodeGpus: number): MultiNodeRecommendation {
+  const nodeCount = Math.ceil(gpusNeeded / maxNodeGpus);
+  return {
+    nodeCount,
+    gpusPerNode: maxNodeGpus,
+    totalGpus: nodeCount * maxNodeGpus,
+  };
+}
+
+/**
+ * Calculate multi-node recommendation based on memory requirements and GPU configuration.
+ * Reusable by DeploymentForm for recalculation when user changes GPU count.
+ *
+ * @param estimatedMemoryGb - Total GPU memory needed for the model
+ * @param gpuMemoryGb - Memory per GPU in GB
+ * @param gpuCount - Number of GPUs per node (user-selected)
+ * @returns MultiNodeRecommendation if model doesn't fit on one node, null otherwise
+ */
+export function calculateMultiNode(
+  estimatedMemoryGb: number,
+  gpuMemoryGb: number,
+  gpuCount: number
+): MultiNodeRecommendation | null {
+  if (gpuMemoryGb <= 0 || gpuCount <= 0) return null;
+
+  const totalMemoryPerNode = gpuCount * gpuMemoryGb;
+  if (estimatedMemoryGb <= totalMemoryPerNode) return null;
+
+  const nodeCount = Math.ceil(estimatedMemoryGb / totalMemoryPerNode);
+  return {
+    nodeCount,
+    gpusPerNode: gpuCount,
+    totalGpus: nodeCount * gpuCount,
   };
 }
 

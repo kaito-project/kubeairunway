@@ -1,4 +1,6 @@
 import { http, HttpResponse } from 'msw'
+import { toModelDeploymentManifest } from '@kubeairunway/shared'
+import type { DeploymentConfig } from '@kubeairunway/shared'
 
 // Use wildcard prefix to match both relative URLs (/api/...) and absolute URLs (http://localhost:3001/api/...)
 const API_BASE = '*/api'
@@ -122,6 +124,23 @@ export const handlers = [
       return HttpResponse.json({ error: { message: 'Deployment not found' } }, { status: 404 })
     }
     return HttpResponse.json(deployment)
+  }),
+
+  http.post(`${API_BASE}/deployments/preview`, async ({ request }) => {
+    const config = await request.json() as DeploymentConfig
+    const manifest = toModelDeploymentManifest({
+      ...config,
+      namespace: config.namespace || 'kubeairunway-system',
+    })
+    return HttpResponse.json({
+      resources: [{
+        kind: 'ModelDeployment',
+        apiVersion: 'kubeairunway.ai/v1alpha1',
+        name: config.name,
+        manifest: manifest as unknown as Record<string, unknown>,
+      }],
+      primaryResource: { kind: 'ModelDeployment', apiVersion: 'kubeairunway.ai/v1alpha1' },
+    })
   }),
 
   http.post(`${API_BASE}/deployments`, async ({ request }) => {

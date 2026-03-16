@@ -410,6 +410,169 @@ func TestStringVal(t *testing.T) {
 	}
 }
 
+// newWorkspaceWithState creates a Workspace with status.state set (KAITO 0.9.0+).
+// Optionally includes conditions for backward-compat / replica tests.
+func newWorkspaceWithState(state string, conditions []interface{}) *unstructured.Unstructured {
+	ws := newWorkspaceWithStatus(conditions)
+	if state != "" {
+		statusMap := ws.Object["status"].(map[string]interface{})
+		statusMap["state"] = state
+	}
+	return ws
+}
+
+func TestTranslateStatusWithStateReady(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("Ready", nil)
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+		t.Errorf("expected Running phase, got %s", result.Phase)
+	}
+	if result.Message != "" {
+		t.Errorf("expected empty message, got %q", result.Message)
+	}
+}
+
+func TestTranslateStatusWithStateNotReady(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("NotReady", nil)
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
+		t.Errorf("expected Deploying phase, got %s", result.Phase)
+	}
+}
+
+func TestTranslateStatusWithStateFailed(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("Failed", nil)
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseFailed {
+		t.Errorf("expected Failed phase, got %s", result.Phase)
+	}
+}
+
+func TestTranslateStatusWithStatePending(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("Pending", nil)
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
+		t.Errorf("expected Pending phase, got %s", result.Phase)
+	}
+}
+
+func TestTranslateStatusWithStateRunning(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("Running", nil)
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseDeploying {
+		t.Errorf("expected Deploying phase, got %s", result.Phase)
+	}
+	if result.Message != "fine-tuning in progress" {
+		t.Errorf("expected message 'fine-tuning in progress', got %q", result.Message)
+	}
+}
+
+func TestTranslateStatusWithStateSucceeded(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("Succeeded", nil)
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+		t.Errorf("expected Running phase, got %s", result.Phase)
+	}
+}
+
+func TestTranslateStatusWithStateUnknown(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("SomeUnknown", nil)
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhasePending {
+		t.Errorf("expected Pending phase, got %s", result.Phase)
+	}
+	if result.Message != "unknown state: SomeUnknown" {
+		t.Errorf("expected message 'unknown state: SomeUnknown', got %q", result.Message)
+	}
+}
+
+func TestTranslateStatusWithEmptyState(t *testing.T) {
+	// Empty state with conditions should fall back to condition-based mapping
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("", []interface{}{
+		map[string]interface{}{
+			"type":   "WorkspaceSucceeded",
+			"status": "True",
+		},
+	})
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+		t.Errorf("expected Running phase from condition fallback, got %s", result.Phase)
+	}
+}
+
+func TestTranslateStatusStateWithReplicas(t *testing.T) {
+	st := NewStatusTranslator()
+	ws := newWorkspaceWithState("Ready", []interface{}{
+		map[string]interface{}{
+			"type":   "WorkspaceSucceeded",
+			"status": "True",
+		},
+	})
+	ws.Object["resource"] = map[string]interface{}{
+		"count": int64(3),
+	}
+
+	result, err := st.TranslateStatus(ws)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kubeairunwayv1alpha1.DeploymentPhaseRunning {
+		t.Errorf("expected Running phase, got %s", result.Phase)
+	}
+	if result.Replicas == nil {
+		t.Fatal("expected non-nil replicas")
+	}
+	if result.Replicas.Desired != 3 {
+		t.Errorf("expected desired replicas 3, got %d", result.Replicas.Desired)
+	}
+	if result.Replicas.Ready != 3 {
+		t.Errorf("expected ready replicas 3, got %d", result.Replicas.Ready)
+	}
+	if result.Replicas.Available != 3 {
+		t.Errorf("expected available replicas 3, got %d", result.Replicas.Available)
+	}
+}
+
 func TestExtractReplicasNoSpec(t *testing.T) {
 	st := NewStatusTranslator()
 	ws := newWorkspaceWithStatus([]interface{}{})

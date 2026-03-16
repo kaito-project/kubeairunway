@@ -113,13 +113,27 @@ export function calculateRequiredGpus(config: DeploymentConfig): {
   }
 
   // Aggregated mode
-  const total = config.replicas * gpusPerReplica;
+  const total = config.replicas * gpusPerReplica * getNodeCountFromOverrides(config.providerOverrides);
   return {
     total,
     maxPerWorker: gpusPerReplica,
     prefillPerWorker: gpusPerReplica,
     decodePerWorker: gpusPerReplica,
   };
+}
+
+/**
+ * Extract nodeCount from providerOverrides structure
+ * Supports Dynamo's VllmWorker multinode config
+ */
+function getNodeCountFromOverrides(overrides?: Record<string, unknown>): number {
+  if (!overrides) return 1;
+  const spec = overrides.spec as Record<string, unknown> | undefined;
+  const services = spec?.services as Record<string, unknown> | undefined;
+  const vllmWorker = services?.VllmWorker as Record<string, unknown> | undefined;
+  const multinode = vllmWorker?.multinode as Record<string, unknown> | undefined;
+  const nodeCount = multinode?.nodeCount as number | undefined;
+  return nodeCount && nodeCount > 1 ? nodeCount : 1;
 }
 
 /**

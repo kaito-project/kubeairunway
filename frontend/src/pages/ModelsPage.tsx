@@ -18,6 +18,9 @@ export function ModelsPage() {
   const [selectedEngines, setSelectedEngines] = useState<Engine[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('curated')
 
+  // Max available GPUs on a single node (accounts for allocated workloads)
+  const maxContiguousAvailable = gpuCapacity?.maxContiguousAvailable
+
   const filteredModels = useMemo(() => {
     if (!models) return []
 
@@ -135,13 +138,13 @@ export function ModelsPage() {
             selectedEngines={selectedEngines}
             onEngineToggle={handleEngineToggle}
           />
-          <ModelGrid models={filteredModels} />
+          <ModelGrid models={filteredModels} gpuCapacityGb={gpuCapacity?.totalMemoryGb} gpuCount={maxContiguousAvailable} />
         </>
       )}
 
       {/* HuggingFace search tab */}
       {activeTab === 'huggingface' && (
-        <HfModelSearch gpuCapacityGb={gpuCapacity?.totalMemoryGb} />
+        <HfModelSearch gpuCapacityGb={gpuCapacity?.totalMemoryGb} gpuCount={maxContiguousAvailable} />
       )}
     </div>
   )

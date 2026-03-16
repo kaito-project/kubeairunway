@@ -40,14 +40,15 @@ const (
 	downloadJobSuffix = "-model-download"
 
 	// defaultBackoffLimit is the number of retries for the download Job
-	defaultBackoffLimit int32 = 3
+	defaultBackoffLimit int32 = 6
 
 	// Resource defaults for the download Job container.
-	// The download job uses hf_xet (chunk-based Xet storage) for fast downloads,
-	// so its resource needs are predictable and I/O-bound rather than CPU/memory-bound.
-	defaultDownloadJobCPURequest    = "100m"
-	defaultDownloadJobMemoryRequest = "512Mi"
-	defaultDownloadJobMemoryLimit   = "1Gi"
+	// The download job uses hf_xet (chunk-based Xet storage) for fast downloads.
+	// Memory needs scale with model size — large models (70B+) with many shards
+	// can require several GiB for concurrent chunk assembly and hash verification.
+	defaultDownloadJobCPURequest    = "500m"
+	defaultDownloadJobMemoryRequest = "2Gi"
+	defaultDownloadJobMemoryLimit   = "8Gi"
 )
 
 // NeedsDownloadJob returns true when a model download Job should be created:

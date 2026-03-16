@@ -1,12 +1,13 @@
 export type Engine = 'vllm' | 'sglang' | 'trtllm' | 'llamacpp';
-export type ModelTask = 'text-generation' | 'chat' | 'fill-mask';
+export type ModelTask = 'text-generation' | 'image-text-to-text';
 
 export interface Model {
   id: string;                    // HuggingFace model ID (e.g., "Qwen/Qwen3-0.6B")
   name: string;                  // Display name
   description: string;           // Brief description
   size: string;                  // Parameter count (e.g., "0.6B")
-  task: ModelTask;
+  task: ModelTask;               // HuggingFace pipeline tag
+  conversational?: boolean;      // Whether model supports chat/instruct format (HF "conversational" tag)
   parameters?: number;           // Actual parameter count
   contextLength?: number;        // Max context length
   license?: string;              // Model license

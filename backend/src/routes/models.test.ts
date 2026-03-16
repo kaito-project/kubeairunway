@@ -68,11 +68,14 @@ describe('Models Routes', () => {
       expect(Array.isArray(data.models)).toBe(true);
     });
 
-    test('returns 500 when HuggingFace API fails', async () => {
+    test('returns empty results when HuggingFace API fails', async () => {
       mockFetchResponse('Internal Server Error', { ok: false, status: 500 });
 
       const res = await app.request('/api/models/search?q=llama');
-      expect(res.status).toBe(500);
+      // Individual pipeline tag failures are handled gracefully — returns 200 with 0 results
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.models).toEqual([]);
     });
   });
 

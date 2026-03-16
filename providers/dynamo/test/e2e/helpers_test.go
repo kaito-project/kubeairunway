@@ -240,3 +240,69 @@ func deleteModelDeployment(t *testing.T, name string) {
 	kubectlMayFail(t, "delete", "modeldeployment", name, "-n", mdNamespace,
 		"--ignore-not-found", "--timeout=2m")
 }
+
+// getDGDServiceField extracts a field from a DynamoGraphDeployment via jsonpath.
+// serviceName is for logging context; the fieldPath should be a full jsonpath expression.
+func getDGDServiceField(t *testing.T, dgdName, namespace, serviceName, fieldPath string) string {
+	t.Helper()
+	out, err := kubectlMayFail(t, "get", "dynamographdeployments.nvidia.com", dgdName,
+		"-n", namespace, "-o", fmt.Sprintf("jsonpath=%s", fieldPath))
+	if err != nil {
+		t.Logf("failed to get DGD field %s for service %s: %v", fieldPath, serviceName, err)
+		return ""
+	}
+	return out
+}
+
+// getWorkerPodNodes returns the node names where worker pods for a ModelDeployment
+// are scheduled. It selects pods by the nvidia.com/dynamo-graph-deployment-name label
+// (set by the Dynamo platform operator via Grove/LWS) and filters for worker pods
+// using nvidia.com/dynamo-component-type=worker.
+func getWorkerPodNodes(t *testing.T, mdName, namespace string) []string {
+	t.Helper()
+	out, err := kubectlMayFail(t, "get", "pods",
+		"-l", fmt.Sprintf("nvidia.com/dynamo-graph-deployment-name=%s,nvidia.com/dynamo-component-type=worker", mdName),
+		"-n", namespace,
+		"-o", "jsonpath={.items[*].spec.nodeName}")
+	if err != nil {
+		t.Logf("failed to get worker pod nodes: %v", err)
+		return nil
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return nil
+	}
+	return strings.Fields(out)
+}
+
+// collectMultiNodeDebugInfo extends collectDebugInfo with multi-node specific
+// diagnostics: pod node assignments and DGD service specs.
+func collectMultiNodeDebugInfo(t *testing.T, mdName, namespace string) {
+	t.Helper()
+
+	// Collect standard debug info first.
+	collectDebugInfo(t, mdName, namespace)
+
+	t.Log("=== MULTI-NODE DEBUG INFO START ===")
+
+	// Pod node assignments.
+	if out, err := kubectlMayFail(t, "get", "pods",
+		"-l", fmt.Sprintf("nvidia.com/dynamo-graph-deployment-name=%s", mdName),
+		"-n", namespace,
+		"-o", "wide"); err == nil {
+		t.Logf("Worker pods (wide):\n%s", out)
+	}
+
+	// DGD full spec for service inspection.
+	if out, err := kubectlMayFail(t, "get", "dynamographdeployments.nvidia.com", mdName,
+		"-n", namespace, "-o", "jsonpath={.spec.services}"); err == nil {
+		t.Logf("DGD services spec:\n%s", out)
+	}
+
+	// Node status overview.
+	if out, err := kubectlMayFail(t, "get", "nodes", "-o", "wide"); err == nil {
+		t.Logf("Cluster nodes:\n%s", out)
+	}
+
+	t.Log("=== MULTI-NODE DEBUG INFO END ===")
+}

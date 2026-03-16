@@ -140,7 +140,7 @@ describe('hfModelToModel', () => {
     expect(model.size).toBe('Unknown')
   })
 
-  it('maps chat pipeline tag to chat task', () => {
+  it('maps conversational pipeline tag to text-generation task', () => {
     const hfModel: HfModelSearchResult = {
       id: 'test/chat-model',
       author: 'test',
@@ -156,6 +156,7 @@ describe('hfModelToModel', () => {
     }
 
     const model = hfModelToModel(hfModel)
-    expect(model.task).toBe('chat')
+    expect(model.task).toBe('text-generation')
+    expect(model.conversational).toBe(true)
   })
 })

@@ -1,0 +1,34 @@
+apiVersion: kubeairunway.ai/v1alpha1
+kind: ModelDeployment
+metadata:
+  name: qwen25-72b-multinode
+  namespace: default
+spec:
+  model:
+    id: Qwen/Qwen2.5-72B-Instruct
+    source: huggingface
+    storage:
+      volumes:
+      - name: model-cache
+        purpose: modelCache
+        claimName: shared-amlfs-storage
+        mountPath: /model-cache
+  provider:
+    name: dynamo
+    overrides:
+      spec:
+        services:
+          VllmWorker:
+            multinode:
+              nodeCount: 2
+  engine:
+    type: vllm
+    contextLength: 4096
+    args:
+      tensor-parallel-size: "2"
+  resources:
+    gpu:
+      count: 2
+      type: nvidia.com/gpu
+  scaling:
+    replicas: 1

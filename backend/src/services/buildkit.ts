@@ -13,6 +13,9 @@ export const BUILDKIT_CONFIG = {
   },
 } as const;
 
+const BUILD_STATUS_TIMEOUT_MS = 2000;
+const PROCESS_TERMINATION_GRACE_MS = 500;
+
 /**
  * BuildKit builder status
  */
@@ -64,6 +67,21 @@ class BuildKitService {
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let settled = false;
+      let forceKillTimeout: ReturnType<typeof setTimeout> | undefined;
+
+      const finish = (result: CommandResult) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeout);
+        if (forceKillTimeout) {
+          clearTimeout(forceKillTimeout);
+        }
+        resolve(result);
+      };
 
       logger.debug({ command, args }, `Executing: ${command} ${args.join(' ')}`);
 
@@ -76,6 +94,11 @@ class BuildKitService {
       const timeout = setTimeout(() => {
         timedOut = true;
         proc.kill('SIGTERM');
+        forceKillTimeout = setTimeout(() => {
+          if (!settled) {
+            proc.kill('SIGKILL');
+          }
+        }, PROCESS_TERMINATION_GRACE_MS);
       }, timeoutMs);
 
       proc.stdout.on('data', (data: Buffer) => {
@@ -95,17 +118,15 @@ class BuildKitService {
       });
 
       proc.on('close', (code) => {
-        clearTimeout(timeout);
-
         if (timedOut) {
-          resolve({
+          finish({
             success: false,
             stdout,
             stderr: stderr + '\nCommand timed out',
             exitCode: null,
           });
         } else {
-          resolve({
+          finish({
             success: code === 0,
             stdout,
             stderr,
@@ -115,8 +136,7 @@ class BuildKitService {
       });
 
       proc.on('error', (err) => {
-        clearTimeout(timeout);
-        resolve({
+        finish({
           success: false,
           stdout,
           stderr: `Failed to execute command: ${err.message}`,
@@ -171,7 +191,14 @@ class BuildKitService {
    */
   async getBuilderStatus(): Promise<BuilderStatus> {
     // List all builders
-    const result = await this.execute(this.dockerPath, ['buildx', 'ls']);
+    // `docker buildx ls` can block when Docker Desktop/daemon is unavailable,
+    // so status checks use a short timeout and degrade to a non-ready state.
+    const result = await this.execute(
+      this.dockerPath,
+      ['buildx', 'ls'],
+      undefined,
+      BUILD_STATUS_TIMEOUT_MS
+    );
 
     if (!result.success) {
       return {

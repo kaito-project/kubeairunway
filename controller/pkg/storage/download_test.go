@@ -141,6 +141,13 @@ func TestEnsureDownloadJobCreation(t *testing.T) {
 	if job.Spec.Template.Spec.Containers[0].Image != DefaultDownloadJobImage {
 		t.Errorf("expected image %s, got %s", DefaultDownloadJobImage, job.Spec.Template.Spec.Containers[0].Image)
 	}
+	expectedBackoffLimit := int32(6)
+	if job.Spec.BackoffLimit == nil {
+		t.Fatal("expected backoff limit to be set")
+	}
+	if *job.Spec.BackoffLimit != expectedBackoffLimit {
+		t.Errorf("expected backoff limit %d, got %d", expectedBackoffLimit, *job.Spec.BackoffLimit)
+	}
 
 	// Verify args use exec form (not shell) to prevent injection.
 	// The container image has ENTRYPOINT ["hf"], so Args appends to it.
@@ -184,21 +191,21 @@ func TestEnsureDownloadJobCreation(t *testing.T) {
 	}
 
 	// Verify resource requests and limits
-	expectedCPURequest := resource.MustParse("100m")
+	expectedCPURequest := resource.MustParse("500m")
 	if cpuReq, ok := container.Resources.Requests[corev1.ResourceCPU]; !ok {
 		t.Error("expected CPU request to be set")
 	} else if !cpuReq.Equal(expectedCPURequest) {
 		t.Errorf("expected CPU request %s, got %s", expectedCPURequest.String(), cpuReq.String())
 	}
 
-	expectedMemoryRequest := resource.MustParse("512Mi")
+	expectedMemoryRequest := resource.MustParse("2Gi")
 	if memReq, ok := container.Resources.Requests[corev1.ResourceMemory]; !ok {
 		t.Error("expected memory request to be set")
 	} else if !memReq.Equal(expectedMemoryRequest) {
 		t.Errorf("expected memory request %s, got %s", expectedMemoryRequest.String(), memReq.String())
 	}
 
-	expectedMemoryLimit := resource.MustParse("1Gi")
+	expectedMemoryLimit := resource.MustParse("8Gi")
 	if memLim, ok := container.Resources.Limits[corev1.ResourceMemory]; !ok {
 		t.Error("expected memory limit to be set")
 	} else if !memLim.Equal(expectedMemoryLimit) {

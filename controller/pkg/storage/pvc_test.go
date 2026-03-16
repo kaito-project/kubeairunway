@@ -316,7 +316,7 @@ func TestEnsurePVCsPending(t *testing.T) {
 		},
 	}
 
-	// Pre-create a pending PVC
+	// Pre-create a pending PVC owned by this MD
 	existingPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-model-model-cache",
@@ -341,8 +341,10 @@ func TestEnsurePVCsPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if allReady {
-		t.Error("expected allReady=false for Pending PVC")
+	// Managed PVCs in Pending phase should be treated as ready so the
+	// download Job can be created, which triggers WaitForFirstConsumer binding.
+	if !allReady {
+		t.Error("expected allReady=true for Pending managed PVC (WaitForFirstConsumer compatible)")
 	}
 }
 

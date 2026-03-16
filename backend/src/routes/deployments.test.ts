@@ -1,6 +1,7 @@
 import { describe, test, expect, afterEach } from 'bun:test';
 import app from '../hono-app';
 import { kubernetesService } from '../services/kubernetes';
+import { configService } from '../services/config';
 import { mockServiceMethod } from '../test/helpers';
 import {
   mockDeployment,
@@ -9,12 +10,463 @@ import {
   mockPodFailureReasons,
 } from '../test/fixtures';
 
+// Base valid deployment body for reuse in tests
+const validDeploymentBody = {
+  name: 'test-deploy',
+  modelId: 'meta-llama/Llama-3.1-8B-Instruct',
+  engine: 'vllm',
+  namespace: 'default',
+  mode: 'aggregated',
+  routerMode: 'none',
+  replicas: 1,
+  enforceEager: false,
+  enablePrefixCaching: false,
+  trustRemoteCode: false,
+};
+
 describe('Deployment Routes', () => {
   const restores: Array<() => void> = [];
 
   afterEach(() => {
     restores.forEach((r) => r());
     restores.length = 0;
+  });
+
+  describe('POST /api/deployments/preview', () => {
+    test('returns manifest without storage', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validDeploymentBody),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources).toBeArray();
+      expect(data.resources.length).toBe(1);
+      expect(data.resources[0].kind).toBe('ModelDeployment');
+      expect(data.resources[0].name).toBe('test-deploy');
+      expect(data.primaryResource.kind).toBe('ModelDeployment');
+      expect(data.primaryResource.apiVersion).toBe('kubeairunway.ai/v1alpha1');
+      // No storage in manifest
+      expect(data.resources[0].manifest.spec.model.storage).toBeUndefined();
+    });
+
+    test('returns manifest with storage volumes', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const bodyWithStorage = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            {
+              name: 'model-cache',
+              purpose: 'modelCache',
+              mountPath: '/model-cache',
+              size: '100Gi',
+              accessMode: 'ReadWriteMany',
+            },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyWithStorage),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      const spec = data.resources[0].manifest.spec;
+      expect(spec.model.storage).toBeDefined();
+      expect(spec.model.storage.volumes).toBeArray();
+      expect(spec.model.storage.volumes.length).toBe(1);
+      expect(spec.model.storage.volumes[0].name).toBe('model-cache');
+      expect(spec.model.storage.volumes[0].size).toBe('100Gi');
+    });
+  });
+
+  describe('POST /api/deployments - storage validation', () => {
+    test('succeeds with valid storage config', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'createDeployment', async () => undefined),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getClusterGpuCapacity', async () => ({
+          totalGpus: 8,
+          availableGpus: 4,
+          maxContiguousAvailable: 4,
+          nodes: [],
+        })),
+      );
+
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            {
+              name: 'cache-vol',
+              purpose: 'modelCache',
+              mountPath: '/model-cache',
+              size: '50Gi',
+              accessMode: 'ReadWriteMany',
+            },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(201);
+    });
+
+    test('rejects duplicate volume names', async () => {
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'same-name', purpose: 'custom', mountPath: '/data1', claimName: 'pvc-1' },
+            { name: 'same-name', purpose: 'custom', mountPath: '/data2', claimName: 'pvc-2' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects missing claimName when no size', async () => {
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'my-vol', purpose: 'custom', mountPath: '/data' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects readOnly with size set', async () => {
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'my-vol', purpose: 'custom', mountPath: '/data', size: '10Gi', readOnly: true },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects custom purpose without mountPath', async () => {
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'my-vol', purpose: 'custom', claimName: 'existing-pvc' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects system path mountPath', async () => {
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'my-vol', purpose: 'custom', mountPath: '/proc/data', claimName: 'pvc-1' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects more than 8 volumes', async () => {
+      const volumes = Array.from({ length: 9 }, (_, i) => ({
+        name: `vol-${i}`,
+        purpose: 'custom' as const,
+        mountPath: `/data-${i}`,
+        claimName: `pvc-${i}`,
+      }));
+
+      const body = {
+        ...validDeploymentBody,
+        storage: { volumes },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects accessMode without size', async () => {
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'my-vol', purpose: 'custom', mountPath: '/data', claimName: 'pvc-1', accessMode: 'ReadWriteOnce' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects invalid PVC size format', async () => {
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'my-vol', purpose: 'custom', mountPath: '/data', size: '100GIB' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('accepts valid Kubernetes quantity formats for size', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      for (const size of ['100Gi', '500Mi', '1Ti', '1024', '0.5', '1e3', '100M', '50Ki']) {
+        const body = {
+          ...validDeploymentBody,
+          storage: {
+            volumes: [
+              { name: 'my-vol', purpose: 'custom', mountPath: '/data', size },
+            ],
+          },
+        };
+
+        const res = await app.request('/api/deployments/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(200);
+      }
+    });
+
+    test('rejects malformed quantity strings like bare dot or double dots', async () => {
+      for (const size of ['.', '1..2', '..5Gi', '.Gi']) {
+        const body = {
+          ...validDeploymentBody,
+          storage: {
+            volumes: [
+              { name: 'my-vol', purpose: 'custom', mountPath: '/data', size },
+            ],
+          },
+        };
+
+        const res = await app.request('/api/deployments/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(400);
+      }
+    });
+
+    test('rejects defaulted mount path collision with explicit mount path', async () => {
+      // modelCache defaults to /model-cache; another volume explicitly uses /model-cache
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'cache', purpose: 'modelCache', size: '50Gi' },
+            { name: 'other', purpose: 'custom', mountPath: '/model-cache', claimName: 'other-pvc' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    test('rejects defaulted claim name collision with explicit claim name', async () => {
+      // Managed vol {name:'cache', size:'10Gi'} defaults claimName to test-deploy-cache;
+      // another volume explicitly uses claimName: test-deploy-cache
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            { name: 'cache', purpose: 'modelCache', mountPath: '/model-cache', size: '10Gi' },
+            { name: 'other', purpose: 'custom', mountPath: '/other', claimName: 'test-deploy-cache' },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /api/deployments/preview - admission defaults', () => {
+    test('applies default claimName and accessMode for controller-created PVCs', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            {
+              name: 'cache',
+              purpose: 'modelCache',
+              size: '100Gi',
+              // Omit claimName and accessMode — webhook would default them
+            },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      const vol = data.resources[0].manifest.spec.model.storage.volumes[0];
+      expect(vol.claimName).toBe('test-deploy-cache');
+      expect(vol.accessMode).toBe('ReadWriteMany');
+      expect(vol.mountPath).toBe('/model-cache');
+    });
+
+    test('applies default mountPath for compilationCache purpose', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            {
+              name: 'compile',
+              purpose: 'compilationCache',
+              size: '50Gi',
+            },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      const vol = data.resources[0].manifest.spec.model.storage.volumes[0];
+      expect(vol.mountPath).toBe('/compilation-cache');
+      expect(vol.claimName).toBe('test-deploy-compile');
+      expect(vol.accessMode).toBe('ReadWriteMany');
+    });
+
+    test('does not overwrite explicitly set fields', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const body = {
+        ...validDeploymentBody,
+        storage: {
+          volumes: [
+            {
+              name: 'cache',
+              purpose: 'modelCache',
+              mountPath: '/custom/path',
+              size: '100Gi',
+              claimName: 'test-deploy-cache',
+              accessMode: 'ReadWriteOnce',
+            },
+          ],
+        },
+      };
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      const vol = data.resources[0].manifest.spec.model.storage.volumes[0];
+      // Explicit values preserved, not overwritten by defaults
+      expect(vol.mountPath).toBe('/custom/path');
+      expect(vol.accessMode).toBe('ReadWriteOnce');
+    });
   });
 
   describe('GET /api/deployments/:name/manifest', () => {
@@ -130,6 +582,54 @@ describe('Deployment Routes', () => {
 
       const res = await app.request('/api/deployments/test-deploy/logs?podName=wrong-pod');
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /api/deployments', () => {
+    test('accepts deployment with providerOverrides', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'createDeployment', async () => undefined),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getClusterGpuCapacity', async () => ({
+          totalGpus: 16,
+          allocatedGpus: 0,
+          availableGpus: 16,
+          maxContiguousAvailable: 8,
+          nodes: [],
+        })),
+      );
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'test-multinode',
+          modelId: 'Qwen/Qwen2.5-72B',
+          engine: 'vllm',
+          provider: 'dynamo',
+          resources: { gpu: 1 },
+          providerOverrides: {
+            spec: {
+              services: {
+                VllmWorker: {
+                  multinode: { nodeCount: 2 }
+                }
+              }
+            }
+          },
+          engineArgs: {
+            'tensor-parallel-size': '1',
+          },
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const data = await res.json();
+      expect(data.name).toBe('test-multinode');
     });
   });
 });

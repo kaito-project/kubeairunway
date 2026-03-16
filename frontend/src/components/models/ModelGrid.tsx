@@ -5,9 +5,11 @@ import { useNavigate } from 'react-router-dom'
 
 interface ModelGridProps {
   models: Model[]
+  gpuCapacityGb?: number
+  gpuCount?: number
 }
 
-export function ModelGrid({ models }: ModelGridProps) {
+export function ModelGrid({ models, gpuCapacityGb, gpuCount }: ModelGridProps) {
   const navigate = useNavigate()
 
   if (models.length === 0) {
@@ -34,7 +36,7 @@ export function ModelGrid({ models }: ModelGridProps) {
           className="animate-slide-up"
           style={{ animationDelay: `${Math.min(index, 12) * 50}ms`, animationFillMode: 'both' }}
         >
-          <ModelCard model={model} />
+          <ModelCard model={model} gpuCapacityGb={gpuCapacityGb} gpuCount={gpuCount} />
         </div>
       ))}
     </div>

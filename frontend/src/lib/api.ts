@@ -48,6 +48,10 @@ export type {
   GatewayStatus,
   GatewayInfo,
   GatewayModelInfo,
+  StorageVolume,
+  StorageSpec,
+  VolumePurpose,
+  PersistentVolumeAccessMode,
 } from '@kubeairunway/shared';
 
 // Settings types

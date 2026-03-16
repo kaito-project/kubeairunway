@@ -48,8 +48,15 @@ func HasStorageVolumes(md *kubeairunwayv1alpha1.ModelDeployment) bool {
 	return md.Spec.Model.Storage != nil && len(md.Spec.Model.Storage.Volumes) > 0
 }
 
-// EnsurePVCs ensures that all managed PVCs exist and are bound.
-// Returns allReady=true only when ALL managed PVCs are in Bound phase.
+// EnsurePVCs ensures that all storage volume PVCs exist and are usable.
+//
+// For managed PVCs (Size is set): returns ready once the PVC has been created,
+// even if it is still in Pending phase. This avoids a deadlock with
+// WaitForFirstConsumer storage classes, where the PVC won't bind until a Pod
+// (such as the model-download Job) references it.
+//
+// For pre-existing PVCs (Size is nil): returns ready only when the PVC is Bound,
+// since these are outside the controller's control.
 func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.ModelDeployment) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -139,13 +146,16 @@ func EnsurePVCs(ctx context.Context, c client.Client, md *kubeairunwayv1alpha1.M
 			continue // requeue → next reconcile creates fresh PVC
 		}
 
-		// PVC exists, check phase
+		// PVC exists and is owned by this MD — check phase.
+		// For managed PVCs, Pending is acceptable: the download Job or inference
+		// pod will act as the first consumer and trigger WaitForFirstConsumer binding.
 		switch existing.Status.Phase {
 		case corev1.ClaimBound:
 			logger.V(1).Info("PVC is Bound", "name", claimName)
 		case corev1.ClaimPending:
-			logger.Info("PVC is Pending", "name", claimName)
-			allReady = false
+			logger.Info("PVC is Pending (will bind when a consumer pod is scheduled)", "name", claimName)
+			// Don't set allReady=false — proceed to create the download Job
+			// which will reference this PVC and trigger binding.
 		case corev1.ClaimLost:
 			return false, fmt.Errorf("PVC %s is in Lost phase", claimName)
 		default:

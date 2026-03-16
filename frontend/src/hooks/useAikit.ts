@@ -100,7 +100,8 @@ export function premadeModelToModel(premadeModel: PremadeModel) {
     name: `${premadeModel.name} ${premadeModel.size}`,
     description: premadeModel.description || `${premadeModel.name} - ${premadeModel.license} license`,
     size: premadeModel.size,
-    task: 'chat' as const,
+    task: 'text-generation' as const,
+    conversational: true,
     supportedEngines: ['llamacpp'] as const, // AIKit uses llama.cpp for CPU-capable inference
     license: premadeModel.license,
     // KAITO-specific fields

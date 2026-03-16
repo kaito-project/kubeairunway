@@ -106,6 +106,43 @@ describe('calculateRequiredGpus', () => {
     expect(result.maxPerWorker).toBe(2);
   });
 
+  test('calculates for aggregated mode with providerOverrides nodeCount', () => {
+    const result = calculateRequiredGpus({
+      ...baseConfig,
+      replicas: 1,
+      resources: { gpu: 1 },
+      providerOverrides: {
+        spec: {
+          services: {
+            VllmWorker: {
+              multinode: { nodeCount: 2 }
+            }
+          }
+        }
+      },
+    });
+    expect(result.total).toBe(2); // 1 replica * 1 GPU * 2 nodes
+    expect(result.maxPerWorker).toBe(1);
+  });
+
+  test('calculates for aggregated mode with providerOverrides nodeCount and multiple replicas', () => {
+    const result = calculateRequiredGpus({
+      ...baseConfig,
+      replicas: 3,
+      resources: { gpu: 4 },
+      providerOverrides: {
+        spec: {
+          services: {
+            VllmWorker: {
+              multinode: { nodeCount: 2 }
+            }
+          }
+        }
+      },
+    });
+    expect(result.total).toBe(24); // 3 replicas * 4 GPUs * 2 nodes
+  });
+
   test('calculates for disaggregated mode', () => {
     const result = calculateRequiredGpus({
       ...baseConfig,

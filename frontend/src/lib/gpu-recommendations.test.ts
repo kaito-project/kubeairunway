@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateGpuRecommendation,
+  calculateMultiNode,
   formatGpuCount,
 } from './gpu-recommendations';
 import type { Model, DetailedClusterCapacity } from './api';
@@ -159,14 +160,18 @@ describe('calculateGpuRecommendation', () => {
       expect(result.recommendedGpus).toBe(2);
     });
 
-    it('caps recommendation at maxNodeGpuCapacity', () => {
+    it('returns multi-node recommendation when model exceeds single node capacity', () => {
       const model = createModel({ parameterCount: 400_000_000_000, estimatedGpuMemoryGb: 800 });
       const capacity = createCapacity({ totalMemoryGb: 80, maxNodeGpuCapacity: 4 });
       const result = calculateGpuRecommendation(model, capacity);
-      
-      // 800GB / 80GB = 10, but capped at 4
-      expect(result.recommendedGpus).toBe(4);
-      expect(result.reason).toContain('needs 10 GPUs but cluster nodes only have 4');
+
+      // 800GB / 80GB = 10 GPUs needed, 4 per node -> 3 nodes
+      expect(result.recommendedGpus).toBe(4); // gpusPerNode
+      expect(result.multiNode).toBeDefined();
+      expect(result.multiNode!.nodeCount).toBe(3); // ceil(10/4) = 3
+      expect(result.multiNode!.gpusPerNode).toBe(4);
+      expect(result.multiNode!.totalGpus).toBe(12); // 3 * 4
+      expect(result.reason).toContain('distributed across 3 nodes');
     });
   });
 
@@ -233,14 +238,112 @@ describe('calculateGpuRecommendation', () => {
       expect(result.recommendedGpus).toBe(1);
     });
 
-    it('handles maxNodeGpuCapacity of 1', () => {
+    it('handles maxNodeGpuCapacity of 1 with multi-node', () => {
       const model = createModel({ parameterCount: 70_000_000_000, estimatedGpuMemoryGb: 160 });
       const capacity = createCapacity({ totalMemoryGb: 80, maxNodeGpuCapacity: 1 });
       const result = calculateGpuRecommendation(model, capacity);
-      
+
       expect(result.recommendedGpus).toBe(1);
-      expect(result.reason).toContain('needs 2 GPUs but cluster nodes only have 1');
+      expect(result.multiNode).toBeDefined();
+      expect(result.multiNode!.nodeCount).toBe(2); // ceil(2/1) = 2
+      expect(result.reason).toContain('distributed across 2 nodes');
     });
+  });
+
+  describe('multi-node recommendations', () => {
+    it('returns multiNode when model exceeds single node', () => {
+      // Qwen2.5-72B scenario: ~146GB on 1-GPU 80GB nodes
+      const model = createModel({ parameterCount: 72_000_000_000, estimatedGpuMemoryGb: 146 });
+      const capacity = createCapacity({ totalMemoryGb: 80, maxNodeGpuCapacity: 1 });
+      const result = calculateGpuRecommendation(model, capacity);
+
+      expect(result.recommendedGpus).toBe(1);
+      expect(result.multiNode).toBeDefined();
+      expect(result.multiNode!.nodeCount).toBe(2);
+      expect(result.multiNode!.gpusPerNode).toBe(1);
+      expect(result.multiNode!.totalGpus).toBe(2);
+    });
+
+    it('returns multiNode for multi-GPU nodes when model still exceeds', () => {
+      // 800GB model on 4-GPU 80GB nodes (320GB per node)
+      const model = createModel({ parameterCount: 400_000_000_000, estimatedGpuMemoryGb: 800 });
+      const capacity = createCapacity({ totalMemoryGb: 80, maxNodeGpuCapacity: 4 });
+      const result = calculateGpuRecommendation(model, capacity);
+
+      expect(result.multiNode).toBeDefined();
+      expect(result.multiNode!.nodeCount).toBe(3); // ceil(10/4)
+      expect(result.multiNode!.gpusPerNode).toBe(4);
+    });
+
+    it('does not return multiNode when model fits on one node', () => {
+      const model = createModel({ parameterCount: 8_000_000_000, estimatedGpuMemoryGb: 16 });
+      const capacity = createCapacity({ totalMemoryGb: 80, maxNodeGpuCapacity: 8 });
+      const result = calculateGpuRecommendation(model, capacity);
+
+      expect(result.recommendedGpus).toBe(1);
+      expect(result.multiNode).toBeUndefined();
+    });
+
+    it('returns multiNode in parameter-based heuristic fallback', () => {
+      // Very large model (80B+) with no GPU memory info -> heuristic = 8 GPUs, max 2
+      const model = createModel({ parameterCount: 100_000_000_000 });
+      const capacity = createCapacity({ totalMemoryGb: 0, maxNodeGpuCapacity: 2 });
+      const result = calculateGpuRecommendation(model, capacity);
+
+      // Heuristic: 100B -> 8 GPUs base, max node = 2
+      expect(result.recommendedGpus).toBe(2);
+      expect(result.multiNode).toBeDefined();
+      expect(result.multiNode!.nodeCount).toBe(4); // ceil(8/2)
+    });
+
+    it('includes estimatedMemoryGb in result for recalculation', () => {
+      const model = createModel({ parameterCount: 70_000_000_000, estimatedGpuMemoryGb: 140 });
+      const capacity = createCapacity({ totalMemoryGb: 80, maxNodeGpuCapacity: 8 });
+      const result = calculateGpuRecommendation(model, capacity);
+
+      expect(result.estimatedMemoryGb).toBe(140);
+    });
+  });
+});
+
+describe('calculateMultiNode', () => {
+  it('returns null when model fits on one node', () => {
+    // 16GB model, 80GB GPU, 1 GPU per node = 80GB per node
+    const result = calculateMultiNode(16, 80, 1);
+    expect(result).toBeNull();
+  });
+
+  it('returns multi-node when model exceeds one node', () => {
+    // 146GB model, 80GB GPU, 1 GPU per node
+    const result = calculateMultiNode(146, 80, 1);
+    expect(result).not.toBeNull();
+    expect(result!.nodeCount).toBe(2);
+    expect(result!.gpusPerNode).toBe(1);
+    expect(result!.totalGpus).toBe(2);
+  });
+
+  it('reduces nodeCount when GPU count increases', () => {
+    // 146GB model, 80GB GPU, 4 GPUs per node = 320GB per node -> fits on 1
+    const result = calculateMultiNode(146, 80, 4);
+    expect(result).toBeNull();
+  });
+
+  it('increases nodeCount when GPU count decreases', () => {
+    // 800GB model, 80GB GPU, 2 GPUs per node = 160GB per node
+    const result = calculateMultiNode(800, 80, 2);
+    expect(result).not.toBeNull();
+    expect(result!.nodeCount).toBe(5); // ceil(800/160)
+    expect(result!.gpusPerNode).toBe(2);
+  });
+
+  it('returns null for zero or negative gpuMemoryGb', () => {
+    expect(calculateMultiNode(100, 0, 1)).toBeNull();
+    expect(calculateMultiNode(100, -1, 1)).toBeNull();
+  });
+
+  it('returns null for zero or negative gpuCount', () => {
+    expect(calculateMultiNode(100, 80, 0)).toBeNull();
+    expect(calculateMultiNode(100, 80, -1)).toBeNull();
   });
 });
 

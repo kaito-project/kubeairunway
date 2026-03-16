@@ -98,18 +98,14 @@ export function DeployPage() {
         <div className="flex flex-wrap gap-4 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Cpu className="h-4 w-4" />
-            {model.estimatedGpuMemory ? (
-                <div className="flex items-center gap-2">
-                  <span>GPU: ~{model.estimatedGpuMemory}</span>
-                  {detailedCapacity?.totalMemoryGb && model.estimatedGpuMemoryGb && (
-                    <GpuFitIndicator
-                      estimatedGpuMemoryGb={model.estimatedGpuMemoryGb}
-                      clusterCapacityGb={detailedCapacity.totalMemoryGb}
-                    />
-                  )}
-                </div>
+            {model.estimatedGpuMemoryGb && detailedCapacity?.totalMemoryGb ? (
+                <GpuFitIndicator
+                  estimatedGpuMemoryGb={model.estimatedGpuMemoryGb}
+                  clusterCapacityGb={detailedCapacity.totalMemoryGb}
+                  gpuCount={detailedCapacity.maxContiguousAvailable}
+                />
             ) : (
-              <span>GPU: {model.minGpuMemory || 'N/A'}</span>
+              <span>GPU: {model.estimatedGpuMemory || model.minGpuMemory || 'N/A'}</span>
             )}
           </div>
 
@@ -122,7 +118,7 @@ export function DeployPage() {
 
           <div className="flex items-center gap-2 text-muted-foreground">
             <HardDrive className="h-4 w-4" />
-            <span className="capitalize">{model.task.replace('-', ' ')}</span>
+            <span>{model.conversational ? 'Chat' : model.task === 'image-text-to-text' ? 'Multimodal' : 'Text Generation'}</span>
           </div>
         </div>
 

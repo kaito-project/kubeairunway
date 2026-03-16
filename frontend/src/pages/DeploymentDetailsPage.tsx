@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { DeploymentStatusBadge } from '@/components/deployments/DeploymentStatusBadge'
 import { MetricsTab } from '@/components/metrics'
 import { formatRelativeTime, generateAynaUrl } from '@/lib/utils'
-import { Loader2, ArrowLeft, Trash2, Copy, Terminal, MessageSquare, Globe } from 'lucide-react'
+import { Loader2, ArrowLeft, Trash2, Copy, Terminal, MessageSquare, Globe, HardDrive } from 'lucide-react'
 import { useState } from 'react'
 import {
   Dialog,
@@ -186,6 +186,62 @@ export function DeploymentDetailsPage() {
         <h2 className="text-lg font-heading">Model</h2>
         <p className="text-sm text-muted-foreground mt-1">{deployment.modelId}</p>
       </div>
+
+      {/* Storage Volumes - shown when storage is configured */}
+      {deployment.storage?.volumes && deployment.storage.volumes.length > 0 && (
+        <div className="glass-panel animate-slide-up" style={{ animationDelay: '120ms', animationFillMode: 'both' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <HardDrive className="h-5 w-5" />
+            <h2 className="text-lg font-heading">Storage</h2>
+            <Badge variant="outline" className="text-xs">
+              {deployment.storage.volumes.length} volume{deployment.storage.volumes.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
+          <div className="space-y-3">
+            {deployment.storage.volumes.map((vol) => (
+              <div
+                key={vol.name}
+                className="rounded-lg border border-white/5 bg-white/[0.02] p-3"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="text-sm font-mono-code font-medium">{vol.name}</code>
+                  {vol.purpose && vol.purpose !== 'custom' && (
+                    <Badge variant="secondary" className="text-xs">
+                      {vol.purpose === 'modelCache' ? 'Model Cache' : 'Compilation Cache'}
+                    </Badge>
+                  )}
+                  {vol.readOnly && (
+                    <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-500/50">
+                      Read Only
+                    </Badge>
+                  )}
+                  {vol.accessMode && (
+                    <Badge variant="outline" className="text-xs">
+                      {vol.accessMode === 'ReadWriteOnce' ? 'Single node' :
+                       vol.accessMode === 'ReadWriteMany' ? 'Multi-node' :
+                       vol.accessMode === 'ReadOnlyMany' ? 'Multi-node read only' :
+                       'Single pod'}
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-2 text-sm text-muted-foreground space-y-1">
+                  {vol.mountPath && (
+                    <p>Path: <code className="font-mono-code">{vol.mountPath}</code></p>
+                  )}
+                  {vol.size ? (
+                    <p>
+                      New disk &middot; {vol.size}
+                      {vol.storageClassName && ` &middot; ${vol.storageClassName}`}
+                    </p>
+                  ) : vol.claimName ? (
+                    <p>Existing disk &middot; <code className="font-mono-code">{vol.claimName}</code></p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Pending Explanation - shown when deployment is Pending */}
       {deployment.phase === 'Pending' && (
