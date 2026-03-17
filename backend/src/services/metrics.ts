@@ -22,6 +22,10 @@ const DEFAULT_METRICS_CONFIG = {
   endpointPath: '/metrics',
 };
 
+// Keep metrics reasonably fresh while collapsing duplicate scrapes from multiple UI consumers.
+const METRICS_SUCCESS_CACHE_TTL_MS = 15000;
+const METRICS_ERROR_CACHE_TTL_MS = 5000;
+
 /**
  * Check if AI Runway is running inside a Kubernetes cluster
  * This is determined by the presence of the service account token
@@ -47,7 +51,7 @@ function checkInCluster(): boolean {
 /**
  * Build the metrics URL for a deployment
  */
-function buildMetricsUrl(
+export function buildMetricsUrl(
   deploymentName: string,
   namespace: string,
   servicePattern: string,
@@ -88,15 +92,109 @@ async function fetchRawMetrics(url: string): Promise<string> {
   }
 }
 
+export function mapMetricsErrorMessage(errorMessage: string): string {
+  if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
+    return 'Cannot resolve service DNS. The deployment service may not exist yet.';
+  }
+  if (errorMessage.includes('no cluster') || errorMessage.includes('connect ECONNREFUSED')) {
+    return 'Cannot connect to the Kubernetes cluster. Check your kubeconfig.';
+  }
+  if (errorMessage.includes('ECONNREFUSED')) {
+    return 'Connection refused. The deployment may not be ready yet.';
+  }
+  if (errorMessage.includes('abort')) {
+    return 'Request timed out. The deployment may be under heavy load or not responding.';
+  }
+  if (errorMessage.includes('HTTP 404') || errorMessage.includes('404')) {
+    return 'Metrics endpoint not found. The deployment may not expose metrics.';
+  }
+  if (errorMessage.includes('HTTP 503') || errorMessage.includes('503')) {
+    return 'Service unavailable. The deployment is starting up.';
+  }
+  if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
+    return 'Cannot connect to metrics endpoint. Verify the deployment is running.';
+  }
+
+  return errorMessage;
+}
+
+interface MetricsServiceCacheEntry {
+  response: MetricsResponse;
+  expiresAt: number;
+}
+
+interface MetricsServiceOptions {
+  fetchRawMetrics?: (url: string) => Promise<string>;
+  proxyServiceGet?: (serviceName: string, namespace: string, port: number, path: string) => Promise<string>;
+  checkInCluster?: () => boolean;
+  now?: () => number;
+  successCacheTtlMs?: number;
+  errorCacheTtlMs?: number;
+}
+
 /**
  * MetricsService class for fetching deployment metrics
  */
-class MetricsService {
+export class MetricsService {
+  private readonly responseCache = new Map<string, MetricsServiceCacheEntry>();
+  private readonly inFlightRequests = new Map<string, Promise<MetricsResponse>>();
+  private readonly fetchRawMetricsFn: (url: string) => Promise<string>;
+  private readonly proxyServiceGetFn: (serviceName: string, namespace: string, port: number, path: string) => Promise<string>;
+  private readonly checkInClusterFn: () => boolean;
+  private readonly nowFn: () => number;
+  private readonly successCacheTtlMs: number;
+  private readonly errorCacheTtlMs: number;
+
+  constructor(options: MetricsServiceOptions = {}) {
+    this.fetchRawMetricsFn = options.fetchRawMetrics ?? fetchRawMetrics;
+    this.proxyServiceGetFn = options.proxyServiceGet ?? ((serviceName, namespace, port, path) =>
+      kubernetesService.proxyServiceGet(serviceName, namespace, port, path));
+    this.checkInClusterFn = options.checkInCluster ?? checkInCluster;
+    this.nowFn = options.now ?? Date.now;
+    this.successCacheTtlMs = options.successCacheTtlMs ?? METRICS_SUCCESS_CACHE_TTL_MS;
+    this.errorCacheTtlMs = options.errorCacheTtlMs ?? METRICS_ERROR_CACHE_TTL_MS;
+  }
+
   /**
    * Check if metrics fetching is available (requires cluster connection)
    */
   isMetricsAvailable(): boolean {
     return true;
+  }
+
+  clearCache(): void {
+    this.responseCache.clear();
+    this.inFlightRequests.clear();
+  }
+
+  private buildCacheKey(deploymentName: string, namespace: string, providerId?: string): string {
+    return `${namespace}/${deploymentName}/${providerId ?? 'default'}`;
+  }
+
+  private getCachedResponse(cacheKey: string): MetricsResponse | null {
+    const cached = this.responseCache.get(cacheKey);
+    if (!cached) {
+      return null;
+    }
+
+    if (cached.expiresAt <= this.nowFn()) {
+      this.responseCache.delete(cacheKey);
+      return null;
+    }
+
+    return cached.response;
+  }
+
+  private cacheResponse(cacheKey: string, response: MetricsResponse): void {
+    const ttlMs = response.available ? this.successCacheTtlMs : this.errorCacheTtlMs;
+    if (ttlMs <= 0) {
+      return;
+    }
+
+    this.responseCache.set(cacheKey, {
+      response,
+      expiresAt: this.nowFn() + ttlMs,
+    });
   }
 
   /**
@@ -107,9 +205,35 @@ class MetricsService {
    * @param providerId - Optional provider ID (for future use)
    * @returns MetricsResponse with available metrics or error
    */
-  async getDeploymentMetrics(deploymentName: string, namespace: string, _providerId?: string): Promise<MetricsResponse> {
-    const timestamp = new Date().toISOString();
-    const inCluster = checkInCluster();
+  async getDeploymentMetrics(deploymentName: string, namespace: string, providerId?: string): Promise<MetricsResponse> {
+    const cacheKey = this.buildCacheKey(deploymentName, namespace, providerId);
+    const cachedResponse = this.getCachedResponse(cacheKey);
+    if (cachedResponse) {
+      logger.debug({ deploymentName, namespace }, 'Serving cached deployment metrics');
+      return cachedResponse;
+    }
+
+    const inFlightRequest = this.inFlightRequests.get(cacheKey);
+    if (inFlightRequest) {
+      logger.debug({ deploymentName, namespace }, 'Joining in-flight deployment metrics request');
+      return inFlightRequest;
+    }
+
+    const request = this.fetchDeploymentMetrics(deploymentName, namespace, cacheKey).finally(() => {
+      this.inFlightRequests.delete(cacheKey);
+    });
+
+    this.inFlightRequests.set(cacheKey, request);
+    return request;
+  }
+
+  private async fetchDeploymentMetrics(
+    deploymentName: string,
+    namespace: string,
+    cacheKey: string
+  ): Promise<MetricsResponse> {
+    const timestamp = new Date(this.nowFn()).toISOString();
+    const inCluster = this.checkInClusterFn();
 
     try {
       // Use default metrics configuration
@@ -129,12 +253,12 @@ class MetricsService {
         );
 
         logger.debug({ url, deploymentName, namespace }, 'Fetching metrics from deployment (in-cluster)');
-        rawText = await fetchRawMetrics(url);
+        rawText = await this.fetchRawMetricsFn(url);
       } else {
         // Off-cluster: proxy through the K8s API server via kubeconfig
         const path = metricsConfig.endpointPath.replace(/^\//, ''); // strip leading slash
         logger.debug({ deploymentName, namespace, port: metricsConfig.port, path }, 'Fetching metrics via K8s API proxy (off-cluster)');
-        rawText = await kubernetesService.proxyServiceGet(serviceName, namespace, metricsConfig.port, path);
+        rawText = await this.proxyServiceGetFn(serviceName, namespace, metricsConfig.port, path);
       }
 
       // Parse Prometheus format
@@ -145,44 +269,32 @@ class MetricsService {
         'Successfully fetched and parsed metrics'
       );
 
-      return {
+      const response: MetricsResponse = {
         available: true,
         timestamp,
         metrics,
       };
+
+      this.cacheResponse(cacheKey, response);
+      return response;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      // Provide helpful error messages based on error type
-      let userMessage = errorMessage;
-
-      if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-        userMessage = 'Cannot resolve service DNS. The deployment service may not exist yet.';
-      } else if (errorMessage.includes('no cluster') || errorMessage.includes('connect ECONNREFUSED')) {
-        userMessage = 'Cannot connect to the Kubernetes cluster. Check your kubeconfig.';
-      } else if (errorMessage.includes('ECONNREFUSED')) {
-        userMessage = 'Connection refused. The deployment may not be ready yet.';
-      } else if (errorMessage.includes('abort')) {
-        userMessage = 'Request timed out. The deployment may be under heavy load or not responding.';
-      } else if (errorMessage.includes('HTTP 404') || errorMessage.includes('404')) {
-        userMessage = 'Metrics endpoint not found. The deployment may not expose metrics.';
-      } else if (errorMessage.includes('HTTP 503') || errorMessage.includes('503')) {
-        userMessage = 'Service unavailable. The deployment is starting up.';
-      } else if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
-        userMessage = 'Cannot connect to metrics endpoint. Verify the deployment is running.';
-      }
+      const userMessage = mapMetricsErrorMessage(errorMessage);
 
       logger.warn(
         { deploymentName, namespace, error: errorMessage },
         'Failed to fetch deployment metrics'
       );
 
-      return {
+      const response: MetricsResponse = {
         available: false,
         error: userMessage,
         timestamp,
         metrics: [],
       };
+
+      this.cacheResponse(cacheKey, response);
+      return response;
     }
   }
 

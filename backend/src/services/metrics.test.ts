@@ -1,19 +1,8 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, mock } from 'bun:test';
 import type { RawMetricValue, MetricsResponse } from '@airunway/shared';
+import { buildMetricsUrl, mapMetricsErrorMessage, MetricsService } from './metrics';
 
 describe('MetricsService - buildMetricsUrl', () => {
-  // Test the URL building logic (unit test the pattern)
-  function buildMetricsUrl(
-    deploymentName: string,
-    namespace: string,
-    servicePattern: string,
-    port: number,
-    endpointPath: string
-  ): string {
-    const serviceName = servicePattern.replace('{name}', deploymentName);
-    return `http://${serviceName}.${namespace}.svc.cluster.local:${port}${endpointPath}`;
-  }
-
   test('builds correct URL with service pattern', () => {
     const url = buildMetricsUrl(
       'my-model',
@@ -49,59 +38,114 @@ describe('MetricsService - buildMetricsUrl', () => {
 });
 
 describe('MetricsService - Error Message Handling', () => {
-  // Test error message mapping logic
-  function mapErrorMessage(errorMessage: string): string {
-    if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('getaddrinfo')) {
-      return 'Cannot resolve service DNS. The deployment service may not exist yet.';
-    } else if (errorMessage.includes('ECONNREFUSED')) {
-      return 'Connection refused. The deployment may not be ready yet.';
-    } else if (errorMessage.includes('abort')) {
-      return 'Request timed out. The deployment may be under heavy load or not responding.';
-    } else if (errorMessage.includes('HTTP 404') || errorMessage.includes('404')) {
-      return 'Metrics endpoint not found. The deployment may not expose metrics.';
-    } else if (errorMessage.includes('HTTP 503') || errorMessage.includes('503')) {
-      return 'Service unavailable. The deployment is starting up.';
-    } else if (errorMessage.includes('fetch failed') || errorMessage.includes('TypeError')) {
-      return 'Cannot connect to metrics endpoint. Verify the deployment is running.';
-    } else if (errorMessage.includes('connect ECONNREFUSED') || errorMessage.includes('no cluster')) {
-      return 'Cannot connect to the Kubernetes cluster. Check your kubeconfig.';
-    }
-    return errorMessage;
-  }
-
   test('maps DNS resolution errors', () => {
-    expect(mapErrorMessage('getaddrinfo ENOTFOUND service.namespace.svc')).toContain('Cannot resolve service DNS');
-    expect(mapErrorMessage('Error: ENOTFOUND')).toContain('not exist yet');
+    expect(mapMetricsErrorMessage('getaddrinfo ENOTFOUND service.namespace.svc')).toContain('Cannot resolve service DNS');
+    expect(mapMetricsErrorMessage('Error: ENOTFOUND')).toContain('not exist yet');
   });
 
   test('maps connection refused errors', () => {
-    expect(mapErrorMessage('connect ECONNREFUSED 10.0.0.1:8000')).toContain('Connection refused');
-    expect(mapErrorMessage('ECONNREFUSED')).toContain('not be ready');
+    expect(mapMetricsErrorMessage('connect ECONNREFUSED 10.0.0.1:8000')).toContain('Cannot connect to the Kubernetes cluster');
+    expect(mapMetricsErrorMessage('ECONNREFUSED')).toContain('not be ready');
   });
 
   test('maps timeout errors', () => {
-    expect(mapErrorMessage('The operation was aborted')).toContain('timed out');
-    expect(mapErrorMessage('signal was aborted')).toContain('heavy load');
+    expect(mapMetricsErrorMessage('The operation was aborted')).toContain('timed out');
+    expect(mapMetricsErrorMessage('signal was aborted')).toContain('heavy load');
   });
 
   test('maps HTTP 404 errors', () => {
-    expect(mapErrorMessage('HTTP 404: Not Found')).toContain('endpoint not found');
-    expect(mapErrorMessage('HTTP 404')).toContain('not expose metrics');
+    expect(mapMetricsErrorMessage('HTTP 404: Not Found')).toContain('endpoint not found');
+    expect(mapMetricsErrorMessage('HTTP 404')).toContain('not expose metrics');
   });
 
   test('maps HTTP 503 errors', () => {
-    expect(mapErrorMessage('HTTP 503: Service Unavailable')).toContain('Service unavailable');
-    expect(mapErrorMessage('HTTP 503')).toContain('starting up');
+    expect(mapMetricsErrorMessage('HTTP 503: Service Unavailable')).toContain('Service unavailable');
+    expect(mapMetricsErrorMessage('HTTP 503')).toContain('starting up');
   });
 
   test('maps fetch errors', () => {
-    expect(mapErrorMessage('fetch failed')).toContain('Verify the deployment');
-    expect(mapErrorMessage('TypeError: Failed to fetch')).toContain('Verify the deployment');
+    expect(mapMetricsErrorMessage('fetch failed')).toContain('Verify the deployment');
+    expect(mapMetricsErrorMessage('TypeError: Failed to fetch')).toContain('Verify the deployment');
   });
 
   test('returns original message for unknown errors', () => {
-    expect(mapErrorMessage('Some unknown error')).toBe('Some unknown error');
-    expect(mapErrorMessage('Unexpected condition')).toBe('Unexpected condition');
+    expect(mapMetricsErrorMessage('Some unknown error')).toBe('Some unknown error');
+    expect(mapMetricsErrorMessage('Unexpected condition')).toBe('Unexpected condition');
+  });
+});
+
+describe('MetricsService - Caching', () => {
+  test('reuses cached successful responses within the cache window', async () => {
+    let now = 1700000000000;
+    const fetchRawMetrics = mock(async () => 'vllm:num_requests_running 5\n');
+    const service = new MetricsService({
+      fetchRawMetrics,
+      checkInCluster: () => true,
+      now: () => now,
+      successCacheTtlMs: 15000,
+      errorCacheTtlMs: 5000,
+    });
+
+    const first = await service.getDeploymentMetrics('demo', 'default');
+    now += 1000;
+    const second = await service.getDeploymentMetrics('demo', 'default');
+
+    expect(fetchRawMetrics).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+  });
+
+  test('deduplicates concurrent requests for the same deployment', async () => {
+    let resolveFetch: ((value: string) => void) | undefined;
+    const fetchRawMetrics = mock(() =>
+      new Promise<string>((resolve) => {
+        resolveFetch = resolve;
+      })
+    );
+
+    const service = new MetricsService({
+      fetchRawMetrics,
+      checkInCluster: () => true,
+      now: () => 1700000000000,
+      successCacheTtlMs: 15000,
+      errorCacheTtlMs: 5000,
+    });
+
+    const firstPromise = service.getDeploymentMetrics('demo', 'default');
+    const secondPromise = service.getDeploymentMetrics('demo', 'default');
+
+    expect(fetchRawMetrics).toHaveBeenCalledTimes(1);
+    expect(resolveFetch).toBeDefined();
+
+    resolveFetch?.('vllm:num_requests_running 5\n');
+
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    expect(second).toEqual(first);
+  });
+
+  test('briefly caches failures to avoid hammering unhealthy endpoints', async () => {
+    let now = 1700000000000;
+    const fetchRawMetrics = mock(async () => {
+      throw new Error('HTTP 503: Service Unavailable');
+    });
+
+    const service = new MetricsService({
+      fetchRawMetrics,
+      checkInCluster: () => true,
+      now: () => now,
+      successCacheTtlMs: 15000,
+      errorCacheTtlMs: 5000,
+    });
+
+    const first = await service.getDeploymentMetrics('demo', 'default');
+    now += 1000;
+    const second = await service.getDeploymentMetrics('demo', 'default');
+    now += 5000;
+    const third = await service.getDeploymentMetrics('demo', 'default');
+
+    expect(fetchRawMetrics).toHaveBeenCalledTimes(2);
+    expect(first.error).toContain('Service unavailable');
+    expect(second).toEqual(first);
+    expect(third.timestamp).not.toBe(first.timestamp);
   });
 });
 

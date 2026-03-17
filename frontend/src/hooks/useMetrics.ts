@@ -186,8 +186,10 @@ export function useMetrics(
       return computeMetrics(response, provider)
     },
     enabled: options?.enabled !== false && !!deploymentName,
-    refetchInterval: options?.refetchInterval ?? 10000, // Default 10 seconds
-    staleTime: 5000, // Consider data stale after 5 seconds
+    refetchInterval: options?.refetchInterval ?? 30000, // Default 30 seconds
+    staleTime: 30000, // Keep metrics fresh without re-fetching on every focus change
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false, // Don't retry on failure (metrics might not be available)
   })
 

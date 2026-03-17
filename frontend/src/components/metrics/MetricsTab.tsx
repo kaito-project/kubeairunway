@@ -74,13 +74,13 @@ export function MetricsTab({ deploymentName, namespace, provider, className }: M
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [activeCategory, setActiveCategory] = useState<MetricCategory>('all')
 
-  const { metrics, isLoading, error, dataUpdatedAt } = useMetrics(
+  const { metrics, isLoading, error } = useMetrics(
     deploymentName,
     namespace,
     provider,
     {
       enabled: true,
-      refetchInterval: autoRefresh ? 10000 : undefined,
+      refetchInterval: autoRefresh ? 30000 : undefined,
     }
   )
 
@@ -106,7 +106,7 @@ export function MetricsTab({ deploymentName, namespace, provider, className }: M
           <div className="flex items-center gap-2">
             {metrics?.available && (
               <span className="text-xs text-muted-foreground">
-                Updated {formatLastUpdated(new Date(dataUpdatedAt))}
+                Updated {formatLastUpdated(metrics.lastUpdated)}
               </span>
             )}
             <Button
