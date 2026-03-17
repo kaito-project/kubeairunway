@@ -10,6 +10,7 @@ interface HfModelCardProps {
   model: HfModelSearchResult;
   gpuCapacityGb?: number;
   gpuCount?: number;
+  gpuCapacityLabel?: string;
 }
 
 /**
@@ -25,7 +26,7 @@ function formatCount(count: number): string {
   return count.toString();
 }
 
-export function HfModelCard({ model, gpuCapacityGb, gpuCount }: HfModelCardProps) {
+export function HfModelCard({ model, gpuCapacityGb, gpuCount, gpuCapacityLabel }: HfModelCardProps) {
   const navigate = useNavigate();
 
   const handleDeploy = () => {
@@ -78,6 +79,7 @@ export function HfModelCard({ model, gpuCapacityGb, gpuCount }: HfModelCardProps
             estimatedGpuMemoryGb={model.estimatedGpuMemoryGb}
             clusterCapacityGb={gpuCapacityGb}
             gpuCount={gpuCount}
+            capacityLabel={gpuCapacityLabel}
           />
         </div>
 

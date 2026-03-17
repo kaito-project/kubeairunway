@@ -10,6 +10,7 @@ interface ModelCardProps {
   model: Model
   gpuCapacityGb?: number
   gpuCount?: number
+  gpuCapacityLabel?: string
 }
 
 /**
@@ -53,7 +54,7 @@ function estimateGgufRamGb(sizeStr?: string): number | undefined {
   return Math.ceil(billions * 0.6 + 2)
 }
 
-export function ModelCard({ model, gpuCapacityGb, gpuCount }: ModelCardProps) {
+export function ModelCard({ model, gpuCapacityGb, gpuCount, gpuCapacityLabel }: ModelCardProps) {
   const navigate = useNavigate()
 
   const handleDeploy = () => {
@@ -102,6 +103,7 @@ export function ModelCard({ model, gpuCapacityGb, gpuCount }: ModelCardProps) {
                 estimatedGpuMemoryGb={estimatedGpuMemoryGb}
                 clusterCapacityGb={gpuCapacityGb}
                 gpuCount={gpuCount}
+                capacityLabel={gpuCapacityLabel}
               />
             ) : (
               <span className="truncate">GPU: {model.minGpuMemory || 'N/A'}</span>

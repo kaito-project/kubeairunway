@@ -7,9 +7,10 @@ interface ModelGridProps {
   models: Model[]
   gpuCapacityGb?: number
   gpuCount?: number
+  gpuCapacityLabel?: string
 }
 
-export function ModelGrid({ models, gpuCapacityGb, gpuCount }: ModelGridProps) {
+export function ModelGrid({ models, gpuCapacityGb, gpuCount, gpuCapacityLabel }: ModelGridProps) {
   const navigate = useNavigate()
 
   if (models.length === 0) {
@@ -36,7 +37,12 @@ export function ModelGrid({ models, gpuCapacityGb, gpuCount }: ModelGridProps) {
           className="animate-slide-up"
           style={{ animationDelay: `${Math.min(index, 12) * 50}ms`, animationFillMode: 'both' }}
         >
-          <ModelCard model={model} gpuCapacityGb={gpuCapacityGb} gpuCount={gpuCount} />
+          <ModelCard
+            model={model}
+            gpuCapacityGb={gpuCapacityGb}
+            gpuCount={gpuCount}
+            gpuCapacityLabel={gpuCapacityLabel}
+          />
         </div>
       ))}
     </div>

@@ -8,6 +8,7 @@ import { SkeletonGrid } from '@/components/ui/skeleton'
 import { BookMarked, Search, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Engine } from '@airunway/shared'
+import { getGpuFitCapacityDisplay } from '@/lib/gpu-fit-capacity'
 
 type Tab = 'curated' | 'huggingface'
 
@@ -17,9 +18,7 @@ export function ModelsPage() {
   const [search, setSearch] = useState('')
   const [selectedEngines, setSelectedEngines] = useState<Engine[]>([])
   const [activeTab, setActiveTab] = useState<Tab>('curated')
-
-  // Max available GPUs on a single node (accounts for allocated workloads)
-  const maxContiguousAvailable = gpuCapacity?.maxContiguousAvailable
+  const gpuFitCapacity = getGpuFitCapacityDisplay(gpuCapacity)
 
   const filteredModels = useMemo(() => {
     if (!models) return []
@@ -138,13 +137,22 @@ export function ModelsPage() {
             selectedEngines={selectedEngines}
             onEngineToggle={handleEngineToggle}
           />
-          <ModelGrid models={filteredModels} gpuCapacityGb={gpuCapacity?.totalMemoryGb} gpuCount={maxContiguousAvailable} />
+          <ModelGrid
+            models={filteredModels}
+            gpuCapacityGb={gpuCapacity?.totalMemoryGb}
+            gpuCount={gpuFitCapacity.gpuCount}
+            gpuCapacityLabel={gpuFitCapacity.capacityLabel}
+          />
         </>
       )}
 
       {/* HuggingFace search tab */}
       {activeTab === 'huggingface' && (
-        <HfModelSearch gpuCapacityGb={gpuCapacity?.totalMemoryGb} gpuCount={maxContiguousAvailable} />
+        <HfModelSearch
+          gpuCapacityGb={gpuCapacity?.totalMemoryGb}
+          gpuCount={gpuFitCapacity.gpuCount}
+          gpuCapacityLabel={gpuFitCapacity.capacityLabel}
+        />
       )}
     </div>
   )

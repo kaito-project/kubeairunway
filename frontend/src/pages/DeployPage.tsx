@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loader2, ArrowLeft, Cpu, HardDrive, Layers, ExternalLink } from 'lucide-react'
 import { GpuFitIndicator } from '@/components/models/GpuFitIndicator'
+import { getGpuFitCapacityDisplay } from '@/lib/gpu-fit-capacity'
 
 export function DeployPage() {
   const { modelId } = useParams<{ modelId: string }>()
@@ -23,6 +24,7 @@ export function DeployPage() {
   const { data: detailedCapacity } = useDetailedCapacity()
   const { data: autoscaler } = useAutoscalerDetection()
   const { data: runtimesData, isLoading: runtimesLoading } = useRuntimesStatus()
+  const gpuFitCapacity = getGpuFitCapacityDisplay(detailedCapacity)
 
   // Wait for both model and runtimes to load before showing the form
   // This ensures the runtime selector is visible when the form renders
@@ -102,7 +104,8 @@ export function DeployPage() {
                 <GpuFitIndicator
                   estimatedGpuMemoryGb={model.estimatedGpuMemoryGb}
                   clusterCapacityGb={detailedCapacity.totalMemoryGb}
-                  gpuCount={detailedCapacity.maxContiguousAvailable}
+                  gpuCount={gpuFitCapacity.gpuCount}
+                  capacityLabel={gpuFitCapacity.capacityLabel}
                 />
             ) : (
               <span>GPU: {model.estimatedGpuMemory || model.minGpuMemory || 'N/A'}</span>

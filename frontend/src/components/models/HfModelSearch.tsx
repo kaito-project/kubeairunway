@@ -7,14 +7,16 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useGpuCapacity } from '@/hooks/useGpuOperator';
 import { Search, Loader2, AlertCircle, LogIn } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { getGpuFitCapacityDisplay } from '@/lib/gpu-fit-capacity';
 
 interface HfModelSearchProps {
   onLoginClick?: () => void;
   gpuCapacityGb?: number;
   gpuCount?: number;
+  gpuCapacityLabel?: string;
 }
 
-export function HfModelSearch({ onLoginClick, gpuCapacityGb, gpuCount }: HfModelSearchProps) {
+export function HfModelSearch({ onLoginClick, gpuCapacityGb, gpuCount, gpuCapacityLabel }: HfModelSearchProps) {
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
   const limit = 20;
@@ -28,10 +30,12 @@ export function HfModelSearch({ onLoginClick, gpuCapacityGb, gpuCount }: HfModel
 
   const { data: hfStatus, isLoading: hfStatusLoading } = useHuggingFaceStatus();
   const { data: gpuCapacity } = useGpuCapacity();
+  const defaultFitCapacity = getGpuFitCapacityDisplay(gpuCapacity);
 
   // Use provided GPU capacity or estimate from cluster
   const maxGpuMemoryGb = gpuCapacityGb ?? gpuCapacity?.totalMemoryGb;
-  const effectiveGpuCount = gpuCount ?? gpuCapacity?.maxContiguousAvailable;
+  const effectiveGpuCount = gpuCount ?? defaultFitCapacity.gpuCount;
+  const effectiveCapacityLabel = gpuCapacityLabel ?? defaultFitCapacity.capacityLabel;
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value);
@@ -131,6 +135,7 @@ export function HfModelSearch({ onLoginClick, gpuCapacityGb, gpuCount }: HfModel
                 model={model}
                 gpuCapacityGb={maxGpuMemoryGb}
                 gpuCount={effectiveGpuCount}
+                gpuCapacityLabel={effectiveCapacityLabel}
               />
             ))}
           </div>

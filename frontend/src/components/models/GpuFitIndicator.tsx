@@ -15,8 +15,10 @@ export type GpuFitLevel = 'perfect' | 'good' | 'marginal' | 'too-large' | 'unkno
 interface GpuFitIndicatorProps {
   estimatedGpuMemoryGb?: number;
   clusterCapacityGb?: number;
-  /** Number of GPUs available — capacity is multiplied by this (default 1) */
+  /** Number of GPUs contributing to the displayed cluster capacity */
   gpuCount?: number;
+  /** Optional user-facing topology label such as 2x8x80 GB */
+  capacityLabel?: string;
   /** Whether this is a CPU (RAM) or GPU (VRAM) fit indicator */
   mode?: 'gpu' | 'cpu';
   className?: string;
@@ -134,17 +136,14 @@ export function GpuFitIndicator({
   estimatedGpuMemoryGb,
   clusterCapacityGb,
   gpuCount = 1,
+  capacityLabel,
   mode = 'gpu',
   className
 }: GpuFitIndicatorProps) {
   const memLabel = mode === 'cpu' ? 'RAM' : 'VRAM';
-  // Multiply per-GPU capacity by the number of available GPUs.
-  // When gpuCount is 0 (fully allocated cluster), effective capacity is 0 → "Won't fit".
+  // Multiply per-GPU capacity by the number of GPUs represented in the badge.
   const effectiveCapacityGb = clusterCapacityGb !== undefined ? clusterCapacityGb * gpuCount : undefined;
-  // A cluster with known per-GPU capacity but 0 available GPUs is "too-large", not "unknown"
-  const noAvailableGpus = clusterCapacityGb !== undefined && clusterCapacityGb > 0 && gpuCount === 0;
-
-  const level = noAvailableGpus ? 'too-large' as GpuFitLevel : getGpuFitLevel(estimatedGpuMemoryGb, effectiveCapacityGb);
+  const level = getGpuFitLevel(estimatedGpuMemoryGb, effectiveCapacityGb);
   const config = fitConfig[level];
   const Icon = config.icon;
   const upgradeDelta = getUpgradeDelta(estimatedGpuMemoryGb, effectiveCapacityGb);
@@ -176,7 +175,7 @@ export function GpuFitIndicator({
               </span>
               {estimatedGpuMemoryGb !== undefined && effectiveCapacityGb !== undefined && (
                 <span className="text-xs text-slate-400 tabular-nums">
-                  {estimatedGpuMemoryGb.toFixed(1)} / {effectiveCapacityGb} GB{gpuCount > 1 ? ` (${gpuCount}×${clusterCapacityGb} GB)` : ''}
+                  {estimatedGpuMemoryGb.toFixed(1)} / {effectiveCapacityGb} GB{capacityLabel ? ` (${capacityLabel})` : gpuCount > 1 ? ` (${gpuCount}x${clusterCapacityGb} GB)` : ''}
                 </span>
               )}
             </div>
