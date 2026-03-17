@@ -26,7 +26,7 @@ export function HfModelSearch({ onLoginClick, gpuCapacityGb, gpuCount }: HfModel
     { limit, offset }
   );
 
-  const { data: hfStatus } = useHuggingFaceStatus();
+  const { data: hfStatus, isLoading: hfStatusLoading } = useHuggingFaceStatus();
   const { data: gpuCapacity } = useGpuCapacity();
 
   // Use provided GPU capacity or estimate from cluster
@@ -43,7 +43,7 @@ export function HfModelSearch({ onLoginClick, gpuCapacityGb, gpuCount }: HfModel
   };
 
   const isLoggedIn = hfStatus?.configured;
-  const showLoginPrompt = !isLoggedIn && query.length >= 2;
+  const showLoginPrompt = !hfStatusLoading && !isLoggedIn && query.length >= 2;
 
   return (
     <div className="space-y-4">
