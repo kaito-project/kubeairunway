@@ -1,0 +1,118 @@
+name: Dependabot Automerge
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+      - E2E Backend Integration Tests
+      - E2E Controller Tests
+      - E2E Gateway Tests
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.pull_requests[0].number != null
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Load current pull request state
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json author,autoMergeRequest,headRefOid,isDraft,state,url)"
+
+          author="$(jq -r '.author.login // ""' <<<"$pr_json")"
+          state="$(jq -r '.state' <<<"$pr_json")"
+          is_draft="$(jq -r '.isDraft' <<<"$pr_json")"
+          head_sha="$(jq -r '.headRefOid' <<<"$pr_json")"
+          pr_url="$(jq -r '.url' <<<"$pr_json")"
+          auto_merge_enabled="$(jq -r 'if .autoMergeRequest == null then "false" else "true" end' <<<"$pr_json")"
+
+          if [ "$author" != "dependabot[bot]" ]; then
+            echo "skip_reason=not_dependabot" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$state" != "OPEN" ] || [ "$is_draft" != "false" ]; then
+            echo "skip_reason=not_open_ready" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$auto_merge_enabled" = "true" ]; then
+            echo "skip_reason=auto_merge_already_enabled" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify all PR test workflows passed
+        id: checks
+        if: steps.pr.outputs.head_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Keep this list aligned with the pull request workflows so merges wait
+          # for the full test suite on the current PR head commit.
+          required_workflows=(
+            "CI"
+            "E2E Backend Integration Tests"
+            "E2E Controller Tests"
+            "E2E Gateway Tests"
+          )
+
+          runs_json="$(gh api "/repos/$REPO/actions/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=100")"
+
+          all_passed=true
+
+          for workflow in "${required_workflows[@]}"; do
+            workflow_run="$(jq -c --arg workflow "$workflow" '
+              [.workflow_runs[] | select(.name == $workflow)]
+              | sort_by(.created_at, .run_attempt)
+              | last
+            ' <<<"$runs_json")"
+
+            if [ "$workflow_run" = "null" ]; then
+              echo "Workflow \"$workflow\" has not reported a run for $HEAD_SHA yet."
+              all_passed=false
+              continue
+            fi
+
+            status="$(jq -r '.status' <<<"$workflow_run")"
+            conclusion="$(jq -r '.conclusion // ""' <<<"$workflow_run")"
+
+            if [ "$status" != "completed" ] || [ "$conclusion" != "success" ]; then
+              echo "Workflow \"$workflow\" is $status with conclusion \"$conclusion\"."
+              all_passed=false
+            fi
+          done
+
+          echo "all_passed=$all_passed" >> "$GITHUB_OUTPUT"
+
+      - name: Enable merge for the pull request
+        if: steps.checks.outputs.all_passed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr merge "$PR_URL" --repo "$REPO" --auto --merge --match-head-commit "$HEAD_SHA"
