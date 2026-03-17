@@ -17,14 +17,14 @@ vi.mock('@/hooks/useRuntimes', () => ({
     data: {
       runtimes: [
         {
-          id: 'dynamo',
+          id: 'installed-runtime',
           name: 'Installed Runtime',
           installed: true,
           healthy: true,
           version: '1.0.0',
         },
         {
-          id: 'kaito',
+          id: 'available-runtime',
           name: 'Available Runtime',
           installed: false,
           healthy: false,
