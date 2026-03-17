@@ -56,7 +56,7 @@ vi.mock('@/hooks/useInstallation', () => ({
   useProviderInstallationStatus: () => ({
     data: {
       installed: true,
-      providerName: 'NVIDIA Dynamo',
+      providerName: 'Runtime',
       message: 'Provider ready',
       crdFound: true,
       operatorRunning: true,
@@ -149,7 +149,7 @@ describe('SettingsPage', () => {
     toast.mockReset()
   })
 
-  it('renders runtime cards without provider-specific inline border colors', () => {
+  it('renders runtime cards without inline accent border styles', () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/settings?tab=runtimes']}>
         <SettingsPage />
