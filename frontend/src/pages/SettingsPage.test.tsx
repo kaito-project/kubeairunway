@@ -7,6 +7,25 @@ const mutateAsync = vi.fn()
 const refetch = vi.fn()
 const startOAuth = vi.fn()
 const toast = vi.fn()
+let mockGpuStatus = {
+  installed: false,
+  gpusAvailable: false,
+  operatorRunning: false,
+  totalGPUs: 0,
+  message: '',
+  gpuNodes: [] as string[],
+  helmCommands: [] as string[],
+}
+let mockHfStatus: {
+  configured: boolean
+  user?: {
+    name: string
+    fullname?: string
+    avatarUrl?: string
+  }
+} = {
+  configured: false,
+}
 
 vi.mock('@/hooks/useSettings', () => ({
   useSettings: () => ({ isLoading: false }),
@@ -82,13 +101,7 @@ vi.mock('@/hooks/useAutoscaler', () => ({
 
 vi.mock('@/hooks/useGpuOperator', () => ({
   useGpuOperatorStatus: () => ({
-    data: {
-      installed: false,
-      gpusAvailable: false,
-      message: '',
-      gpuNodes: [],
-      helmCommands: [],
-    },
+    data: mockGpuStatus,
     isLoading: false,
     refetch,
   }),
@@ -116,9 +129,7 @@ vi.mock('@/hooks/useGateway', () => ({
 
 vi.mock('@/hooks/useHuggingFace', () => ({
   useHuggingFaceStatus: () => ({
-    data: {
-      configured: false,
-    },
+    data: mockHfStatus,
     isLoading: false,
     refetch,
   }),
@@ -147,6 +158,18 @@ describe('SettingsPage', () => {
     refetch.mockReset()
     startOAuth.mockReset()
     toast.mockReset()
+    mockGpuStatus = {
+      installed: false,
+      gpusAvailable: false,
+      operatorRunning: false,
+      totalGPUs: 0,
+      message: '',
+      gpuNodes: [],
+      helmCommands: [],
+    }
+    mockHfStatus = {
+      configured: false,
+    }
   })
 
   it('renders runtime cards without inline accent border styles', () => {
@@ -161,5 +184,43 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Available Runtime')).toBeInTheDocument()
     expect(container.querySelector('[style*="border-top-color"]')).toBeNull()
     expect(container.querySelector('[style*="border-top-width"]')).toBeNull()
+  })
+
+  it('uses success badge styling for readable integration connection states', () => {
+    mockGpuStatus = {
+      installed: true,
+      gpusAvailable: true,
+      operatorRunning: true,
+      totalGPUs: 4,
+      message: 'GPU support is ready',
+      gpuNodes: ['worker-a'],
+      helmCommands: [],
+    }
+    mockHfStatus = {
+      configured: true,
+      user: {
+        name: 'test-user',
+        fullname: 'Test User',
+      },
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=integrations']}>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('GPUs Enabled')).toHaveClass('bg-green-500/15', 'text-green-600', 'dark:text-green-400')
+    expect(screen.getByText('Connected')).toHaveClass('bg-green-500/15', 'text-green-600', 'dark:text-green-400')
+  })
+
+  it('uses the Hugging Face emoji on the connect button', () => {
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=integrations']}>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole('button', { name: /sign in with hugging face/i })).toHaveTextContent('🤗')
   })
 })
