@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -47,6 +48,8 @@ type ModelDeploymentReconciler struct {
 	// GatewayDetector checks for Gateway API CRD availability and resolves gateway config
 	GatewayDetector *gateway.Detector
 }
+
+const gatewayModelNameRetryDelay = time.Minute
 
 // +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments/status,verbs=get;update;patch
@@ -75,6 +78,7 @@ type ModelDeploymentReconciler struct {
 // matches their name and handle the actual resource creation.
 func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	result := ctrl.Result{}
 
 	// Fetch the ModelDeployment
 	var md airunwayv1alpha1.ModelDeployment
@@ -179,7 +183,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				logger.Error(err, "Failed to clean up gateway resources")
 			}
 		} else {
-			if err := r.reconcileGateway(ctx, &md); err != nil {
+			if retryModelNameDiscovery, err := r.reconcileGateway(ctx, &md); err != nil {
 				logger.Error(err, "Gateway reconciliation failed", "name", md.Name)
 				// If the error suggests CRDs were removed, refresh the detection cache
 				if isNoMatchError(err) && r.GatewayDetector != nil {
@@ -187,6 +191,8 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					r.GatewayDetector.Refresh()
 				}
 				// Non-fatal: don't block overall reconciliation
+			} else if retryModelNameDiscovery {
+				result.RequeueAfter = gatewayModelNameRetryDelay
 			}
 		}
 	}
@@ -194,7 +200,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	logger.Info("Reconciliation complete", "name", md.Name, "phase", md.Status.Phase, "provider", md.Status.Provider)
 
-	return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
+	return result, r.Status().Patch(ctx, &md, client.MergeFrom(base))
 }
 
 // isNoMatchError checks if an error indicates that a CRD/resource type is not registered.

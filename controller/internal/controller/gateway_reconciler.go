@@ -45,12 +45,12 @@ import (
 
 // reconcileGateway creates or updates InferencePool and HTTPRoute resources
 // for a ModelDeployment that has gateway integration enabled.
-func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	// Skip if no gateway detector configured
 	if r.GatewayDetector == nil {
-		return nil
+		return false, nil
 	}
 
 	// Skip if gateway CRDs are not available
@@ -60,13 +60,13 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 			logger.Info("Gateway explicitly enabled but Gateway API Inference Extension CRDs not found", "name", md.Name)
 			r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "CRDsNotAvailable", "Gateway API Inference Extension CRDs are not installed in the cluster")
 		}
-		return nil
+		return false, nil
 	}
 
 	// Skip if explicitly disabled
 	if md.Spec.Gateway != nil && md.Spec.Gateway.Enabled != nil && !*md.Spec.Gateway.Enabled {
 		logger.V(1).Info("Gateway integration explicitly disabled", "name", md.Name)
-		return nil
+		return false, nil
 	}
 
 	// Resolve gateway configuration
@@ -74,7 +74,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	if err != nil {
 		logger.Info("No gateway found for routing, skipping gateway reconciliation", "reason", err.Error())
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "NoGateway", err.Error())
-		return nil
+		return false, nil
 	}
 
 	// Determine target port for InferencePool (needs the pod/container port, not service port)
@@ -97,17 +97,18 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	// Create or update InferencePool
 	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
-		return fmt.Errorf("reconciling InferencePool: %w", err)
+		return false, fmt.Errorf("reconciling InferencePool: %w", err)
 	}
 
 	// Create or update EPP (Endpoint Picker Proxy) for the InferencePool
 	if err := r.reconcileEPP(ctx, md); err != nil {
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
-		return fmt.Errorf("reconciling EPP: %w", err)
+		return false, fmt.Errorf("reconciling EPP: %w", err)
 	}
 
 	// Resolve model name early (needed for HTTPRoute header match and status)
-	modelName := r.resolveModelName(ctx, md)
+	resolution := r.resolveModelNameResolution(ctx, md)
+	modelName := resolution.name
 
 	// Create or update HTTPRoute (skip if user provides their own)
 	if md.Spec.Gateway != nil && md.Spec.Gateway.HTTPRouteRef != "" {
@@ -115,7 +116,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	} else {
 		if err := r.reconcileHTTPRoute(ctx, md, gwConfig, modelName); err != nil {
 			r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "HTTPRouteFailed", err.Error())
-			return fmt.Errorf("reconciling HTTPRoute: %w", err)
+			return false, fmt.Errorf("reconciling HTTPRoute: %w", err)
 		}
 	}
 
@@ -128,7 +129,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionTrue, "GatewayConfigured", "InferencePool and HTTPRoute created")
 
 	logger.Info("Gateway resources reconciled", "name", md.Name, "gateway", gwConfig.GatewayName, "model", modelName)
-	return nil
+	return resolution.retry, nil
 }
 
 // resolveGatewayConfig determines which Gateway to use as the HTTPRoute parent.
@@ -647,15 +648,24 @@ func (r *ModelDeploymentReconciler) resolveGatewayEndpoint(ctx context.Context, 
 	return ""
 }
 
+type modelNameResolution struct {
+	name  string
+	retry bool
+}
+
 // resolveModelName determines the model name for gateway routing.
 // Priority: spec.gateway.modelName > spec.model.servedName > auto-discovered from /v1/models > spec.model.id
 func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) string {
+	return r.resolveModelNameResolution(ctx, md).name
+}
+
+func (r *ModelDeploymentReconciler) resolveModelNameResolution(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) modelNameResolution {
 	// Use explicit overrides first
 	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
-		return md.Spec.Gateway.ModelName
+		return modelNameResolution{name: md.Spec.Gateway.ModelName}
 	}
 	if shouldUseServedNameForGateway(md) {
-		return md.Spec.Model.ServedName
+		return modelNameResolution{name: md.Spec.Model.ServedName}
 	}
 
 	// Auto-discover from the running model server
@@ -670,11 +680,19 @@ func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *ai
 		}
 		if discovered := r.discoverModelName(ctx, md.Status.Endpoint.Service, md.Namespace, port); discovered != "" {
 			log.FromContext(ctx).Info("Auto-discovered model name from server", "name", md.Name, "modelName", discovered)
-			return discovered
+			return modelNameResolution{name: discovered}
+		}
+
+		return modelNameResolution{
+			name:  md.Spec.Model.ID,
+			retry: shouldRetryGatewayModelNameDiscovery(md),
 		}
 	}
 
-	return md.Spec.Model.ID
+	return modelNameResolution{
+		name:  md.Spec.Model.ID,
+		retry: shouldRetryGatewayModelNameDiscovery(md),
+	}
 }
 
 func shouldUseServedNameForGateway(md *airunwayv1alpha1.ModelDeployment) bool {
@@ -683,6 +701,20 @@ func shouldUseServedNameForGateway(md *airunwayv1alpha1.ModelDeployment) bool {
 	}
 
 	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeLlamaCpp && resolvedProviderName(md) == "kaito" {
+		return false
+	}
+
+	return true
+}
+
+func shouldRetryGatewayModelNameDiscovery(md *airunwayv1alpha1.ModelDeployment) bool {
+	if md.ResolvedEngineType() != airunwayv1alpha1.EngineTypeLlamaCpp {
+		return false
+	}
+	if resolvedProviderName(md) != "kaito" {
+		return false
+	}
+	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
 		return false
 	}
 
