@@ -70,6 +70,24 @@ export interface InstallationStatus {
   message?: string;
 }
 
+export function toPodStatus(pod: k8s.V1Pod): PodStatus {
+  const initStatuses = pod.status?.initContainerStatuses || [];
+  const containerStatuses = pod.status?.containerStatuses || [];
+  const allStatuses = [...initStatuses, ...containerStatuses];
+  const waitingState = allStatuses.find((status) => status.state?.waiting)?.state?.waiting;
+  const terminatedState = allStatuses.find((status) => status.state?.terminated)?.state?.terminated;
+
+  return {
+    name: pod.metadata?.name || 'unknown',
+    phase: (pod.status?.phase as PodPhase) || 'Unknown',
+    ready: containerStatuses.length > 0 && containerStatuses.every((status) => status.ready),
+    restarts: allStatuses.reduce((sum, status) => sum + status.restartCount, 0),
+    node: pod.spec?.nodeName,
+    reason: waitingState?.reason || terminatedState?.reason || pod.status?.reason,
+    message: waitingState?.message || terminatedState?.message || pod.status?.message,
+  };
+}
+
 class KubernetesService {
   private kc: k8s.KubeConfig;
   private customObjectsApi: k8s.CustomObjectsApi;
@@ -294,13 +312,7 @@ class KubernetesService {
 
         if (response.body.items.length > 0) {
           logger.debug({ name, namespace, labelSelector, podCount: response.body.items.length }, 'Found pods with selector');
-          return response.body.items.map((pod): PodStatus => ({
-            name: pod.metadata?.name || 'unknown',
-            phase: (pod.status?.phase as PodPhase) || 'Unknown',
-            ready: pod.status?.containerStatuses?.every((cs) => cs.ready) || false,
-            restarts: pod.status?.containerStatuses?.reduce((sum, cs) => sum + cs.restartCount, 0) || 0,
-            node: pod.spec?.nodeName,
-          }));
+          return response.body.items.map((pod) => toPodStatus(pod));
         }
       } catch (error) {
         logger.debug({ error, name, namespace, labelSelector }, 'Error trying label selector');
@@ -332,13 +344,7 @@ class KubernetesService {
 
       if (matchingPods.length > 0) {
         logger.debug({ name, namespace, podCount: matchingPods.length }, 'Found KubeRay pods by cluster label prefix');
-        return matchingPods.map((pod): PodStatus => ({
-          name: pod.metadata?.name || 'unknown',
-          phase: (pod.status?.phase as PodPhase) || 'Unknown',
-          ready: pod.status?.containerStatuses?.every((cs) => cs.ready) || false,
-          restarts: pod.status?.containerStatuses?.reduce((sum, cs) => sum + cs.restartCount, 0) || 0,
-          node: pod.spec?.nodeName,
-        }));
+        return matchingPods.map((pod) => toPodStatus(pod));
       }
     } catch (error) {
       logger.debug({ error, name, namespace }, 'Error trying KubeRay cluster label selector');

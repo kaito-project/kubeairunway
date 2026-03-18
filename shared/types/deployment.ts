@@ -237,6 +237,8 @@ export interface PodStatus {
   ready: boolean;
   restarts: number;
   node?: string;
+  reason?: string;
+  message?: string;
 }
 
 export interface DeploymentStatus {
@@ -328,6 +330,67 @@ export function buildPortForwardCommand(
   return `kubectl port-forward svc/${serviceName} ${localPort}:${servicePort} -n ${deployment.namespace}`;
 }
 
+const FATAL_POD_REASONS = new Set([
+  'CrashLoopBackOff',
+  'CreateContainerConfigError',
+  'CreateContainerError',
+  'ErrImagePull',
+  'ImagePullBackOff',
+  'InvalidImageName',
+  'RunContainerError',
+  'StartError',
+]);
+
+function resolveDeploymentPhase(status: ModelDeploymentStatus, pods: PodStatus[]): DeploymentPhase {
+  const reportedPhase = status.phase;
+
+  if (reportedPhase === 'Terminating') {
+    return 'Terminating';
+  }
+
+  const desiredReplicas = status.replicas?.desired ?? 0;
+  const readyReplicas = status.replicas?.ready ?? 0;
+  const hasReadyPods = pods.some((pod) => pod.ready);
+  const hasRunningPods = pods.some((pod) => pod.phase === 'Running');
+  const hasScheduledPendingPods = pods.some((pod) => pod.phase === 'Pending' && Boolean(pod.node));
+  const hasUnscheduledPendingPods = pods.some((pod) => pod.phase === 'Pending' && !pod.node);
+  const hasFailedPods = pods.some(
+    (pod) => pod.phase === 'Failed' || (pod.reason ? FATAL_POD_REASONS.has(pod.reason) : false),
+  );
+  const isReady = desiredReplicas > 0 ? readyReplicas >= desiredReplicas : hasReadyPods;
+
+  if (isReady && (reportedPhase === 'Running' || hasReadyPods)) {
+    return 'Running';
+  }
+
+  if (hasFailedPods) {
+    return 'Failed';
+  }
+
+  if (hasRunningPods || hasScheduledPendingPods) {
+    return 'Deploying';
+  }
+
+  if (hasUnscheduledPendingPods) {
+    return 'Pending';
+  }
+
+  return reportedPhase || 'Pending';
+}
+
+function resolveEngineType(config: DeploymentConfig): EngineType {
+  if (config.provider === 'kaito') {
+    if (config.modelSource === 'vllm') {
+      return 'vllm';
+    }
+    if (config.modelSource === 'huggingface' || config.modelSource === 'premade') {
+      return 'llamacpp';
+    }
+  }
+
+  return config.engine as EngineType;
+}
+
 export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeploymentSpec {
   const spec: ModelDeploymentSpec = {
     model: {
@@ -336,7 +399,7 @@ export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeployment
       source: 'huggingface',
     },
     engine: {
-      type: config.engine as EngineType,
+      type: resolveEngineType(config),
       contextLength: config.contextLength || config.maxModelLen,
       trustRemoteCode: config.trustRemoteCode,
       args: config.engineArgs,
@@ -345,6 +408,10 @@ export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeployment
       mode: config.mode,
     },
   };
+
+  if (config.imageRef) {
+    spec.image = config.imageRef;
+  }
 
   if (config.provider || config.providerOverrides) {
     spec.provider = {
@@ -407,7 +474,7 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
     servedModelName: spec.model.servedName,
     engine: (spec.engine?.type as Engine) || undefined,
     mode: spec.serving?.mode || 'aggregated',
-    phase: status.phase || 'Pending',
+    phase: resolveDeploymentPhase(status, pods),
     provider: status.provider?.name || spec.provider?.name || 'unknown',
     replicas: {
       desired: status.replicas?.desired ?? 0,

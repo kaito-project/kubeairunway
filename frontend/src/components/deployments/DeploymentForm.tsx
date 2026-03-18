@@ -124,7 +124,7 @@ const RUNTIME_INFO: Record<RuntimeId, { name: string; description: string; defau
 const RUNTIME_ENGINES: Record<RuntimeId, TraditionalEngine[]> = {
   dynamo: ['vllm', 'sglang', 'trtllm'],
   kuberay: ['vllm'], // KubeRay only supports vLLM currently
-  kaito: [], // KAITO uses llama.cpp, not traditional engines
+  kaito: ['vllm'], // KAITO exposes vLLM in the engine picker; single-engine llama.cpp models bypass it
   llmd: ['vllm'], // llm-d uses vLLM exclusively
 }
 
@@ -299,15 +299,27 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   }
   const availableEngines = getAvailableEngines()
 
+  const getDefaultEngineForRuntime = (runtime: RuntimeId): Engine => {
+    if (model.supportedEngines.length === 1) {
+      return model.supportedEngines[0]
+    }
+
+    const runtimeEngines = RUNTIME_ENGINES[runtime]
+    return model.supportedEngines.find(
+      (e): e is TraditionalEngine => runtimeEngines.includes(e as TraditionalEngine)
+    ) || model.supportedEngines[0] || 'vllm'
+  }
+
+  const defaultRuntime = getDefaultRuntime()
+
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [config, setConfig] = useState<DeploymentConfig>({
     name: generateDeploymentName(model.id),
-    namespace: RUNTIME_INFO[getDefaultRuntime()].defaultNamespace,
+    namespace: RUNTIME_INFO[defaultRuntime].defaultNamespace,
     modelId: model.id,
-    servedModelName: model.id,  // Use HuggingFace model ID as served model name
-    engine: availableEngines[0] || 'vllm',
+    engine: getDefaultEngineForRuntime(defaultRuntime),
     mode: 'aggregated',
-    provider: getDefaultRuntime(),
+    provider: defaultRuntime,
     routerMode: 'none',
     replicas: 1,
     hfTokenSecret: model.gated ? (import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret') : '',
@@ -432,7 +444,6 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
           ...prev,
           name: generateDeploymentName(matchingPremade.id),
           modelId: matchingPremade.id,
-          servedModelName: matchingPremade.modelName,
         }));
       }
     }
@@ -448,7 +459,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     const currentEngineSupported = newAvailableEngines.includes(config.engine as TraditionalEngine)
 
     setConfig(prev => {
-      const nextEngine = currentEngineSupported ? prev.engine : (newAvailableEngines[0] || 'vllm')
+      const nextEngine = currentEngineSupported ? prev.engine : getDefaultEngineForRuntime(runtime)
       const shouldManageDynamoParallelism =
         runtime === 'dynamo' &&
         prev.mode === 'aggregated' &&
@@ -514,7 +525,6 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       ...prev,
       name: generateDeploymentName(premadeModel.id),
       modelId: premadeModel.id,
-      servedModelName: premadeModel.modelName,
     }))
   }, [])
 

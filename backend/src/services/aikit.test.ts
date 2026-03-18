@@ -152,7 +152,20 @@ describe('AikitService', () => {
         'llama-2-7b-chat.Q4_K_M.gguf'
       );
 
-      expect(url).toBe('huggingface://TheBloke/Llama-2-7B-Chat-GGUF/llama-2-7b-chat.Q4_K_M.gguf');
+      expect(url).toBe(
+        'https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/llama-2-7b-chat.Q4_K_M.gguf'
+      );
+    });
+
+    it('encodes GGUF path segments safely', () => {
+      const url = aikitService.buildHuggingFaceUrl(
+        'TheBloke/Llama-2-7B-Chat-GGUF',
+        'quantized/llama 2 #1.Q4_K_M.gguf'
+      );
+
+      expect(url).toBe(
+        'https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF/resolve/main/quantized/llama%202%20%231.Q4_K_M.gguf'
+      );
     });
   });
 

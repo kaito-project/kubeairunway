@@ -91,6 +91,62 @@ describe('Deployment Routes', () => {
       expect(spec.model.storage.volumes[0].name).toBe('model-cache');
       expect(spec.model.storage.volumes[0].size).toBe('100Gi');
     });
+
+    test('normalizes KAITO GGUF deployments to llamacpp in preview manifests', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'kaito-workspace'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validDeploymentBody,
+          namespace: 'kaito-workspace',
+          provider: 'kaito',
+          modelId: 'nvidia/Nemotron-3-Nano-4B-gguf',
+          modelSource: 'huggingface',
+          ggufFile: 'nvidia-nemotron-3-nano-4b.Q4_K_M.gguf',
+          ggufRunMode: 'direct',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.engine.type).toBe('llamacpp');
+      expect(data.resources[0].manifest.spec.engine.args.ggufUrl).toBe(
+        'https://huggingface.co/nvidia/Nemotron-3-Nano-4B-gguf/resolve/main/nvidia-nemotron-3-nano-4b.Q4_K_M.gguf'
+      );
+      expect(data.resources[0].manifest.spec.image).toBe('ghcr.io/kaito-project/aikit/runners/llama-cpp-cuda:latest');
+      expect(data.resources[0].manifest.spec.provider.name).toBe('kaito');
+    });
+
+    test('normalizes KAITO premade deployments to llamacpp in preview manifests', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'kaito-workspace'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validDeploymentBody,
+          namespace: 'kaito-workspace',
+          provider: 'kaito',
+          modelId: 'llama3.2:3b',
+          modelSource: 'premade',
+          premadeModel: 'llama3.2:3b',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.engine.type).toBe('llamacpp');
+      expect(data.resources[0].manifest.spec.image).toBe('ghcr.io/kaito-project/aikit/llama3.2:3b');
+      expect(data.resources[0].manifest.spec.provider.name).toBe('kaito');
+    });
   });
 
   describe('POST /api/deployments - storage validation', () => {
@@ -577,6 +633,91 @@ describe('Deployment Routes', () => {
   });
 
   describe('POST /api/deployments', () => {
+    test('resolves direct KAITO GGUF deployments to the runner image', async () => {
+      let capturedConfig: any;
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'createDeployment', async (config) => {
+          capturedConfig = config;
+          return undefined;
+        }),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getClusterGpuCapacity', async () => ({
+          totalGpus: 8,
+          allocatedGpus: 0,
+          availableGpus: 8,
+          maxContiguousAvailable: 8,
+          nodes: [],
+        })),
+      );
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'kaito-workspace'),
+      );
+
+      const res = await app.request('/api/deployments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'nemotron-direct',
+          namespace: 'kaito-workspace',
+          provider: 'kaito',
+          modelId: 'unsloth/NVIDIA-Nemotron-3-Nano-4B-GGUF',
+          engine: 'llamacpp',
+          modelSource: 'huggingface',
+          ggufFile: 'NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf',
+          ggufRunMode: 'direct',
+          resources: { gpu: 1 },
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(capturedConfig.imageRef).toBe('ghcr.io/kaito-project/aikit/runners/llama-cpp-cuda:latest');
+      expect(capturedConfig.engineArgs?.ggufUrl).toBe(
+        'https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-4B-GGUF/resolve/main/NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf'
+      );
+    });
+
+    test('resolves premade KAITO deployments to the premade image', async () => {
+      let capturedConfig: any;
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'createDeployment', async (config) => {
+          capturedConfig = config;
+          return undefined;
+        }),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getClusterGpuCapacity', async () => ({
+          totalGpus: 8,
+          allocatedGpus: 0,
+          availableGpus: 8,
+          maxContiguousAvailable: 8,
+          nodes: [],
+        })),
+      );
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'kaito-workspace'),
+      );
+
+      const res = await app.request('/api/deployments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'llama-premade',
+          namespace: 'kaito-workspace',
+          provider: 'kaito',
+          modelId: 'llama3.2:3b',
+          engine: 'llamacpp',
+          modelSource: 'premade',
+          premadeModel: 'llama3.2:3b',
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(capturedConfig.imageRef).toBe('ghcr.io/kaito-project/aikit/llama3.2:3b');
+    });
+
     test('accepts deployment with providerOverrides', async () => {
       restores.push(
         mockServiceMethod(kubernetesService, 'createDeployment', async () => undefined),

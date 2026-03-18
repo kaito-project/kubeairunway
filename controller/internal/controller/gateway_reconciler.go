@@ -654,7 +654,7 @@ func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *ai
 	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
 		return md.Spec.Gateway.ModelName
 	}
-	if md.Spec.Model.ServedName != "" {
+	if shouldUseServedNameForGateway(md) {
 		return md.Spec.Model.ServedName
 	}
 
@@ -675,6 +675,28 @@ func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *ai
 	}
 
 	return md.Spec.Model.ID
+}
+
+func shouldUseServedNameForGateway(md *airunwayv1alpha1.ModelDeployment) bool {
+	if md.Spec.Model.ServedName == "" {
+		return false
+	}
+
+	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeLlamaCpp && resolvedProviderName(md) == "kaito" {
+		return false
+	}
+
+	return true
+}
+
+func resolvedProviderName(md *airunwayv1alpha1.ModelDeployment) string {
+	if md.Spec.Provider != nil && md.Spec.Provider.Name != "" {
+		return md.Spec.Provider.Name
+	}
+	if md.Status.Provider != nil && md.Status.Provider.Name != "" {
+		return md.Status.Provider.Name
+	}
+	return ""
 }
 
 // resolveServicePort looks up the first HTTP port on the named service.

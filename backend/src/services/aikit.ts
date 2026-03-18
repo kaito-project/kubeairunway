@@ -6,7 +6,7 @@ import logger from '../lib/logger';
  * Direct runner image for HuggingFace GGUF models
  * Downloads and runs models at runtime without pre-building
  */
-export const GGUF_RUNNER_IMAGE = 'docker.io/sozercan/runner:latest';
+export const GGUF_RUNNER_IMAGE = 'ghcr.io/kaito-project/aikit/runners/llama-cpp-cuda:latest';
 
 /**
  * Pre-made AIKit models from the KAITO project
@@ -233,10 +233,13 @@ class AikitService {
   }
 
   /**
-   * Build the HuggingFace URL for a GGUF model
+   * Build the direct Hugging Face resolve URL for a GGUF model
    */
   buildHuggingFaceUrl(modelId: string, ggufFile: string): string {
-    return `huggingface://${modelId}/${ggufFile}`;
+    const encodePath = (path: string) =>
+      path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+
+    return `https://huggingface.co/${encodePath(modelId)}/resolve/main/${encodePath(ggufFile)}`;
   }
 
   /**

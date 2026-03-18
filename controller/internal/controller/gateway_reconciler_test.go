@@ -588,6 +588,22 @@ func TestGateway_ModelNameServedNameSkipsDiscovery(t *testing.T) {
 	}
 }
 
+func TestGateway_KaitoLlamaCppServedNameFallsBackToModelID(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	md.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "kaito"}
+	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Model.ServedName = "explicit-served"
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md)
+	ctx := context.Background()
+
+	name := r.resolveModelName(ctx, md)
+	if name != "meta-llama/Llama-3-8B" {
+		t.Errorf("expected fallback to spec.model.id %q, got %q", "meta-llama/Llama-3-8B", name)
+	}
+}
+
 func TestGateway_ModelNameNoEndpointFallsBack(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")

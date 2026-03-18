@@ -6,6 +6,7 @@ import { kubernetesService } from '../services/kubernetes';
 import { configService } from '../services/config';
 import { metricsService } from '../services/metrics';
 import { validateGpuFit, formatGpuWarnings } from '../services/gpuValidation';
+import { aikitService, GGUF_RUNNER_IMAGE } from '../services/aikit';
 import { handleK8sError } from '../lib/k8s-errors';
 import models from '../data/models.json';
 import logger from '../lib/logger';
@@ -285,6 +286,42 @@ const createDeploymentSchema = z.object({
   }
 });
 
+function resolveDeploymentImages(config: DeploymentConfig): DeploymentConfig {
+  if (config.provider !== 'kaito') {
+    return config;
+  }
+
+  if (config.modelSource === 'premade' && config.premadeModel) {
+    if (config.imageRef) {
+      return config;
+    }
+
+    const imageRef = aikitService.getImageRef({
+      modelSource: 'premade',
+      premadeModel: config.premadeModel,
+    });
+    return imageRef ? { ...config, imageRef } : config;
+  }
+
+  if (config.modelSource === 'huggingface' && config.ggufRunMode === 'direct') {
+    const resolvedConfig: DeploymentConfig = {
+      ...config,
+      imageRef: config.imageRef || GGUF_RUNNER_IMAGE,
+    };
+
+    if (config.ggufFile) {
+      resolvedConfig.engineArgs = {
+        ...(config.engineArgs || {}),
+        ggufUrl: aikitService.buildHuggingFaceUrl(config.modelId, config.ggufFile),
+      };
+    }
+
+    return resolvedConfig;
+  }
+
+  return config;
+}
+
 const deployments = new Hono()
   .get('/', zValidator('query', listDeploymentsQuerySchema), async (c) => {
     try {
@@ -323,10 +360,10 @@ const deployments = new Hono()
   .post('/', zValidator('json', createDeploymentSchema), async (c) => {
     const body = c.req.valid('json');
 
-    const config: DeploymentConfig = {
+    const config = resolveDeploymentImages({
       ...body,
       namespace: body.namespace || (await configService.getDefaultNamespace()),
-    };
+    });
 
     // GPU fit validation
     let gpuWarnings: string[] = [];
@@ -383,10 +420,10 @@ const deployments = new Hono()
   })
   .post('/preview', zValidator('json', createDeploymentSchema), async (c) => {
     const body = c.req.valid('json');
-    const config: DeploymentConfig = {
+    const config = resolveDeploymentImages({
       ...body,
       namespace: body.namespace || (await configService.getDefaultNamespace()),
-    };
+    });
 
     // Apply storage defaults that the mutating webhook would add,
     // so the preview manifest matches what Kubernetes will persist.

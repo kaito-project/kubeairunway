@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
-import type { ClusterGpuCapacity, NodeGpuInfo, GPUAvailability, GPUOperatorStatus } from './kubernetes';
-import type { ClusterStatus, PodStatus, DeploymentStatus, PodPhase } from '@airunway/shared';
+import { toPodStatus, type ClusterGpuCapacity, type NodeGpuInfo, type GPUAvailability, type GPUOperatorStatus } from './kubernetes';
+import { toDeploymentStatus, type ClusterStatus, type PodStatus, type DeploymentStatus, type PodPhase, type ModelDeployment } from '@airunway/shared';
 
 describe('KubernetesService - Type Definitions', () => {
   describe('ClusterGpuCapacity', () => {
@@ -195,6 +195,108 @@ describe('KubernetesService - Type Definitions', () => {
       expect(pod.restarts).toBe(5);
       expect(pod.ready).toBe(false);
     });
+
+    test('maps waiting reason and keeps empty container status lists as not ready', () => {
+      const pod = toPodStatus({
+        metadata: { name: 'nemotron-pod' },
+        spec: { nodeName: 'gpu-node-1' },
+        status: {
+          phase: 'Pending',
+          containerStatuses: [],
+          initContainerStatuses: [
+            {
+              name: 'init',
+              ready: false,
+              restartCount: 0,
+              image: 'busybox',
+              imageID: 'busybox:latest',
+              state: {
+                waiting: {
+                  reason: 'ContainerCreating',
+                  message: 'Creating container',
+                },
+              },
+            },
+          ],
+        },
+      } as any);
+
+      expect(pod.phase).toBe('Pending');
+      expect(pod.ready).toBe(false);
+      expect(pod.node).toBe('gpu-node-1');
+      expect(pod.reason).toBe('ContainerCreating');
+    });
+  });
+});
+
+describe('Deployment status mapping', () => {
+  function createModelDeployment(phase: 'Pending' | 'Deploying' | 'Running' | 'Failed' | 'Terminating'): ModelDeployment {
+    return {
+      apiVersion: 'airunway.ai/v1alpha1',
+      kind: 'ModelDeployment',
+      metadata: {
+        name: 'nemotron',
+        namespace: 'kaito-workspace',
+        creationTimestamp: new Date().toISOString(),
+      },
+      spec: {
+        model: { id: 'nvidia/Nemotron-3-Nano-4B-gguf' },
+        engine: { type: 'llamacpp' },
+        provider: { name: 'kaito' },
+        serving: { mode: 'aggregated' },
+      },
+      status: {
+        phase,
+        replicas: {
+          desired: 1,
+          ready: 0,
+          available: 0,
+        },
+      },
+    };
+  }
+
+  test('treats ContainerCreating pods as deploying even when CRD phase says failed', () => {
+    const deployment = toDeploymentStatus(createModelDeployment('Failed'), [
+      {
+        name: 'nvidia-nemotron-3-nano-4b-gguf-zftr-0',
+        phase: 'Pending',
+        ready: false,
+        restarts: 0,
+        node: 'gpu-node-1',
+        reason: 'ContainerCreating',
+      },
+    ]);
+
+    expect(deployment.phase).toBe('Deploying');
+  });
+
+  test('keeps fatal pod startup errors as failed', () => {
+    const deployment = toDeploymentStatus(createModelDeployment('Failed'), [
+      {
+        name: 'nvidia-nemotron-3-nano-4b-gguf-zftr-0',
+        phase: 'Pending',
+        ready: false,
+        restarts: 0,
+        node: 'gpu-node-1',
+        reason: 'ImagePullBackOff',
+      },
+    ]);
+
+    expect(deployment.phase).toBe('Failed');
+  });
+
+  test('keeps unscheduled pending pods as pending', () => {
+    const deployment = toDeploymentStatus(createModelDeployment('Failed'), [
+      {
+        name: 'nvidia-nemotron-3-nano-4b-gguf-zftr-0',
+        phase: 'Pending',
+        ready: false,
+        restarts: 0,
+      },
+    ]);
+
+    expect(deployment.phase).toBe('Pending');
   });
 });
 

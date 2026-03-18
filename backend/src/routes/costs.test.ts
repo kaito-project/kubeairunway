@@ -1,9 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import app from '../hono-app';
 import { cloudPricingService } from '../services/cloudPricing';
+import { kubernetesService } from '../services/kubernetes';
+import { mockServiceMethod } from '../test/helpers';
 
 // Mock fetch globally for pricing API tests
 const originalFetch = globalThis.fetch;
+const restores: Array<() => void> = [];
 
 function mockFetch(response: unknown, options?: { ok?: boolean; status?: number }) {
   // @ts-expect-error - mocking fetch for tests
@@ -23,6 +26,8 @@ describe('Costs Routes', () => {
   });
 
   afterEach(() => {
+    restores.forEach((restore) => restore());
+    restores.length = 0;
     globalThis.fetch = originalFetch;
   });
 
@@ -313,45 +318,117 @@ describe('Costs Routes', () => {
 
   describe('GET /api/costs/node-pools', () => {
     test('returns node pool costs with cache stats', async () => {
-      // This endpoint requires K8s, so we test the response structure
-      // when K8s returns an error or empty data
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDetailedClusterGpuCapacity', async () => ({
+          totalGpus: 4,
+          allocatedGpus: 1,
+          availableGpus: 3,
+          maxContiguousAvailable: 3,
+          maxNodeGpuCapacity: 4,
+          gpuNodeCount: 1,
+          nodePools: [
+            {
+              name: 'gpu-pool',
+              gpuCount: 4,
+              nodeCount: 1,
+              availableGpus: 3,
+              gpuModel: 'A100-80GB',
+            },
+          ],
+        })),
+      );
+
       const res = await app.request('/api/costs/node-pools');
 
-      // May succeed with empty data or fail with K8s error
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
 
-      if (res.status === 200) {
-        const data = await res.json();
-        expect(data.success).toBe(true);
-        expect(data.nodePoolCosts).toBeDefined();
-        expect(Array.isArray(data.nodePoolCosts)).toBe(true);
-        expect(data.pricingSource).toBeDefined();
-        expect(data.cacheStats).toBeDefined();
-      }
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.nodePoolCosts).toBeDefined();
+      expect(Array.isArray(data.nodePoolCosts)).toBe(true);
+      expect(data.nodePoolCosts[0].poolName).toBe('gpu-pool');
+      expect(data.pricingSource).toBe('realtime-with-fallback');
+      expect(data.cacheStats).toBeDefined();
     });
 
     test('accepts gpuCount and replicas query params', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDetailedClusterGpuCapacity', async () => ({
+          totalGpus: 8,
+          allocatedGpus: 0,
+          availableGpus: 8,
+          maxContiguousAvailable: 8,
+          maxNodeGpuCapacity: 8,
+          gpuNodeCount: 1,
+          nodePools: [
+            {
+              name: 'gpu-pool',
+              gpuCount: 8,
+              nodeCount: 2,
+              availableGpus: 8,
+              gpuModel: 'H100-80GB',
+            },
+          ],
+        })),
+      );
+
       const res = await app.request('/api/costs/node-pools?gpuCount=2&replicas=3');
 
-      // May succeed or fail depending on K8s
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.nodePoolCosts[0].costBreakdown.totalGpus).toBe(6);
     });
 
     test('accepts realtime=false to disable realtime pricing', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDetailedClusterGpuCapacity', async () => ({
+          totalGpus: 4,
+          allocatedGpus: 0,
+          availableGpus: 4,
+          maxContiguousAvailable: 4,
+          maxNodeGpuCapacity: 4,
+          gpuNodeCount: 1,
+          nodePools: [
+            {
+              name: 'gpu-pool',
+              gpuCount: 4,
+              nodeCount: 1,
+              availableGpus: 4,
+              gpuModel: 'A100-80GB',
+              instanceType: 'Standard_NC24ads_A100_v4',
+            },
+          ],
+        })),
+      );
+
       const res = await app.request('/api/costs/node-pools?realtime=false');
 
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
 
-      if (res.status === 200) {
-        const data = await res.json();
-        expect(data.pricingSource).toBe('static');
-      }
+      const data = await res.json();
+      expect(data.pricingSource).toBe('static');
+      expect(data.nodePoolCosts[0].realtimePricing).toBeUndefined();
     });
 
     test('accepts computeType=cpu for CPU-only pools', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getAllNodePools', async () => ([
+          {
+            name: 'cpu-pool',
+            gpuCount: 0,
+            nodeCount: 2,
+            availableGpus: 0,
+          },
+        ])),
+      );
+
       const res = await app.request('/api/costs/node-pools?computeType=cpu');
 
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.nodePoolCosts).toBeArray();
     });
   });
 });

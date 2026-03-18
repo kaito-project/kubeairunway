@@ -120,7 +120,6 @@ func TestTransformLlamaCpp(t *testing.T) {
 	md := newTestMD("test-model", "default")
 	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
-	md.Spec.Model.ServedName = "my-model"
 
 	resources, err := tr.Transform(context.Background(), md)
 	if err != nil {
@@ -151,24 +150,17 @@ func TestTransformLlamaCpp(t *testing.T) {
 		t.Errorf("expected image 'my-image:latest', got %v", container["image"])
 	}
 
-	// Check args include model ID and served name
+	// Check args include model ID
 	args, _ := container["args"].([]interface{})
 	foundModel := false
-	foundServed := false
 	for _, a := range args {
 		s, _ := a.(string)
 		if s == "huggingface://meta-llama/Llama-2-7b-chat-hf" {
 			foundModel = true
 		}
-		if s == "--served-model-name=my-model" {
-			foundServed = true
-		}
 	}
 	if !foundModel {
 		t.Error("expected model URL in args")
-	}
-	if !foundServed {
-		t.Error("expected --served-model-name in args")
 	}
 
 	// Check port
@@ -179,6 +171,46 @@ func TestTransformLlamaCpp(t *testing.T) {
 	port, _ := ports[0].(map[string]interface{})
 	if port["containerPort"] != int64(defaultLlamaCppPort) {
 		t.Errorf("expected port %d, got %v", defaultLlamaCppPort, port["containerPort"])
+	}
+}
+
+func TestTransformLlamaCppUsesExplicitGGUFURL(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Image = "my-image:latest"
+	md.Spec.Engine.Args = map[string]string{
+		"ggufUrl": "https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-4B-GGUF/resolve/main/NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf",
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	inference, _, _ := unstructured.NestedMap(ws.Object, "inference")
+	template, ok := inference["template"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected inference.template to be a map")
+	}
+
+	spec, _ := template["spec"].(map[string]interface{})
+	containers, _ := spec["containers"].([]interface{})
+	if len(containers) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(containers))
+	}
+
+	container, _ := containers[0].(map[string]interface{})
+	args, _ := container["args"].([]interface{})
+	if len(args) == 0 {
+		t.Fatal("expected model args")
+	}
+
+	firstArg, _ := args[0].(string)
+	expected := "https://huggingface.co/unsloth/NVIDIA-Nemotron-3-Nano-4B-GGUF/resolve/main/NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf"
+	if firstArg != expected {
+		t.Errorf("expected first arg %q, got %q", expected, firstArg)
 	}
 }
 
@@ -566,7 +598,7 @@ func TestTransformVLLMZeroReplicas(t *testing.T) {
 	}
 }
 
-func TestTransformLlamaCppWithServedName(t *testing.T) {
+func TestTransformLlamaCppDoesNotInjectServedNameFlag(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
 	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
@@ -585,14 +617,10 @@ func TestTransformLlamaCppWithServedName(t *testing.T) {
 	}
 	container := containers[0].(map[string]interface{})
 	args, _ := container["args"].([]interface{})
-	foundServedName := false
 	for _, a := range args {
 		if a.(string) == "--served-model-name=my-alias" {
-			foundServedName = true
+			t.Fatalf("did not expect --served-model-name in args, got %v", args)
 		}
-	}
-	if !foundServedName {
-		t.Errorf("expected --served-model-name in args, got %v", args)
 	}
 }
 

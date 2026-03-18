@@ -103,6 +103,11 @@ metadata:
   namespace: default
 spec:
   gatewayClassName: eg  # Change to match your implementation
+  infrastructure:
+    annotations:
+      # Required on AKS with Istio. Azure otherwise probes GET / on port 80,
+      # but the gateway returns 404 there and the public IP can time out.
+      service.beta.kubernetes.io/port_80_health-probe_protocol: tcp
   listeners:
     - name: http
       protocol: HTTP
@@ -116,6 +121,12 @@ metadata:
   labels:
     airunway.ai/inference-gateway: "true"
 ```
+
+> [!NOTE]
+> **AKS with Istio:** Keep the `spec.infrastructure.annotations.service.beta.kubernetes.io/port_80_health-probe_protocol: tcp`
+> setting in your Gateway. Azure otherwise configures an HTTP health probe for `/` on port `80`, but Istio's generated
+> gateway returns `404` on `/`. The result is a public IP that times out even though the gateway works through
+> `kubectl port-forward` or from inside the cluster.
 
 ### Step 5: Deploy Models
 
@@ -347,3 +358,12 @@ curl http://${GATEWAY_IP}/v1/chat/completions \
    kubectl get inferencepool <deployment-name> -o yaml
    kubectl get pods -l airunway.ai/model-deployment=<deployment-name>
    ```
+4. If the Gateway has a public IP on AKS but requests to that IP time out, make sure the Gateway sets:
+   ```yaml
+   spec:
+     infrastructure:
+       annotations:
+         service.beta.kubernetes.io/port_80_health-probe_protocol: tcp
+   ```
+   Azure can otherwise probe `GET /` on port `80`. Istio's gateway returns `404` there, so the load balancer marks the
+   backend unhealthy even though requests succeed through `kubectl port-forward`.

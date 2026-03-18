@@ -71,11 +71,11 @@ func (t *Transformer) Transform(ctx context.Context, md *airunwayv1alpha1.ModelD
 
 	// Set labels
 	labels := map[string]string{
-		"airunway.ai/managed-by":        "airunway",
-		"airunway.ai/deployment":        md.Name,
-		"airunway.ai/model-source":      string(md.Spec.Model.Source),
-		"airunway.ai/engine-type":       string(md.ResolvedEngineType()),
-		"airunway.ai/model-deployment":  md.Name,
+		"airunway.ai/managed-by":       "airunway",
+		"airunway.ai/deployment":       md.Name,
+		"airunway.ai/model-source":     string(md.Spec.Model.Source),
+		"airunway.ai/engine-type":      string(md.ResolvedEngineType()),
+		"airunway.ai/model-deployment": md.Name,
 	}
 	// Merge podTemplate labels onto the Workspace
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil {
@@ -175,12 +175,9 @@ func (t *Transformer) buildLlamaCppTemplate(md *airunwayv1alpha1.ModelDeployment
 	args := []interface{}{
 		"--address=:5000",
 	}
-	// Only add HuggingFace model URI for non-custom sources
-	if md.Spec.Model.Source != airunwayv1alpha1.ModelSourceCustom && md.Spec.Model.ID != "" {
-		args = append([]interface{}{fmt.Sprintf("huggingface://%s", md.Spec.Model.ID)}, args...)
-	}
-	if md.Spec.Model.ServedName != "" {
-		args = append(args, fmt.Sprintf("--served-model-name=%s", md.Spec.Model.ServedName))
+	// Prefer the exact GGUF URL when the API populated one for direct-run deployments.
+	if modelArg := resolveLlamaCppModelArg(md); modelArg != "" {
+		args = append([]interface{}{modelArg}, args...)
 	}
 
 	// Build container ports
@@ -222,6 +219,20 @@ func (t *Transformer) buildLlamaCppTemplate(md *airunwayv1alpha1.ModelDeployment
 	}
 
 	return template, nil
+}
+
+func resolveLlamaCppModelArg(md *airunwayv1alpha1.ModelDeployment) string {
+	if md.Spec.Model.Source == airunwayv1alpha1.ModelSourceCustom || md.Spec.Model.ID == "" {
+		return ""
+	}
+
+	if md.Spec.Engine.Args != nil {
+		if ggufURL := md.Spec.Engine.Args["ggufUrl"]; ggufURL != "" {
+			return ggufURL
+		}
+	}
+
+	return fmt.Sprintf("huggingface://%s", md.Spec.Model.ID)
 }
 
 // buildResourceRequests creates resource requests from ResourceSpec

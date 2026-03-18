@@ -96,12 +96,16 @@ pods to pull images and start serving).
 | Deployment | `model-b-epp` | Endpoint Picker Proxy for model-b |
 
 ## BYO Gateway Configurations
-If you are using Gateway API with AKS, you might also need add the following configuration to the Gateway resource: 
+If you are using Gateway API with AKS, add the following configuration to the Gateway resource so Azure uses a TCP
+health probe for port `80`. Without this, Azure probes `GET /`, Istio returns `404`, and the public IP can time out
+even though the gateway works from inside the cluster.
+
 ```yaml
   infrastructure:
     annotations:
       service.beta.kubernetes.io/port_80_health-probe_protocol: tcp
 ```
+
 For more information, see [Using Gateway API with Azure](https://istio.io/latest/docs/setup/platform-setup/azure/#using-gateway-api-with-azure)
 
 ## BYO HTTPRoute Explained

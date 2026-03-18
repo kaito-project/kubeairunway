@@ -7,6 +7,10 @@ metadata:
     airunway.ai/inference-gateway: "true"
 spec:
   gatewayClassName: istio
+  infrastructure:
+    annotations:
+      # Required on AKS so Azure uses a TCP health probe on port 80.
+      service.beta.kubernetes.io/port_80_health-probe_protocol: tcp
   listeners:
     - name: http
       protocol: HTTP
