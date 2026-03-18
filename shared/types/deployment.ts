@@ -191,6 +191,11 @@ export interface GatewayModelInfo {
   ready: boolean;
 }
 
+export interface EndpointStatus {
+  service?: string;
+  port?: number;
+}
+
 export interface ModelDeploymentStatus {
   phase?: DeploymentPhase;
   message?: string;
@@ -204,7 +209,7 @@ export interface ModelDeploymentStatus {
     desired: number;
     ready: number;
   };
-  endpoint?: string;
+  endpoint?: EndpointStatus;
   gateway?: GatewayStatus;
   conditions?: Condition[];
   observedGeneration?: number;
@@ -253,6 +258,7 @@ export interface DeploymentStatus {
   conditions?: Condition[];
   pods: PodStatus[];
   createdAt: string;
+  // Service reference in "name[:port]" form used by the UI/plugin for access commands.
   frontendService?: string;
   storage?: StorageSpec;
   prefillReplicas?: {
@@ -267,6 +273,62 @@ export interface DeploymentStatus {
 }
 
 // ==================== Conversion Functions ====================
+
+const LEGACY_FRONTEND_SERVICE_PORT = 8000;
+
+export interface FrontendServiceRef {
+  serviceName: string;
+  servicePort?: number;
+}
+
+export function formatFrontendService(serviceName?: string, servicePort?: number): string | undefined {
+  if (!serviceName) {
+    return undefined;
+  }
+
+  if (servicePort && servicePort > 0) {
+    return `${serviceName}:${servicePort}`;
+  }
+
+  return serviceName;
+}
+
+export function parseFrontendService(frontendService?: string): FrontendServiceRef | undefined {
+  if (!frontendService) {
+    return undefined;
+  }
+
+  const [serviceName, rawServicePort] = frontendService.split(':', 2);
+
+  if (!serviceName) {
+    return undefined;
+  }
+
+  if (!rawServicePort) {
+    return { serviceName };
+  }
+
+  const servicePort = Number.parseInt(rawServicePort, 10);
+  if (Number.isNaN(servicePort) || servicePort <= 0) {
+    return { serviceName };
+  }
+
+  return {
+    serviceName,
+    servicePort,
+  };
+}
+
+export function buildPortForwardCommand(
+  deployment: Pick<DeploymentStatus, 'name' | 'namespace' | 'frontendService'>,
+  localPort = LEGACY_FRONTEND_SERVICE_PORT
+): string {
+  const frontendService = parseFrontendService(deployment.frontendService);
+  const serviceName = frontendService?.serviceName || `${deployment.name}-frontend`;
+  const servicePort = frontendService?.servicePort || LEGACY_FRONTEND_SERVICE_PORT;
+
+  return `kubectl port-forward svc/${serviceName} ${localPort}:${servicePort} -n ${deployment.namespace}`;
+}
 
 const FATAL_POD_REASONS = new Set([
   'CrashLoopBackOff',
@@ -403,6 +465,7 @@ export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeployment
 export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []): DeploymentStatus {
   const status = md.status || {};
   const spec = md.spec;
+  const frontendServiceName = status.endpoint?.service || md.metadata.name;
 
   return {
     name: md.metadata.name,
@@ -421,7 +484,7 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
     conditions: status.conditions,
     pods,
     createdAt: md.metadata.creationTimestamp || new Date().toISOString(),
-    frontendService: md.metadata.name,
+    frontendService: formatFrontendService(frontendServiceName, status.endpoint?.port),
     prefillReplicas: status.prefillReplicas,
     decodeReplicas: status.decodeReplicas,
     gateway: status.gateway,

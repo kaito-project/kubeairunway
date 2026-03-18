@@ -58,7 +58,7 @@ export const mockDeployments = [
       },
     ],
     createdAt: new Date().toISOString(),
-    frontendService: 'qwen3-0-6b-vllm-abc123-frontend',
+    frontendService: 'qwen3-0-6b-vllm-abc123-frontend:8000',
   },
 ]
 

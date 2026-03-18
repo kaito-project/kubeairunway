@@ -9,6 +9,7 @@ import { MetricsTab } from '@/components/metrics'
 import { formatRelativeTime, generateAynaUrl } from '@/lib/utils'
 import { Loader2, ArrowLeft, Trash2, Copy, Terminal, MessageSquare, Globe, HardDrive } from 'lucide-react'
 import { useState } from 'react'
+import { buildPortForwardCommand } from '@airunway/shared'
 import {
   Dialog,
   DialogContent,
@@ -68,9 +69,7 @@ export function DeploymentDetailsPage() {
 
   const copyPortForwardCommand = () => {
     if (!deployment) return
-    // Parse frontendService which may include port (e.g., "name:8000" or "name-vllm:8000")
-    const [serviceName, servicePort] = (deployment.frontendService || `${deployment.name}-frontend:8000`).split(':')
-    const command = `kubectl port-forward svc/${serviceName} 8000:${servicePort || '8000'} -n ${deployment.namespace}`
+    const command = buildPortForwardCommand(deployment)
     navigator.clipboard.writeText(command)
     toast({
       title: 'Copied to clipboard',
@@ -102,9 +101,7 @@ export function DeploymentDetailsPage() {
     )
   }
 
-  // Parse frontendService which may include port (e.g., "name:5000" or "name-vllm:8000")
-  const [serviceName, servicePort] = (deployment.frontendService || `${deployment.name}-frontend:8000`).split(':')
-  const portForwardCommand = `kubectl port-forward svc/${serviceName} 8000:${servicePort || '8000'} -n ${deployment.namespace}`
+  const portForwardCommand = buildPortForwardCommand(deployment)
 
   // Gateway endpoint (when available)
   const hasGateway = !!deployment.gateway?.endpoint
