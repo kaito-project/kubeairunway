@@ -21,6 +21,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '@iconify/react';
+import { buildPortForwardCommand } from '@airunway/shared';
 import { useApiClient } from '../lib/api-client';
 import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@airunway/shared';
 import { MetricsPanel } from '../components/MetricsPanel';
@@ -151,8 +152,7 @@ export function DeploymentDetails() {
   // Copy port-forward command
   const copyPortForwardCommand = useCallback(() => {
     if (!deployment) return;
-    const [serviceName, servicePort] = (deployment.frontendService || `${deployment.name}-frontend:8000`).split(':');
-    const command = `kubectl port-forward svc/${serviceName} 8000:${servicePort || '8000'} -n ${deployment.namespace}`;
+    const command = buildPortForwardCommand(deployment);
     navigator.clipboard.writeText(command);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -200,8 +200,7 @@ export function DeploymentDetails() {
   }
 
   // Generate port-forward command
-  const [serviceName, servicePort] = (deployment.frontendService || `${deployment.name}-frontend:8000`).split(':');
-  const portForwardCommand = `kubectl port-forward svc/${serviceName} 8000:${servicePort || '8000'} -n ${deployment.namespace}`;
+  const portForwardCommand = buildPortForwardCommand(deployment);
 
   // Tab content components
   const OverviewContent = (
