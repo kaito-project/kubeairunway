@@ -1,5 +1,8 @@
 import { spawn } from 'child_process';
-import { mkdirSync, existsSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { loadAll, dump } from 'js-yaml';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import logger from '../lib/logger';
 
 /**
@@ -23,6 +26,12 @@ export interface HelmChart {
   skipCrds?: boolean;
   fetchUrl?: string;
   preCrdUrls?: string[];
+  preInstallMissingCrds?: boolean;
+}
+
+interface ChartCrdDocument {
+  name: string;
+  manifest: string;
 }
 
 /**
@@ -354,6 +363,140 @@ class HelmService {
     return this.execute(args, onStream);
   }
 
+  private sanitizeNameForStep(name: string): string {
+    return name.replace(/[^a-zA-Z0-9-]+/g, '-');
+  }
+
+  private createSyntheticResult(stdout: string): HelmResult {
+    return {
+      success: true,
+      stdout,
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+
+  private async pullChartToTempDir(
+    chart: HelmChart,
+    onStream?: StreamCallback
+  ): Promise<{ success: boolean; chartPath?: string; tempDir?: string; result?: HelmResult }> {
+    if (!chart.fetchUrl && existsSync(chart.chart)) {
+      return {
+        success: true,
+        chartPath: chart.chart,
+      };
+    }
+
+    const tempDir = mkdtempSync(join(tmpdir(), 'helm-chart-'));
+    const args = ['pull', chart.fetchUrl || chart.chart, '--untar', '--untardir', tempDir];
+
+    if (!chart.fetchUrl && chart.version) {
+      args.push('--version', chart.version);
+    }
+
+    const result = await this.execute(args, onStream);
+    if (!result.success) {
+      rmSync(tempDir, { recursive: true, force: true });
+      return { success: false, result };
+    }
+
+    const chartDir = readdirSync(tempDir, { withFileTypes: true }).find((entry) => entry.isDirectory());
+    if (!chartDir) {
+      const failure = {
+        success: false,
+        stdout: result.stdout,
+        stderr: 'Failed to locate extracted chart contents after helm pull',
+        exitCode: 1,
+      };
+      rmSync(tempDir, { recursive: true, force: true });
+      return { success: false, result: failure };
+    }
+
+    return {
+      success: true,
+      chartPath: join(tempDir, chartDir.name),
+      tempDir,
+    };
+  }
+
+  private getChartCrdDocuments(chartPath: string): ChartCrdDocument[] {
+    const crdsDir = join(chartPath, 'crds');
+    if (!existsSync(crdsDir)) {
+      return [];
+    }
+
+    const crdDocuments: ChartCrdDocument[] = [];
+    const crdFiles = readdirSync(crdsDir)
+      .filter((file) => file.endsWith('.yaml') || file.endsWith('.yml'))
+      .sort();
+
+    for (const file of crdFiles) {
+      const filePath = join(crdsDir, file);
+      const documents = loadAll(readFileSync(filePath, 'utf8'));
+
+      for (const document of documents) {
+        if (!document || typeof document !== 'object') {
+          continue;
+        }
+
+        const kind = (document as { kind?: string }).kind;
+        const metadata = (document as { metadata?: { name?: string } }).metadata;
+        if (kind !== 'CustomResourceDefinition' || !metadata?.name) {
+          continue;
+        }
+
+        crdDocuments.push({
+          name: metadata.name,
+          manifest: dump(document, { noRefs: true }),
+        });
+      }
+    }
+
+    return crdDocuments;
+  }
+
+  private async ensureChartCrdsInstalled(
+    chartPath: string,
+    tempDir: string,
+    onStream?: StreamCallback
+  ): Promise<{ success: boolean; results: Array<{ step: string; result: HelmResult }> }> {
+    const results: Array<{ step: string; result: HelmResult }> = [];
+    const crdDocuments = this.getChartCrdDocuments(chartPath);
+
+    for (let i = 0; i < crdDocuments.length; i++) {
+      const crd = crdDocuments[i];
+      const stepName = this.sanitizeNameForStep(crd.name);
+
+      const checkResult = await this.executeKubectl(
+        ['get', 'crd', crd.name, '--ignore-not-found', '-o', 'name'],
+        onStream,
+      );
+      if (!checkResult.success) {
+        results.push({ step: `check-crd-${stepName}`, result: checkResult });
+        return { success: false, results };
+      }
+
+      if (checkResult.stdout.trim().length > 0) {
+        results.push({
+          step: `skip-crd-${stepName}`,
+          result: this.createSyntheticResult(`CRD ${crd.name} already exists, skipping chart CRD install.`),
+        });
+        continue;
+      }
+
+      const manifestPath = join(tempDir, `crd-${i}-${stepName}.yaml`);
+      writeFileSync(manifestPath, crd.manifest, 'utf8');
+
+      const applyResult = await this.executeKubectl(['apply', '-f', manifestPath], onStream);
+      results.push({ step: `apply-crd-${stepName}`, result: applyResult });
+      if (!applyResult.success) {
+        return { success: false, results };
+      }
+    }
+
+    return { success: true, results };
+  }
+
   /**
    * Install a Helm chart (uses upgrade --install to handle existing releases)
    * If chart has a fetchUrl, pulls the tarball first and installs from it
@@ -573,6 +716,9 @@ class HelmService {
 
     // Install charts
     for (const chart of charts) {
+      let chartToInstall = chart;
+      let tempDirToClean: string | undefined;
+
       // Apply pre-CRD URLs if specified (for installing specific CRDs before the chart when skipCrds is used)
       if (chart.preCrdUrls && chart.preCrdUrls.length > 0) {
         for (const crdUrl of chart.preCrdUrls) {
@@ -587,13 +733,58 @@ class HelmService {
         }
       }
 
-      if (onStream) {
-        onStream(`Installing chart: ${chart.chart}\n`, 'stdout');
+      if (chart.preInstallMissingCrds) {
+        if (onStream) {
+          onStream(`Preparing chart CRDs for: ${chart.chart}\n`, 'stdout');
+        }
+
+        const pulledChart = await this.pullChartToTempDir(chart, onStream);
+        if (!pulledChart.success || !pulledChart.chartPath) {
+          results.push({
+            step: `pull-chart-${chart.name}`,
+            result: pulledChart.result ?? {
+              success: false,
+              stdout: '',
+              stderr: 'Failed to prepare chart for CRD installation',
+              exitCode: 1,
+            },
+          });
+          return { success: false, results };
+        }
+
+        tempDirToClean = pulledChart.tempDir ?? mkdtempSync(join(tmpdir(), 'helm-chart-crds-'));
+
+        const crdPrep = await this.ensureChartCrdsInstalled(pulledChart.chartPath, tempDirToClean, onStream);
+        results.push(...crdPrep.results);
+        if (!crdPrep.success) {
+          if (tempDirToClean) {
+            rmSync(tempDirToClean, { recursive: true, force: true });
+          }
+          return { success: false, results };
+        }
+
+        chartToInstall = {
+          ...chart,
+          chart: pulledChart.chartPath,
+          fetchUrl: undefined,
+          skipCrds: true,
+        };
       }
-      const result = await this.install(chart, onStream);
-      results.push({ step: `install-${chart.name}`, result });
-      if (!result.success) {
-        return { success: false, results };
+
+      if (onStream) {
+        onStream(`Installing chart: ${chartToInstall.chart}\n`, 'stdout');
+      }
+
+      try {
+        const result = await this.install(chartToInstall, onStream);
+        results.push({ step: `install-${chart.name}`, result });
+        if (!result.success) {
+          return { success: false, results };
+        }
+      } finally {
+        if (tempDirToClean) {
+          rmSync(tempDirToClean, { recursive: true, force: true });
+        }
       }
     }
 

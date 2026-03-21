@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsPage } from './SettingsPage'
@@ -72,15 +72,24 @@ vi.mock('@/hooks/useInstallation', () => ({
     },
     isLoading: false,
   }),
-  useProviderInstallationStatus: () => ({
-    data: {
-      installed: true,
-      providerName: 'Runtime',
-      message: 'Runtime ready',
-      crdFound: true,
-      operatorRunning: true,
-      installationSteps: [],
-    },
+  useProviderInstallationStatus: (providerId: string) => ({
+    data: providerId === 'available-runtime'
+      ? {
+          installed: false,
+          providerName: 'Available Runtime',
+          message: 'Available Runtime is not installed yet.',
+          crdFound: false,
+          operatorRunning: false,
+          installationSteps: [],
+        }
+      : {
+          installed: true,
+          providerName: 'Installed Runtime',
+          message: 'Installed Runtime is ready.',
+          crdFound: true,
+          operatorRunning: true,
+          installationSteps: [],
+        },
     isLoading: false,
     refetch,
   }),
@@ -172,7 +181,7 @@ describe('SettingsPage', () => {
     }
   })
 
-  it('renders runtime cards without inline accent border styles', () => {
+  it('keeps uninstalled runtime surfaces neutral while showing red X icons', () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/settings?tab=runtimes']}>
         <SettingsPage />
@@ -184,6 +193,20 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Available Runtime')).toBeInTheDocument()
     expect(container.querySelector('[style*="border-top-color"]')).toBeNull()
     expect(container.querySelector('[style*="border-top-width"]')).toBeNull()
+
+    const availableCard = screen.getByText('Available Runtime').closest('.rounded-2xl')
+    expect(availableCard).not.toHaveClass('bg-destructive/10', 'border-destructive/20')
+    const availableStatus = within(availableCard as HTMLElement).getByText('Not Installed').closest('span')
+    expect(availableStatus).toHaveClass('text-muted-foreground')
+    expect(availableStatus?.querySelector('svg')).toHaveClass('text-red-500')
+
+    fireEvent.click(screen.getByText('Available Runtime'))
+
+    const installationPanel = screen.getByText('Available Runtime Installation').closest('.rounded-2xl')
+    expect(installationPanel).not.toHaveClass('bg-destructive/10', 'border-destructive/20')
+    const installationStatus = within(installationPanel as HTMLElement).getByText('Not Installed').closest('span')
+    expect(installationStatus).toHaveClass('text-muted-foreground')
+    expect(installationStatus?.querySelector('svg')).toHaveClass('text-red-500')
   })
 
   it('uses success badge styling for readable integration connection states', () => {

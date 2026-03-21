@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 
 type SettingsTab = 'general' | 'runtimes' | 'integrations'
-type RuntimeId = 'dynamo' | 'kuberay' | 'kaito'| 'llmd'
+type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -436,12 +436,14 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <span className="font-heading font-bold">{runtime.name}</span>
                       {runtime.installed ? (
-                        <span className="text-green-400 text-sm flex items-center gap-1">
-                          <CheckCircle className="h-4 w-4" /> Installed
-                        </span>
+                        <Badge variant="success" className="shrink-0">
+                          <CheckCircle className="h-4 w-4" />
+                          Installed
+                        </Badge>
                       ) : (
                         <span className="text-muted-foreground text-sm flex items-center gap-1">
-                          <XCircle className="h-4 w-4" /> Not Installed
+                          <XCircle className="h-4 w-4 text-red-500" />
+                          Not Installed
                         </span>
                       )}
                     </div>
@@ -462,7 +464,7 @@ export function SettingsPage() {
                         {runtime.installed ? (
                           <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                          <XCircle className="h-4 w-4 text-red-500" />
                         )}
                       </div>
                       <div className="flex items-center justify-between">
@@ -470,7 +472,7 @@ export function SettingsPage() {
                         {runtime.healthy ? (
                           <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                          <XCircle className="h-4 w-4 text-red-500" />
                         )}
                       </div>
                       {runtime.version && (
@@ -496,12 +498,14 @@ export function SettingsPage() {
                   {installationStatus?.providerName || runtimes.find(r => r.id === effectiveRuntime)?.name || 'Runtime'} Installation
                 </div>
                 {isInstalled ? (
-                  <span className="text-green-400 text-sm flex items-center gap-1">
-                    <CheckCircle className="h-4 w-4" /> Installed
-                  </span>
+                  <Badge variant="success" className="shrink-0">
+                    <CheckCircle className="h-4 w-4" />
+                    Installed
+                  </Badge>
                 ) : (
                   <span className="text-muted-foreground text-sm flex items-center gap-1">
-                    <XCircle className="h-4 w-4" /> Not Installed
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    Not Installed
                   </span>
                 )}
               </h3>

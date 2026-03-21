@@ -18,9 +18,20 @@ describe('Installation Provider Routes', () => {
   // ==========================================================================
 
   describe('GET /api/installation/providers/:providerId/status', () => {
-    test('returns provider status when found', async () => {
+    test('uses live KAITO installation status instead of provider config readiness', async () => {
+      let kaitoStatusChecks = 0;
+
       restores.push(
         mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig),
+        mockServiceMethod(kubernetesService, 'checkKaitoInstallationStatus', async () => {
+          kaitoStatusChecks += 1;
+          return {
+            installed: false,
+            crdFound: true,
+            operatorRunning: false,
+            message: 'KAITO workspace CRD found but no running pods were detected in kaito-workspace',
+          };
+        }),
       );
 
       const res = await app.request('/api/installation/providers/kaito/status');
@@ -29,9 +40,52 @@ describe('Installation Provider Routes', () => {
       const data = await res.json();
       expect(data.providerId).toBe('kaito');
       expect(data.providerName).toBe('Kaito');
-      expect(data.installed).toBe(true);
+      expect(kaitoStatusChecks).toBe(1);
+      expect(data.installed).toBe(false);
+      expect(data.crdFound).toBe(true);
+      expect(data.operatorRunning).toBe(false);
+      expect(data.version).toBe('0.9.0');
+      expect(data.message).toBe('KAITO workspace CRD found but no running pods were detected in kaito-workspace');
       expect(data.installationSteps).toBeDefined();
       expect(data.helmCommands).toBeDefined();
+    });
+
+    test('keeps config-based readiness checks for non-KAITO providers', async () => {
+      let kaitoStatusChecks = 0;
+      const nonKaitoConfig = {
+        ...mockInferenceProviderConfig,
+        metadata: { ...mockInferenceProviderConfig.metadata, name: 'dynamo' },
+        status: {
+          ready: false,
+          version: '1.2.3',
+        },
+      };
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => nonKaitoConfig),
+        mockServiceMethod(kubernetesService, 'checkKaitoInstallationStatus', async () => {
+          kaitoStatusChecks += 1;
+          return {
+            installed: true,
+            crdFound: true,
+            operatorRunning: true,
+            message: 'should not be used',
+          };
+        }),
+      );
+
+      const res = await app.request('/api/installation/providers/dynamo/status');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(kaitoStatusChecks).toBe(0);
+      expect(data.providerId).toBe('dynamo');
+      expect(data.providerName).toBe('Dynamo');
+      expect(data.installed).toBe(false);
+      expect(data.crdFound).toBe(true);
+      expect(data.operatorRunning).toBe(false);
+      expect(data.version).toBe('1.2.3');
+      expect(data.message).toBe('Dynamo is registered but not ready');
     });
 
     test('returns 404 for unknown provider', async () => {
@@ -99,13 +153,18 @@ describe('Installation Provider Routes', () => {
     });
 
     test('returns 200 on successful install', async () => {
+      let installCharts: any[] = [];
+
       restores.push(
         mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig),
         mockServiceMethod(helmService, 'checkHelmAvailable', async () => ({ available: true, version: '3.14.0' })),
-        mockServiceMethod(helmService, 'installProvider', async () => ({
-          success: true,
-          results: [{ step: 'install', result: { success: true, stdout: 'ok', stderr: '' } }],
-        })),
+        mockServiceMethod(helmService, 'installProvider', async (_repos, charts) => {
+          installCharts = charts as any[];
+          return {
+            success: true,
+            results: [{ step: 'install', result: { success: true, stdout: 'ok', stderr: '' } }],
+          };
+        }),
       );
 
       const res = await app.request('/api/installation/providers/kaito/install', { method: 'POST' });
@@ -114,6 +173,53 @@ describe('Installation Provider Routes', () => {
       const data = await res.json();
       expect(data.success).toBe(true);
       expect(data.results).toBeDefined();
+      expect(installCharts).toHaveLength(1);
+      expect(installCharts[0].chart).toBe('kaito/workspace');
+      expect(installCharts[0].preInstallMissingCrds).toBe(true);
+      expect(installCharts[0].skipCrds).toBe(true);
+    });
+
+    test('keeps standard chart install behavior for non-KAITO providers', async () => {
+      let installCharts: any[] = [];
+      const nonKaitoConfig = {
+        ...mockInferenceProviderConfig,
+        metadata: { ...mockInferenceProviderConfig.metadata, name: 'dynamo' },
+        spec: {
+          ...mockInferenceProviderConfig.spec,
+          installation: {
+            ...mockInferenceProviderConfig.spec.installation,
+            helmCharts: [
+              {
+                name: 'dynamo',
+                chart: 'dynamo/dynamo',
+                version: '1.2.3',
+                namespace: 'dynamo-system',
+                createNamespace: true,
+              },
+            ],
+          },
+        },
+      };
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => nonKaitoConfig),
+        mockServiceMethod(helmService, 'checkHelmAvailable', async () => ({ available: true, version: '3.14.0' })),
+        mockServiceMethod(helmService, 'installProvider', async (_repos, charts) => {
+          installCharts = charts as any[];
+          return {
+            success: true,
+            results: [{ step: 'install', result: { success: true, stdout: 'ok', stderr: '' } }],
+          };
+        }),
+      );
+
+      const res = await app.request('/api/installation/providers/dynamo/install', { method: 'POST' });
+      expect(res.status).toBe(200);
+
+      expect(installCharts).toHaveLength(1);
+      expect(installCharts[0].chart).toBe('dynamo/dynamo');
+      expect(installCharts[0].preInstallMissingCrds).toBeUndefined();
+      expect(installCharts[0].skipCrds).toBeUndefined();
     });
   });
 

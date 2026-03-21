@@ -1,6 +1,8 @@
-import { describe, test, expect } from 'bun:test';
+import { mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { describe, test, expect, afterEach } from 'bun:test';
 import type { HelmResult, HelmRelease, HelmRepo, HelmChart } from './helm';
-import { GPU_OPERATOR_REPO, GPU_OPERATOR_CHART } from './helm';
+import { GPU_OPERATOR_REPO, GPU_OPERATOR_CHART, helmService } from './helm';
 
 describe('HelmService - GPU Operator Constants', () => {
   test('GPU_OPERATOR_REPO has correct configuration', () => {
@@ -383,5 +385,108 @@ describe('HelmService - Release Status Detection', () => {
   test('does not treat deployed as pending', () => {
     expect(isPendingStatus('deployed')).toBe(false);
     expect(isPendingStatus('failed')).toBe(false);
+  });
+});
+
+describe('HelmService - Managed Chart CRDs', () => {
+  const service = helmService as any;
+  const originalExecute = service.execute;
+  const originalExecuteKubectl = service.executeKubectl;
+
+  afterEach(() => {
+    service.execute = originalExecute;
+    service.executeKubectl = originalExecuteKubectl;
+  });
+
+  test('preinstalls only missing chart CRDs before installing with --skip-crds', async () => {
+    const kubectlCalls: string[][] = [];
+    const helmCalls: string[][] = [];
+
+    service.execute = async (args: string[]) => {
+      helmCalls.push(args);
+
+      if (args[0] === 'pull') {
+        const untarDirIndex = args.indexOf('--untardir');
+        const untarDir = args[untarDirIndex + 1];
+        const chartDir = join(untarDir, 'workspace');
+        const crdsDir = join(chartDir, 'crds');
+        mkdirSync(crdsDir, { recursive: true });
+        writeFileSync(
+          join(crdsDir, 'workspaces.kaito.sh.yaml'),
+          [
+            'apiVersion: apiextensions.k8s.io/v1',
+            'kind: CustomResourceDefinition',
+            'metadata:',
+            '  name: workspaces.kaito.sh',
+            'spec:',
+            '  group: kaito.sh',
+          ].join('\n'),
+          'utf8',
+        );
+        writeFileSync(
+          join(crdsDir, 'inferencepools.inference.networking.k8s.io.yaml'),
+          [
+            'apiVersion: apiextensions.k8s.io/v1',
+            'kind: CustomResourceDefinition',
+            'metadata:',
+            '  name: inferencepools.inference.networking.k8s.io',
+            'spec:',
+            '  group: inference.networking.k8s.io',
+          ].join('\n'),
+          'utf8',
+        );
+
+        return { success: true, stdout: '', stderr: '', exitCode: 0 };
+      }
+
+      if (args[0] === 'upgrade') {
+        expect(args).toContain('--skip-crds');
+        expect(args[2]).toContain('/workspace');
+        return { success: true, stdout: 'installed', stderr: '', exitCode: 0 };
+      }
+
+      return { success: true, stdout: '', stderr: '', exitCode: 0 };
+    };
+
+    service.executeKubectl = async (args: string[]) => {
+      kubectlCalls.push(args);
+
+      if (args[0] === 'get' && args[2] === 'workspaces.kaito.sh') {
+        return { success: true, stdout: '', stderr: '', exitCode: 0 };
+      }
+
+      if (args[0] === 'get' && args[2] === 'inferencepools.inference.networking.k8s.io') {
+        return {
+          success: true,
+          stdout: 'crd/inferencepools.inference.networking.k8s.io\n',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+
+      if (args[0] === 'apply') {
+        return { success: true, stdout: 'applied', stderr: '', exitCode: 0 };
+      }
+
+      return { success: true, stdout: '', stderr: '', exitCode: 0 };
+    };
+
+    const result = await helmService.installProvider([], [
+      {
+        name: 'kaito-workspace',
+        chart: 'kaito/workspace',
+        version: '0.9.0',
+        namespace: 'kaito-workspace',
+        createNamespace: true,
+        preInstallMissingCrds: true,
+        skipCrds: true,
+      },
+    ]);
+
+    expect(result.success).toBe(true);
+    expect(result.results.some((step) => step.step === 'apply-crd-workspaces-kaito-sh')).toBe(true);
+    expect(result.results.some((step) => step.step === 'skip-crd-inferencepools-inference-networking-k8s-io')).toBe(true);
+    expect(kubectlCalls.some((args) => args[0] === 'apply')).toBe(true);
+    expect(helmCalls.some((args) => args[0] === 'upgrade')).toBe(true);
   });
 });

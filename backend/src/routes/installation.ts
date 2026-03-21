@@ -40,6 +40,18 @@ function extractProviderDetails(config: any) {
   };
 }
 
+function normalizeInstallCharts(providerId: string, charts: ReturnType<typeof extractProviderDetails>['helmCharts']) {
+  if (providerId !== 'kaito') {
+    return charts;
+  }
+
+  return charts.map((chart) => (
+    chart.chart === 'kaito/workspace'
+      ? { ...chart, preInstallMissingCrds: true, skipCrds: true }
+      : chart
+  ));
+}
+
 const installation = new Hono()
   .get('/helm/status', async (c) => {
     const helmStatus = await helmService.checkHelmAvailable();
@@ -120,17 +132,25 @@ const installation = new Hono()
 
     const provider = extractProviderDetails(config);
     const status = config.status || {};
+    const installationStatus = providerId === 'kaito'
+      ? await kubernetesService.checkKaitoInstallationStatus()
+      : {
+          installed: status.ready === true,
+          crdFound: true,
+          operatorRunning: status.ready === true,
+          message: status.ready
+            ? `${provider.name} is installed and running`
+            : `${provider.name} is registered but not ready`,
+        };
 
     return c.json({
       providerId: provider.id,
       providerName: provider.name,
-      installed: status.ready === true,
-      crdFound: true,
-      operatorRunning: status.ready === true,
+      installed: installationStatus.installed,
+      crdFound: installationStatus.crdFound,
+      operatorRunning: installationStatus.operatorRunning,
       version: status.version,
-      message: status.ready
-        ? `${provider.name} is installed and running`
-        : `${provider.name} is registered but not ready`,
+      message: installationStatus.message,
       installationSteps: provider.installationSteps,
       helmCommands: helmService.getInstallCommands(provider.helmRepos, provider.helmCharts),
     });
@@ -170,9 +190,10 @@ const installation = new Hono()
     }
 
     logger.info({ providerId }, `Starting installation of ${provider.name}`);
+    const charts = normalizeInstallCharts(providerId, provider.helmCharts);
     const result = await helmService.installProvider(
       provider.helmRepos,
-      provider.helmCharts,
+      charts,
       (data, stream) => { logger.debug({ stream, providerId }, data.trim()); }
     );
 

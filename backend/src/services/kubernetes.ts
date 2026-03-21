@@ -13,6 +13,9 @@ const MODEL_DEPLOYMENT_CRD = {
   kind: 'ModelDeployment',
 };
 
+const KAITO_WORKSPACE_CRD = 'workspaces.kaito.sh';
+const KAITO_NAMESPACE = 'kaito-workspace';
+
 /**
  * GPU availability information from cluster nodes
  */
@@ -246,7 +249,7 @@ class KubernetesService {
 
   async createDeployment(config: DeploymentConfig): Promise<void> {
     // Generate ModelDeployment manifest from config
-    const manifest = toModelDeploymentManifest(config) as Record<string, unknown>;
+    const manifest = toModelDeploymentManifest(config) as unknown as Record<string, unknown>;
 
     logger.info({ name: config.name, namespace: config.namespace }, 'Creating ModelDeployment');
 
@@ -431,6 +434,9 @@ class KubernetesService {
           const name = item.metadata?.name || 'unknown';
           const status = item.status || {};
           const installation = item.spec?.installation || {};
+          const runtimeStatus = name === 'kaito'
+            ? await this.checkKaitoInstallationStatus()
+            : null;
           const displayName = installation.description
             ? name.charAt(0).toUpperCase() + name.slice(1)
             : name.charAt(0).toUpperCase() + name.slice(1);
@@ -438,10 +444,10 @@ class KubernetesService {
           runtimes.push({
             id: name,
             name: displayName,
-            installed: true,
-            healthy: status.ready === true,
+            installed: runtimeStatus?.crdFound ?? true,
+            healthy: runtimeStatus?.operatorRunning ?? status.ready === true,
             version: status.version,
-            message: status.ready ? 'Provider ready' : 'Provider not ready',
+            message: runtimeStatus?.message ?? (status.ready ? 'Provider ready' : 'Provider not ready'),
           });
         }
       } catch (error: any) {
@@ -597,6 +603,45 @@ class KubernetesService {
       gpusAvailable: gpuAvailability.available,
       totalGPUs: gpuAvailability.totalGPUs,
       gpuNodes: gpuAvailability.gpuNodes,
+      message,
+    };
+  }
+
+  /**
+   * Check whether the KAITO workspace operator is installed and running.
+   */
+  async checkKaitoInstallationStatus(): Promise<InstallationStatus> {
+    const crdFound = await this.checkCRDExists(KAITO_WORKSPACE_CRD);
+
+    let operatorRunning = false;
+    try {
+      const pods = await withRetry(
+        () => this.coreV1Api.listNamespacedPod(KAITO_NAMESPACE),
+        { operationName: 'checkKaitoPods', maxRetries: 1 }
+      );
+      operatorRunning = pods.body.items.some(
+        (pod) => pod.status?.phase === 'Running'
+      );
+    } catch {
+      // Namespace might not exist yet
+      operatorRunning = false;
+    }
+
+    const installed = crdFound && operatorRunning;
+
+    let message: string;
+    if (installed) {
+      message = 'KAITO workspace CRD found and operator pods are running';
+    } else if (crdFound) {
+      message = 'KAITO workspace CRD found but no running pods were detected in kaito-workspace';
+    } else {
+      message = 'KAITO workspace CRD not found';
+    }
+
+    return {
+      installed,
+      crdFound,
+      operatorRunning,
       message,
     };
   }
