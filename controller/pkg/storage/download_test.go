@@ -205,7 +205,7 @@ func TestEnsureDownloadJobCreation(t *testing.T) {
 		t.Errorf("expected memory request %s, got %s", expectedMemoryRequest.String(), memReq.String())
 	}
 
-	expectedMemoryLimit := resource.MustParse("8Gi")
+	expectedMemoryLimit := resource.MustParse("16Gi")
 	if memLim, ok := container.Resources.Limits[corev1.ResourceMemory]; !ok {
 		t.Error("expected memory limit to be set")
 	} else if !memLim.Equal(expectedMemoryLimit) {

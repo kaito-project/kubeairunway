@@ -48,7 +48,7 @@ const (
 	// can require several GiB for concurrent chunk assembly and hash verification.
 	defaultDownloadJobCPURequest    = "500m"
 	defaultDownloadJobMemoryRequest = "2Gi"
-	defaultDownloadJobMemoryLimit   = "8Gi"
+	defaultDownloadJobMemoryLimit   = "16Gi"
 )
 
 // NeedsDownloadJob returns true when a model download Job should be created:

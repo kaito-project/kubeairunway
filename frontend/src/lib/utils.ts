@@ -23,7 +23,7 @@ export function generateDeploymentName(modelId: string): string {
     .replace(/[^a-z0-9]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 40) || 'deployment'
+    .slice(0, 16) || 'deployment'
 
   const suffix = Math.random().toString(36).substring(2, 6)
   return `${baseName}-${suffix}`

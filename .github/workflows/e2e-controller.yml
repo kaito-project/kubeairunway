@@ -30,6 +30,8 @@ jobs:
       - name: Install KAITO operator
         run: |
           helm repo add kaito https://kaito-project.github.io/kaito/charts/kaito
+          # If Gateway API Inference Extension CRDs are pre-installed (e.g. via kubectl apply),
+          # add --skip-crds to avoid a field-manager conflict on InferencePool.
           helm install kaito-workspace kaito/workspace \
             --namespace kaito-workspace \
             --create-namespace \

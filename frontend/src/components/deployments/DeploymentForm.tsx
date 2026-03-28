@@ -322,7 +322,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     provider: defaultRuntime,
     routerMode: 'none',
     replicas: 1,
-    hfTokenSecret: model.gated ? (import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret') : '',
+    hfTokenSecret: import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret',
     enforceEager: true,
     enablePrefixCaching: false,
     trustRemoteCode: false,
@@ -553,11 +553,6 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       // Build the deployment config, adding KAITO-specific fields if needed
       let deployConfig = { ...config }
 
-      // Only include hfTokenSecret for gated models
-      if (!model.gated) {
-        delete deployConfig.hfTokenSecret;
-      }
-
       if (selectedRuntime === 'kaito') {
         // Add kaitoResourceType to all KAITO deployments
         deployConfig = { ...deployConfig, kaitoResourceType }
@@ -635,7 +630,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             computeType: 'gpu',  // vLLM always requires GPU
             resources: { gpu: gpuCount },
             ...(maxModelLen && { maxModelLen }),
-            ...(model.gated && config.hfTokenSecret && { hfTokenSecret: config.hfTokenSecret }),
+            ...(config.hfTokenSecret && { hfTokenSecret: config.hfTokenSecret }),
           }
         } else {
           // Premade model
