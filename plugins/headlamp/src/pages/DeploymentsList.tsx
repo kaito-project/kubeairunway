@@ -66,7 +66,7 @@ export function DeploymentsList() {
 
   // Filter deployments based on Headlamp's global filter state
   const filteredDeployments = useMemo(() => {
-    return deployments.filter(filterFunc);
+    return deployments.filter((item) => filterFunc(item));
   }, [deployments, filterFunc]);
 
   // Initial fetch and refresh

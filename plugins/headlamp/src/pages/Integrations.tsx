@@ -252,14 +252,14 @@ export function Integrations() {
                 </div>
 
                 <Button
-                  variant="contained"                    
+                  variant="contained"
                   color="primary"
                   size="small"
-                  startIcon={<Icon icon="mdi:download" />}
+                  startIcon={installing ? <InlineLoader /> : <Icon icon="mdi:download" />}
                   onClick={handleInstallGpu}
-                  loading={installing}
+                  disabled={installing}
                 >
-                  Install
+                  {installing ? 'Installing...' : 'Install'}
                 </Button>
               </div>
 
