@@ -1,7 +1,7 @@
 /**
  * Integrations Page
  *
- * Configure external integrations like NVIDIA GPU Operator and HuggingFace.
+ * Configure external integrations like NVIDIA GPU Operator, Gateway API, and HuggingFace.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -14,7 +14,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
-import type { GPUOperatorStatus, HfSecretStatus } from '@airunway/shared';
+import type { GPUOperatorStatus, HfSecretStatus, GatewayCRDStatus } from '@airunway/shared';
 import { ConnectionError } from '../components/ConnectionBanner';
 
 /**
@@ -51,6 +51,12 @@ export function Integrations() {
   const [hfError, setHfError] = useState<string | null>(null);
   const [disconnectingHf, setDisconnectingHf] = useState(false);
 
+  // Gateway API state
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayCRDStatus | null>(null);
+  const [gatewayLoading, setGatewayLoading] = useState(true);
+  const [gatewayError, setGatewayError] = useState<string | null>(null);
+  const [installingGateway, setInstallingGateway] = useState(false);
+
   // Fetch GPU Operator status
   const fetchGpuStatus = useCallback(async () => {
     setGpuLoading(true);
@@ -81,6 +87,21 @@ export function Integrations() {
     }
   }, [api]);
 
+  // Fetch Gateway CRD status
+  const fetchGatewayStatus = useCallback(async () => {
+    setGatewayLoading(true);
+    setGatewayError(null);
+
+    try {
+      const result = await api.gateway.getStatus();
+      setGatewayStatus(result);
+    } catch (err) {
+      setGatewayError(err instanceof Error ? err.message : 'Failed to fetch Gateway status');
+    } finally {
+      setGatewayLoading(false);
+    }
+  }, [api]);
+
   // Install GPU Operator
   const handleInstallGpu = useCallback(async () => {
     setInstalling(true);
@@ -98,6 +119,24 @@ export function Integrations() {
       setInstalling(false);
     }
   }, [api, fetchGpuStatus]);
+
+  // Install Gateway CRDs
+  const handleInstallGatewayCRDs = useCallback(async () => {
+    setInstallingGateway(true);
+
+    try {
+      const result = await api.gateway.installCrds();
+      if (result.success) {
+        await fetchGatewayStatus();
+      } else {
+        alert(`Installation failed: ${result.message}`);
+      }
+    } catch (err) {
+      alert(`Failed to install Gateway CRDs: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setInstallingGateway(false);
+    }
+  }, [api, fetchGatewayStatus]);
 
   // TODO: Re-enable OAuth sign-in once backend is ready
   // Start HuggingFace OAuth flow
@@ -148,9 +187,10 @@ export function Integrations() {
   useEffect(() => {
     fetchGpuStatus();
     fetchHfStatus();
-  }, [fetchGpuStatus, fetchHfStatus]);
+    fetchGatewayStatus();
+  }, [fetchGpuStatus, fetchHfStatus, fetchGatewayStatus]);
 
-  const loading = gpuLoading || hfLoading;
+  const loading = gpuLoading || hfLoading || gatewayLoading;
 
   if (loading) {
     return <Loader title="Loading integrations..." />;
@@ -276,6 +316,181 @@ export function Integrations() {
                   <div style={{ fontWeight: 500, marginBottom: '12px' }}>Manual Installation</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {gpuStatus.helmCommands.map((cmd, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}
+                      >
+                        <code
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            backgroundColor: 'rgba(128, 128, 128, 0.1)',
+                            borderRadius: '4px',
+                            fontSize: '12px',
+                            fontFamily: 'monospace',
+                            overflowX: 'auto',
+                          }}
+                        >
+                          {cmd}
+                        </code>
+                        <IconButton
+                          color="primary"
+                          onClick={() => copyToClipboard(cmd)}
+                        >
+                          <Icon icon="mdi:content-copy"/>
+                        </IconButton>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </SectionBox>
+
+      {/* Gateway API */}
+      <SectionBox title="Gateway API">
+        <div style={{ padding: '16px 0' }}>
+          <p style={{ margin: '0 0 16px', opacity: 0.7 }}>
+            Install Gateway API and Inference Extension CRDs to enable smart traffic routing for your models
+          </p>
+
+          {gatewayError ? (
+            <ConnectionError error={gatewayError} onRetry={fetchGatewayStatus} />
+          ) : gatewayLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.7 }}>
+              <InlineLoader />
+              <span>Checking Gateway API status...</span>
+            </div>
+          ) : gatewayStatus?.gatewayAvailable ? (
+            /* Available state - show status card */
+            <div
+              style={{
+                border: '1px solid rgba(128, 128, 128, 0.3)',
+                borderRadius: '8px',
+                padding: '20px',
+                backgroundColor: 'transparent',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 4px 0', fontSize: '18px', textTransform: 'uppercase' }}>
+                    Gateway Status
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '14px', opacity: 0.7 }}>
+                    Gateway API enables intelligent request routing to inference endpoints
+                  </p>
+                </div>
+                <StatusLabel status="success">
+                  Available
+                </StatusLabel>
+              </div>
+
+              {/* Status details */}
+              <div style={{ fontSize: '14px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ opacity: 0.7 }}>Gateway API CRDs</span>
+                  <StatusLabel status={gatewayStatus.gatewayApiInstalled ? 'success' : 'error'}>
+                    {gatewayStatus.gatewayApiInstalled ? 'Installed' : 'Not Installed'}
+                  </StatusLabel>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ opacity: 0.7 }}>Inference Extension CRDs</span>
+                  <StatusLabel status={gatewayStatus.inferenceExtInstalled ? 'success' : 'error'}>
+                    {gatewayStatus.inferenceExtInstalled ? 'Installed' : 'Not Installed'}
+                  </StatusLabel>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ opacity: 0.7 }}>Pinned Version</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{gatewayStatus.pinnedVersion}</span>
+                </div>
+                {gatewayStatus.gatewayEndpoint && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.7 }}>
+                    <span>Gateway Endpoint</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{gatewayStatus.gatewayEndpoint}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Success banner */}
+              <div
+                style={{
+                  padding: '12px',
+                  backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                  borderRadius: '6px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4caf50' }}>
+                  <Icon icon="mdi:check-circle" />
+                  <span style={{ fontWeight: 500 }}>
+                    Gateway API is ready for traffic routing
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Not available state - show install option */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* CRD status badges */}
+              <div style={{ fontSize: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ opacity: 0.7 }}>Gateway API CRDs</span>
+                  <StatusLabel status={gatewayStatus?.gatewayApiInstalled ? 'success' : 'error'}>
+                    {gatewayStatus?.gatewayApiInstalled ? 'Installed' : 'Not Installed'}
+                  </StatusLabel>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ opacity: 0.7 }}>Inference Extension CRDs</span>
+                  <StatusLabel status={gatewayStatus?.inferenceExtInstalled ? 'success' : 'error'}>
+                    {gatewayStatus?.inferenceExtInstalled ? 'Installed' : 'Not Installed'}
+                  </StatusLabel>
+                </div>
+                {gatewayStatus?.pinnedVersion && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.7 }}>
+                    <span>Pinned Version</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{gatewayStatus.pinnedVersion}</span>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontWeight: 500 }}>Install Gateway CRDs</div>
+                  <div style={{ fontSize: '13px', opacity: 0.7 }}>
+                    Installs Gateway API and Inference Extension custom resource definitions
+                  </div>
+                </div>
+
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="small"
+                  startIcon={installingGateway ? <InlineLoader /> : <Icon icon="mdi:download" />}
+                  onClick={handleInstallGatewayCRDs}
+                  disabled={installingGateway}
+                >
+                  {installingGateway ? 'Installing...' : 'Install'}
+                </Button>
+              </div>
+
+              {installingGateway && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.7 }}>
+                  <InlineLoader />
+                  <span>Installing Gateway CRDs... This may take a moment.</span>
+                </div>
+              )}
+
+              {/* Manual installation commands */}
+              {gatewayStatus?.installCommands && gatewayStatus.installCommands.length > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontWeight: 500, marginBottom: '12px' }}>Manual Installation</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {gatewayStatus.installCommands.map((cmd, index) => (
                       <div
                         key={index}
                         style={{

@@ -163,6 +163,13 @@ export function DeploymentsList() {
       ),
     },
     {
+      label: 'Gateway',
+      getter: (item: DeploymentStatus) =>
+        item.gateway?.endpoint
+          ? <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}><code style={{ fontSize: '12px' }}>{item.gateway.modelName || '-'}</code></div>
+          : <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}><span style={{ opacity: 0.5 }}>-</span></div>,
+    },
+    {
       label: 'Age',
       getter: (item: DeploymentStatus) => {
         if (!item.createdAt) return <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>-</div>;

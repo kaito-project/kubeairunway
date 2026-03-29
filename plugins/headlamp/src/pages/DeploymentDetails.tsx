@@ -26,6 +26,8 @@ import { useApiClient } from '../lib/api-client';
 import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@airunway/shared';
 import { MetricsPanel } from '../components/MetricsPanel';
 import { LogsViewer } from '../components/LogsViewer';
+import { ConditionsTable } from '../components/ConditionsTable';
+import { StorageVolumesDisplay } from '../components/StorageVolumesDisplay';
 import { ConnectionError } from '../components/ConnectionBanner';
 import { DeleteDialog } from '../components/DeleteDialog';
 import { generateAynaUrl } from '../lib/utils';
@@ -74,7 +76,7 @@ export function DeploymentDetails() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'pods' | 'metrics' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'pods' | 'metrics' | 'logs' | 'conditions' | 'storage'>('overview');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -209,6 +211,12 @@ export function DeploymentDetails() {
         <span style={{ opacity: 0.7 }}>Model</span>
         <span style={{ fontFamily: 'monospace' }}>{deployment.modelId || '-'}</span>
       </div>
+      {deployment.servedModelName && deployment.servedModelName !== deployment.modelId && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(128, 128, 128, 0.2)' }}>
+          <span style={{ opacity: 0.7 }}>Served Model Name</span>
+          <span style={{ fontFamily: 'monospace' }}>{deployment.servedModelName}</span>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(128, 128, 128, 0.2)' }}>
         <span style={{ opacity: 0.7 }}>Provider</span>
         <span>{deployment.provider}</span>
@@ -225,6 +233,18 @@ export function DeploymentDetails() {
         <span style={{ opacity: 0.7 }}>Replicas</span>
         <span>{deployment.replicas?.ready || 0}/{deployment.replicas?.desired || 1}</span>
       </div>
+      {deployment.prefillReplicas && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(128, 128, 128, 0.2)' }}>
+          <span style={{ opacity: 0.7 }}>Prefill Replicas</span>
+          <span>{deployment.prefillReplicas.ready}/{deployment.prefillReplicas.desired}</span>
+        </div>
+      )}
+      {deployment.decodeReplicas && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(128, 128, 128, 0.2)' }}>
+          <span style={{ opacity: 0.7 }}>Decode Replicas</span>
+          <span>{deployment.decodeReplicas.ready}/{deployment.decodeReplicas.desired}</span>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(128, 128, 128, 0.2)' }}>
         <span style={{ opacity: 0.7 }}>Created</span>
         <span>{deployment.createdAt ? new Date(deployment.createdAt).toLocaleString() : '-'}</span>
@@ -267,11 +287,23 @@ export function DeploymentDetails() {
     />
   );
 
+  const ConditionsContent = deployment.conditions ? (
+    <ConditionsTable conditions={deployment.conditions} />
+  ) : (
+    <div style={{ padding: '16px', opacity: 0.7, textAlign: 'center' }}>No conditions available</div>
+  );
+
+  const StorageContent = deployment.storage?.volumes ? (
+    <StorageVolumesDisplay volumes={deployment.storage.volumes} />
+  ) : null;
+
   const tabs = [
     { label: 'Overview', component: OverviewContent },
     { label: `Pods (${pods.length})`, component: PodsContent },
     { label: 'Metrics', component: MetricsContent },
     { label: 'Logs', component: LogsContent },
+    { label: 'Conditions', component: ConditionsContent },
+    ...(StorageContent ? [{ label: 'Storage', component: StorageContent }] : []),
   ];
 
   return (
@@ -356,6 +388,18 @@ export function DeploymentDetails() {
             <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Mode</div>
             <div style={{ fontWeight: 500, textTransform: 'capitalize' }}>{deployment.mode || 'aggregated'}</div>
           </div>
+          {deployment.gateway?.endpoint && (
+            <div>
+              <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Gateway Endpoint</div>
+              <code style={{ fontSize: '12px' }}>{deployment.gateway.endpoint}</code>
+            </div>
+          )}
+          {deployment.gateway?.modelName && (
+            <div>
+              <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Gateway Model Name</div>
+              <span style={{ fontSize: '13px' }}>{deployment.gateway.modelName}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -431,14 +475,47 @@ export function DeploymentDetails() {
         </div>
       </div>
 
+      {/* Gateway Access Card */}
+      {deployment.gateway?.endpoint && (
+        <div style={{
+          border: '1px solid rgba(128, 128, 128, 0.3)',
+          borderRadius: '8px',
+          padding: '20px',
+          marginBottom: '24px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <Icon icon="mdi:router-network" style={{ fontSize: '20px' }} />
+            <h3 style={{ margin: 0 }}>Gateway Access</h3>
+          </div>
+          <div style={{ fontSize: '14px', opacity: 0.7, marginBottom: '12px' }}>
+            This model is accessible through the gateway at:
+          </div>
+          <code style={{
+            display: 'block',
+            padding: '12px',
+            backgroundColor: 'rgba(128, 128, 128, 0.1)',
+            borderRadius: '4px',
+            fontSize: '13px',
+          }}>
+            {deployment.gateway.endpoint}
+          </code>
+          {deployment.gateway.modelName && (
+            <div style={{ fontSize: '12px', opacity: 0.6, marginTop: '8px' }}>
+              Use model name <code>{deployment.gateway.modelName}</code> in your inference requests
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tabbed Content */}
       <SectionBox title="">
         <Tabs
           tabs={tabs}
           ariaLabel="Deployment details tabs"
           onTabChanged={(index) => {
-            const tabIds = ['overview', 'pods', 'metrics', 'logs'] as const;
-            setActiveTab(tabIds[index]);
+            const tabIds: Array<typeof activeTab> = ['overview', 'pods', 'metrics', 'logs', 'conditions'];
+            if (StorageContent) tabIds.push('storage');
+            setActiveTab(tabIds[index] || 'overview');
           }}
           sx={{ borderBottom: 1, borderColor: 'divider', marginBottom: 2 }}
         />
