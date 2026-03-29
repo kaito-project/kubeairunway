@@ -6,10 +6,11 @@
  * and a refresh/retry action.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import { Icon } from '@iconify/react';
+import { copyToClipboard } from '../lib/utils';
 
 interface ManifestPreviewProps {
   manifest: string | null;
@@ -20,15 +21,25 @@ interface ManifestPreviewProps {
 
 export function ManifestPreview({ manifest, loading, error, onRefresh }: ManifestPreviewProps) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => clearTimeout(copyTimerRef.current);
+  }, []);
 
   const handleCopy = useCallback(async () => {
     if (!manifest) return;
-    try {
-      await navigator.clipboard.writeText(manifest);
+    const success = await copyToClipboard(manifest);
+    if (success) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback: some environments block clipboard API
+      setCopyFailed(false);
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    } else {
+      setCopyFailed(true);
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopyFailed(false), 3000);
     }
   }, [manifest]);
 
@@ -109,7 +120,7 @@ export function ManifestPreview({ manifest, loading, error, onRefresh }: Manifes
         borderBottom: '1px solid rgba(128, 128, 128, 0.2)',
       }}>
         <span style={{ fontSize: '12px', opacity: 0.7, fontWeight: 500 }}>
-          ModelDeployment YAML
+          ModelDeployment Manifest
         </span>
         <div style={{ display: 'flex', gap: '8px' }}>
           <Button
@@ -126,7 +137,7 @@ export function ManifestPreview({ manifest, loading, error, onRefresh }: Manifes
             startIcon={<Icon icon={copied ? 'mdi:check' : 'mdi:content-copy'} width={16} />}
             sx={{ textTransform: 'none', fontSize: '12px', minWidth: 'auto', py: 0.25 }}
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? 'Copied' : copyFailed ? 'Copy failed' : 'Copy'}
           </Button>
         </div>
       </div>

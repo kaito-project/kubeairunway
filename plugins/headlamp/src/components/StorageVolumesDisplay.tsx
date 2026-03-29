@@ -6,16 +6,11 @@
 
 import { SimpleTable } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import type { StorageVolume, VolumePurpose } from '@airunway/shared';
+import { PURPOSE_LABELS } from '../lib/constants';
 
 interface StorageVolumesDisplayProps {
   volumes: StorageVolume[];
 }
-
-const PURPOSE_LABELS: Record<VolumePurpose, string> = {
-  modelCache: 'Model Cache',
-  compilationCache: 'Compilation Cache',
-  custom: 'Custom',
-};
 
 function getPurposeLabel(purpose?: VolumePurpose): string {
   if (!purpose) {

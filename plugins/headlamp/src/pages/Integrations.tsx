@@ -16,6 +16,7 @@ import { Icon } from '@iconify/react';
 import { useApiClient } from '../lib/api-client';
 import type { GPUOperatorStatus, HfSecretStatus, GatewayCRDStatus } from '@airunway/shared';
 import { ConnectionError } from '../components/ConnectionBanner';
+import { copyToClipboard } from '../lib/utils';
 
 /**
  * Inline loading spinner for use inside sections (simpler than the full-page Loader)
@@ -177,10 +178,14 @@ export function Integrations() {
     }
   }, [api, fetchHfStatus]);
 
-  // Copy command to clipboard
-  const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
-    // Could show a notification here
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  const handleCopy = useCallback(async (text: string) => {
+    const success = await copyToClipboard(text);
+    if (success) {
+      setCopiedText(text);
+      setTimeout(() => setCopiedText(null), 2000);
+    }
   }, []);
 
   // Initial fetch
@@ -338,10 +343,10 @@ export function Integrations() {
                           {cmd}
                         </code>
                         <IconButton
-                          color="primary"
-                          onClick={() => copyToClipboard(cmd)}
+                          color={copiedText === cmd ? 'success' : 'primary'}
+                          onClick={() => handleCopy(cmd)}
                         >
-                          <Icon icon="mdi:content-copy"/>
+                          <Icon icon={copiedText === cmd ? 'mdi:check' : 'mdi:content-copy'}/>
                         </IconButton>
                       </div>
                     ))}
@@ -513,10 +518,10 @@ export function Integrations() {
                           {cmd}
                         </code>
                         <IconButton
-                          color="primary"
-                          onClick={() => copyToClipboard(cmd)}
+                          color={copiedText === cmd ? 'success' : 'primary'}
+                          onClick={() => handleCopy(cmd)}
                         >
-                          <Icon icon="mdi:content-copy"/>
+                          <Icon icon={copiedText === cmd ? 'mdi:check' : 'mdi:content-copy'}/>
                         </IconButton>
                       </div>
                     ))}
@@ -666,10 +671,10 @@ export function Integrations() {
                       {cmd}
                     </code>
                     <IconButton
-                      color="primary"
-                      onClick={() => copyToClipboard(cmd)}
+                      color={copiedText === cmd ? 'success' : 'primary'}
+                      onClick={() => handleCopy(cmd)}
                     >
-                      <Icon icon="mdi:content-copy" />
+                      <Icon icon={copiedText === cmd ? 'mdi:check' : 'mdi:content-copy'} />
                     </IconButton>
                   </div>
                 ))}

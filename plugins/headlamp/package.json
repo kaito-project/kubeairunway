@@ -47,7 +47,9 @@
     "machine-learning",
     "kaito",
     "kuberay",
-    "dynamo"
+    "dynamo",
+    "llm-d",
+    "gateway"
   ],
   "author": "",
   "license": "MIT",

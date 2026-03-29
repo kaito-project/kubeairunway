@@ -2,7 +2,7 @@
  * AI Runway Headlamp Plugin
  *
  * This plugin provides ML deployment management capabilities within Headlamp,
- * supporting KAITO, KubeRay, and Dynamo runtimes.
+ * supporting KAITO, KubeRay, Dynamo, and llm-d runtimes.
  */
 
 import {

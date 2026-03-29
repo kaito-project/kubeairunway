@@ -16,39 +16,15 @@ import {
   StatusLabelProps,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import type { GatewayInfo, GatewayModelInfo } from '@airunway/shared';
-import { getBackendUrlSync } from '../lib/backend-discovery';
+import { useApiClient } from '../lib/api-client';
 import { ConnectionError } from '../components/ConnectionBanner';
-
-/**
- * Fetch gateway status from the backend
- */
-async function fetchGatewayStatus(): Promise<GatewayInfo> {
-  const baseUrl = getBackendUrlSync();
-  const response = await fetch(`${baseUrl}/api/gateway/status`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch gateway status: ${response.statusText}`);
-  }
-  return response.json();
-}
-
-/**
- * Fetch gateway models from the backend
- */
-async function fetchGatewayModels(): Promise<GatewayModelInfo[]> {
-  const baseUrl = getBackendUrlSync();
-  const response = await fetch(`${baseUrl}/api/gateway/models`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch gateway models: ${response.statusText}`);
-  }
-  const data = await response.json();
-  return data.models ?? [];
-}
 
 function getModelStatusColor(ready: boolean): StatusLabelProps['status'] {
   return ready ? 'success' : 'error';
 }
 
 export function GatewayStatus() {
+  const api = useApiClient();
   const [gatewayInfo, setGatewayInfo] = useState<GatewayInfo | null>(null);
   const [models, setModels] = useState<GatewayModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,8 +36,8 @@ export function GatewayStatus() {
 
     try {
       const [status, gatewayModels] = await Promise.all([
-        fetchGatewayStatus(),
-        fetchGatewayModels(),
+        api.gateway.getInfo(),
+        api.gateway.getModels(),
       ]);
       setGatewayInfo(status);
       setModels(gatewayModels);
@@ -70,7 +46,7 @@ export function GatewayStatus() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [api]);
 
   // Initial fetch
   useEffect(() => {

@@ -6,14 +6,13 @@
  * Matches the native UI layout with status cards and access info.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useHistory } from 'react-router-dom';
 import {
   SectionBox,
   SimpleTable,
   Loader,
   StatusLabel,
-  StatusLabelProps,
   Tabs,
 } from '@kinvolk/headlamp-plugin/lib/CommonComponents';
 import { Router } from '@kinvolk/headlamp-plugin/lib';
@@ -23,45 +22,14 @@ import Tooltip from '@mui/material/Tooltip';
 import { Icon } from '@iconify/react';
 import { buildPortForwardCommand } from '@airunway/shared';
 import { useApiClient } from '../lib/api-client';
-import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse, DeploymentPhase } from '@airunway/shared';
+import type { DeploymentStatus, PodStatus, MetricsResponse, PodLogsResponse } from '@airunway/shared';
 import { MetricsPanel } from '../components/MetricsPanel';
 import { LogsViewer } from '../components/LogsViewer';
 import { ConditionsTable } from '../components/ConditionsTable';
 import { StorageVolumesDisplay } from '../components/StorageVolumesDisplay';
 import { ConnectionError } from '../components/ConnectionBanner';
 import { DeleteDialog } from '../components/DeleteDialog';
-import { generateAynaUrl } from '../lib/utils';
-
-// Status color mapping
-function getStatusColor(status: DeploymentPhase | string): StatusLabelProps['status'] {
-  switch (status) {
-    case 'Running':
-      return 'success';
-    case 'Pending':
-    case 'Deploying':
-      return 'warning';
-    case 'Failed':
-    case 'Terminating':
-      return 'error';
-    default:
-      return '';
-  }
-}
-
-// Format relative time
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffDays > 0) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-  if (diffHours > 0) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-  if (diffMins > 0) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-  return 'just now';
-}
+import { generateAynaUrl, getDeploymentPhaseColor, copyToClipboard, formatRelativeTime } from '../lib/utils';
 
 export function DeploymentDetails() {
   const { name, namespace } = useParams<{ name: string; namespace: string }>();
@@ -80,12 +48,15 @@ export function DeploymentDetails() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Fetch deployment details
-  const fetchDetails = useCallback(async () => {
+  const fetchDetails = useCallback(async (isInitialLoad = false) => {
     if (!name || !namespace) return;
 
-    setLoading(true);
+    if (isInitialLoad) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -96,17 +67,21 @@ export function DeploymentDetails() {
 
       setDeployment(deploymentData);
       setPods(podsData.pods);
-
-      // Select first pod by default
-      if (podsData.pods.length > 0 && !selectedPod) {
-        setSelectedPod(podsData.pods[0].name);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch deployment');
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
-  }, [api, name, namespace, selectedPod]);
+  }, [api, name, namespace]);
+
+  // Select first pod by default when pods first load
+  useEffect(() => {
+    if (pods.length > 0 && !selectedPod) {
+      setSelectedPod(pods[0].name);
+    }
+  }, [pods, selectedPod]);
 
   // Fetch metrics
   const fetchMetrics = useCallback(async () => {
@@ -152,17 +127,24 @@ export function DeploymentDetails() {
   }, [api, deployment, history]);
 
   // Copy port-forward command
-  const copyPortForwardCommand = useCallback(() => {
+  const copyPortForwardCommand = useCallback(async () => {
     if (!deployment) return;
     const command = buildPortForwardCommand(deployment);
-    navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const success = await copyToClipboard(command);
+    if (success) {
+      setCopied(true);
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    }
   }, [deployment]);
+
+  useEffect(() => {
+    return () => clearTimeout(copyTimerRef.current);
+  }, []);
 
   // Initial fetch
   useEffect(() => {
-    fetchDetails();
+    fetchDetails(true);
   }, [fetchDetails]);
 
   // Fetch metrics when tab is active
@@ -261,7 +243,7 @@ export function DeploymentDetails() {
       columns={[
         { label: 'Name', getter: (pod: PodStatus) => pod.name },
         { label: 'Status', getter: (pod: PodStatus) => (
-          <StatusLabel status={getStatusColor(pod.phase)}>
+          <StatusLabel status={getDeploymentPhaseColor(pod.phase)}>
             {pod.phase}
           </StatusLabel>
         )},
@@ -293,9 +275,12 @@ export function DeploymentDetails() {
     <div style={{ padding: '16px', opacity: 0.7, textAlign: 'center' }}>No conditions available</div>
   );
 
-  const StorageContent = deployment.storage?.volumes ? (
+  const StorageContent = deployment.storage?.volumes?.length ? (
     <StorageVolumesDisplay volumes={deployment.storage.volumes} />
   ) : null;
+
+  const tabIds: Array<typeof activeTab> = ['overview', 'pods', 'metrics', 'logs', 'conditions'];
+  if (StorageContent) tabIds.push('storage');
 
   const tabs = [
     { label: 'Overview', component: OverviewContent },
@@ -352,7 +337,7 @@ export function DeploymentDetails() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '24px' }}>
           <div>
             <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Phase</div>
-            <StatusLabel status={getStatusColor(deployment.phase)}>
+            <StatusLabel status={getDeploymentPhaseColor(deployment.phase)}>
               {deployment.phase}
             </StatusLabel>
           </div>
@@ -513,8 +498,6 @@ export function DeploymentDetails() {
           tabs={tabs}
           ariaLabel="Deployment details tabs"
           onTabChanged={(index) => {
-            const tabIds: Array<typeof activeTab> = ['overview', 'pods', 'metrics', 'logs', 'conditions'];
-            if (StorageContent) tabIds.push('storage');
             setActiveTab(tabIds[index] || 'overview');
           }}
           sx={{ borderBottom: 1, borderColor: 'divider', marginBottom: 2 }}

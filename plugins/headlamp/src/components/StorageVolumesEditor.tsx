@@ -10,6 +10,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import { Icon } from '@iconify/react';
 import type { StorageVolume, VolumePurpose, PersistentVolumeAccessMode } from '@airunway/shared';
+import { PURPOSE_LABELS } from '../lib/constants';
 
 interface StorageVolumesEditorProps {
   volumes: StorageVolume[];
@@ -17,12 +18,6 @@ interface StorageVolumesEditorProps {
 }
 
 const MAX_VOLUMES = 8;
-
-const PURPOSE_LABELS: Record<VolumePurpose, string> = {
-  modelCache: 'Model Cache',
-  compilationCache: 'Compilation Cache',
-  custom: 'Custom',
-};
 
 const PURPOSE_BADGE_COLORS: Record<VolumePurpose, { bg: string; color: string }> = {
   modelCache: { bg: '#e3f2fd', color: '#1565c0' },
@@ -37,9 +32,12 @@ const ACCESS_MODE_LABELS: Record<PersistentVolumeAccessMode, string> = {
   ReadWriteOncePod: 'ReadWriteOncePod',
 };
 
-function createDefaultVolume(index: number): StorageVolume {
+let volumeCounter = 0;
+
+function createDefaultVolume(): StorageVolume {
+  volumeCounter++;
   return {
-    name: `volume-${index + 1}`,
+    name: `volume-${volumeCounter}`,
     purpose: 'custom',
     size: '100Gi',
     accessMode: 'ReadWriteOnce',
@@ -83,7 +81,7 @@ export function StorageVolumesEditor({ volumes, onChange }: StorageVolumesEditor
 
   function handleAdd() {
     if (volumes.length >= MAX_VOLUMES) return;
-    const newVolumes = [...volumes, createDefaultVolume(volumes.length)];
+    const newVolumes = [...volumes, createDefaultVolume()];
     onChange(newVolumes);
     setExpandedIndex(newVolumes.length - 1);
   }
@@ -198,7 +196,6 @@ export function StorageVolumesEditor({ volumes, onChange }: StorageVolumesEditor
                         style={selectStyle}
                       >
                         {(Object.keys(PURPOSE_LABELS) as VolumePurpose[]).map((p) => {
-                          // Disable singleton purposes already used by another volume
                           const isSingleton = p === 'modelCache' || p === 'compilationCache';
                           const isUsedByOther = usedSingletonPurposes.has(p) && volume.purpose !== p;
                           const disabled = isSingleton && isUsedByOther;
