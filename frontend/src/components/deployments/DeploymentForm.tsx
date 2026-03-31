@@ -322,7 +322,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     provider: defaultRuntime,
     routerMode: 'none',
     replicas: 1,
-    hfTokenSecret: import.meta.env.VITE_DEFAULT_HF_SECRET || 'hf-token-secret',
+    hfTokenSecret: import.meta.env.VITE_DEFAULT_HF_SECRET || '',
     enforceEager: true,
     enablePrefixCaching: false,
     trustRemoteCode: false,
@@ -341,6 +341,14 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   const gpuRecommendation = calculateGpuRecommendation(model, detailedCapacity)
   const currentNodeCount = getNodeCountFromOverrides(config.providerOverrides)
   const currentPipelineParallel = getNumericEngineArg(config.engineArgs, PIPELINE_PARALLEL_SIZE_ARG)
+
+  // Auto-populate HF token secret when user is logged in
+  useEffect(() => {
+    if (hfStatus?.configured && !config.hfTokenSecret) {
+      setConfig(prev => ({ ...prev, hfTokenSecret: 'hf-token-secret' }))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hfStatus?.configured])
 
   // Set initial GPU value from recommendation when component mounts
   useEffect(() => {
