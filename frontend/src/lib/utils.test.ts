@@ -105,17 +105,16 @@ describe('generateDeploymentName', () => {
 
   it('generates a name from model ID with special characters', () => {
     const name = generateDeploymentName('meta-llama/Llama-3.2-1B-Instruct')
-    expect(name).toMatch(/^llama-3-2-1b-instruct-[a-z0-9]{4}$/)
+    expect(name).toMatch(/^llama-3-2-1b-ins-[a-z0-9]{4}$/)
   })
 
-  it('truncates long model names to 40 characters', () => {
+  it('truncates long model names to 21 characters max', () => {
     const longModelId = 'organization/very-long-model-name-that-exceeds-forty-characters-significantly'
     const name = generateDeploymentName(longModelId)
-    // Base name (40 chars max) + '-' + suffix (4 chars) = max 45 chars
-    expect(name.length).toBeLessThanOrEqual(45)
-    // Verify the base name portion doesn't exceed 40 chars
+    // Base name (16 chars max) + '-' + suffix (4 chars) = max 21 chars
+    expect(name.length).toBeLessThanOrEqual(21)
     const baseName = name.split('-').slice(0, -1).join('-')
-    expect(baseName.length).toBeLessThanOrEqual(40)
+    expect(baseName.length).toBeLessThanOrEqual(16)
   })
 
   it('handles model ID without organization prefix', () => {

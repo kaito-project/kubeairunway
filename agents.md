@@ -135,5 +135,6 @@ Read these files **only when relevant** to your task:
 | [docs/api.md](docs/api.md) | Working on REST endpoints or API client |
 | [docs/development.md](docs/development.md) | Setup issues, build process, testing |
 | [docs/gateway.md](docs/gateway.md) | Gateway API Inference Extension integration |
+| [docs/csi-azure-lustre.md](docs/csi-azure-lustre.md) | Installing Azure Lustre CSI driver on AKS |
 | [docs/standards.md](docs/standards.md) | Code style questions (prefer running linters instead) |
 | [plugins/headlamp/README.md](plugins/headlamp/README.md) | Headlamp plugin development, patterns, components |

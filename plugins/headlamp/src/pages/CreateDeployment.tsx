@@ -96,6 +96,14 @@ export function CreateDeployment() {
   const [enforceEager, setEnforceEager] = useState(true);
   const [trustRemoteCode, setTrustRemoteCode] = useState(false);
   const [hasSetInitialRuntime, setHasSetInitialRuntime] = useState(false);
+  const [hfSecretConfigured, setHfSecretConfigured] = useState(false);
+
+  // Check if HF token secret is configured
+  useEffect(() => {
+    api.huggingFace.getSecretStatus()
+      .then((status) => setHfSecretConfigured(status.configured))
+      .catch(() => setHfSecretConfigured(false));
+  }, [api]);
 
   // Load model and runtime data
   useEffect(() => {
@@ -226,7 +234,7 @@ export function CreateDeployment() {
         provider: selectedRuntime,
         routerMode: 'none',
         replicas,
-        hfTokenSecret: model.gated ? 'hf-token-secret' : undefined,
+        hfTokenSecret: hfSecretConfigured ? 'hf-token-secret' : undefined,
         enforceEager,
         enablePrefixCaching: false,
         trustRemoteCode,

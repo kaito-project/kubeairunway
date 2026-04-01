@@ -178,7 +178,7 @@ class HuggingFaceService {
     const fetchResults = await Promise.all(
       pipelineTags.map(async (tag) => {
         const searchParams = new URLSearchParams({ ...baseParams, filter: tag });
-        const url = `${HF_MODELS_URL}?${searchParams.toString()}&expand[]=safetensors`;
+        const url = `${HF_MODELS_URL}?${searchParams.toString()}&expand[]=safetensors&expand[]=gated`;
         const response = await fetch(url, { headers });
         if (!response.ok) {
           logger.warn({ status: response.status, tag }, 'HuggingFace search failed for pipeline tag');
@@ -201,8 +201,13 @@ class HuggingFaceService {
     }
     
     // Filter for compatible models only
-    const compatibleModels = filterCompatibleModels(rawModels);
-    
+    let compatibleModels = filterCompatibleModels(rawModels);
+
+    // When not logged in, exclude gated models since the user can't deploy them
+    if (!token) {
+      compatibleModels = compatibleModels.filter(model => !model.gated);
+    }
+
     // Apply pagination after filtering
     const paginatedModels = compatibleModels.slice(offset, offset + limit);
     

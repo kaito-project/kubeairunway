@@ -179,10 +179,15 @@ echo "============================================================"
 
 helm repo add kaito https://kaito-project.github.io/kaito/charts/kaito 2>/dev/null || true
 helm repo update kaito
+# --skip-crds: the Gateway API Inference Extension CRDs (including InferencePool) were
+# already installed via kubectl apply above. Helm bundles the same CRDs and would
+# conflict if it tried to re-install them with a different field manager.
+# Note: This does not impact kaito's CRDs since they are not in the /crds folder.
 helm install kaito-workspace kaito/workspace \
   --namespace kaito-workspace \
   --create-namespace \
-  --set featureGates.disableNodeAutoProvisioning=true 2>/dev/null || \
+  --set featureGates.disableNodeAutoProvisioning=true \
+  --skip-crds 2>/dev/null || \
   warn "KAITO already installed (helm install returned non-zero)"
 
 wait_for "KAITO operator to be ready" 24 5 \

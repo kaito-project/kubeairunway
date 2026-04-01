@@ -134,11 +134,18 @@ func (t *StatusTranslator) extractReplicas(status map[string]interface{}) *airun
 				if desired, ok := svc["replicas"].(int64); ok {
 					totalDesired += int32(desired)
 				}
-				if ready, ok := svc["readyReplicas"].(int64); ok {
+				ready, hasReady := svc["readyReplicas"].(int64)
+				available, hasAvailable := svc["availableReplicas"].(int64)
+				if hasReady {
 					totalReady += int32(ready)
+				} else if hasAvailable {
+					// VllmWorker (PodCliqueScalingGroup) reports availableReplicas but not readyReplicas
+					totalReady += int32(available)
 				}
-				if available, ok := svc["availableReplicas"].(int64); ok {
+				if hasAvailable {
 					totalAvailable += int32(available)
+				} else if hasReady {
+					totalAvailable += int32(ready)
 				}
 			}
 		}
