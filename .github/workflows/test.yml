@@ -104,3 +104,28 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           go tool cover -func=cover.out | tail -1 >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+  agentic-workflow-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Install gh-aw
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh extension install githubnext/gh-aw --pin v0.31.10
+
+      - name: Recompile agentic workflows
+        run: |
+          gh aw compile
+          ./scripts/normalize-gh-aw-lockfiles.sh
+
+      - name: Check for workflow drift
+        run: |
+          if ! git diff --exit-code -- .github/workflows; then
+            echo "❌ Agentic workflow files are out of date."
+            echo "Run 'gh aw compile', then './scripts/normalize-gh-aw-lockfiles.sh', and commit the regenerated workflow files."
+            exit 1
+          fi

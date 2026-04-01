@@ -60,6 +60,54 @@ make controller-deploy CONTROLLER_IMG=<YOUR IMAGE>
 cd controller && make manifests generate
 ```
 
+## Dependabot VEX Automation
+
+The repository includes an agentic VEX flow for dismissed Dependabot alerts:
+
+- `.github/workflows/vex-dispatch-dismissed-alerts.yml` scans dismissed alerts and dispatches supported cases.
+- `.github/workflows/vex-generator.md` is the editable source workflow.
+- `.github/workflows/vex-generator.lock.yml` is the compiled workflow that GitHub Actions actually runs.
+
+After editing `.github/workflows/vex-generator.md`, always regenerate the compiled file:
+
+```bash
+gh extension install githubnext/gh-aw --pin v0.31.10
+gh aw compile
+./scripts/normalize-gh-aw-lockfiles.sh
+```
+
+CI checks for drift between the Markdown source and compiled lock file.
+
+### Maintainer Dismissal Comment Format
+
+The dispatcher only creates a VEX workflow run when the dismissal comment contains an explicit `VEX:` block:
+
+```text
+VEX:
+status: not_affected
+justification: vulnerable_code_not_present
+impact: vulnerable package is not shipped in the released product
+```
+
+`impact_statement:` is also accepted instead of `impact:`.
+
+Supported `justification` values for this repository are:
+
+- `component_not_present`
+- `vulnerable_code_not_present`
+- `vulnerable_code_not_in_execute_path`
+- `vulnerable_code_cannot_be_controlled_by_adversary`
+- `inline_mitigations_already_exist`
+
+### Manual Backfill
+
+Use the dispatcher workflow's `workflow_dispatch` inputs to backfill a specific case:
+
+- Set `alert_number` to fetch one known dismissed alert directly.
+- Set `ghsa_id` to scan dismissed alerts for one advisory across the configured pages.
+- Raise `max_pages` when backfilling an older `ghsa_id`.
+- Set `dry_run=true` first to confirm what would be dispatched before creating workflow runs.
+
 ## Building a Single Binary
 
 The project can be compiled to a standalone executable that includes both the backend API and embedded frontend assets:
