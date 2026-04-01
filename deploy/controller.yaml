@@ -129,6 +129,11 @@ spec:
                           description: namespace is the Kubernetes namespace to install
                             into
                           type: string
+                        values:
+                          description: values is an arbitrary Helm values object that
+                            will be passed to the chart
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
                         version:
                           description: version is the chart version to install
                           type: string
