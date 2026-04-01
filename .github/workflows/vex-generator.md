@@ -1,8 +1,9 @@
 ---
 description: >
-  Auto-generates an OpenVEX statement for a dismissed Dependabot alert.
-  Provide the alert details as inputs — the agent generates a standards-compliant
-  OpenVEX document and opens a PR.
+  Auto-generates an OpenVEX statement for a dismissed Dependabot alert when
+  explicit maintainer-provided VEX metadata is available. Provide the alert
+  details as inputs — the agent generates a standards-compliant OpenVEX
+  document and opens a PR.
 
 on:
   workflow_dispatch:
@@ -17,14 +18,14 @@ on:
         type: string
       cve_id:
         description: "CVE ID (e.g., CVE-2021-44906)"
+        required: false
+        type: string
+      vulnerable_package_name:
+        description: "Vulnerable package name from the Dependabot alert (e.g., minimist)"
         required: true
         type: string
-      package_name:
-        description: "Affected package name (e.g., minimist)"
-        required: true
-        type: string
-      package_ecosystem:
-        description: "Package ecosystem (e.g., npm, pip, maven)"
+      vulnerable_package_ecosystem:
+        description: "Vulnerable package ecosystem from the Dependabot alert (e.g., npm, pip, maven)"
         required: true
         type: string
       severity:
@@ -52,6 +53,30 @@ on:
           - inaccurate
           - tolerable_risk
           - no_bandwidth
+      dismissed_comment:
+        description: "Optional maintainer comment captured when the alert was dismissed"
+        required: false
+        type: string
+      alert_url:
+        description: "Dependabot alert URL for traceability"
+        required: false
+        type: string
+      dismissed_at:
+        description: "ISO 8601 dismissal timestamp"
+        required: false
+        type: string
+      vex_status:
+        description: "Explicit OpenVEX status parsed from structured dismissal metadata"
+        required: false
+        type: string
+      vex_justification:
+        description: "Explicit OpenVEX justification parsed from structured dismissal metadata"
+        required: false
+        type: string
+      vex_impact_statement:
+        description: "Explicit OpenVEX impact statement parsed from structured dismissal metadata"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -62,13 +87,19 @@ env:
   ALERT_NUMBER: ${{ github.event.inputs.alert_number }}
   ALERT_GHSA_ID: ${{ github.event.inputs.ghsa_id }}
   ALERT_CVE_ID: ${{ github.event.inputs.cve_id }}
-  ALERT_PACKAGE: ${{ github.event.inputs.package_name }}
-  ALERT_ECOSYSTEM: ${{ github.event.inputs.package_ecosystem }}
+  ALERT_VULNERABLE_PACKAGE: ${{ github.event.inputs.vulnerable_package_name }}
+  ALERT_VULNERABLE_ECOSYSTEM: ${{ github.event.inputs.vulnerable_package_ecosystem }}
   ALERT_SEVERITY: ${{ github.event.inputs.severity }}
   ALERT_SUMMARY: ${{ github.event.inputs.summary }}
   ALERT_MANIFEST_PATH: ${{ github.event.inputs.manifest_path }}
   ALERT_PRODUCT_VERSION: ${{ github.event.inputs.product_version }}
   ALERT_DISMISSED_REASON: ${{ github.event.inputs.dismissed_reason }}
+  ALERT_DISMISSED_COMMENT: ${{ github.event.inputs.dismissed_comment }}
+  ALERT_URL: ${{ github.event.inputs.alert_url }}
+  ALERT_DISMISSED_AT: ${{ github.event.inputs.dismissed_at }}
+  ALERT_VEX_STATUS: ${{ github.event.inputs.vex_status }}
+  ALERT_VEX_JUSTIFICATION: ${{ github.event.inputs.vex_justification }}
+  ALERT_VEX_IMPACT_STATEMENT: ${{ github.event.inputs.vex_impact_statement }}
 
 tools:
   bash: true
@@ -88,11 +119,11 @@ source: githubnext/agentics/workflows/vex-generator.md@1f672aef974f4246124860fc5
 
 # Auto-Generate OpenVEX Statement on Dependabot Alert Dismissal
 
-You are a security automation agent. When a Dependabot alert is dismissed, you generate a standards-compliant OpenVEX statement documenting why the vulnerability does not affect this project.
+You are a security automation agent. When a Dependabot alert is dismissed and maintainers provide explicit VEX metadata, you generate a standards-compliant OpenVEX statement documenting why the vulnerability does not affect this project.
 
 ## Context
 
-VEX (Vulnerability Exploitability eXchange) is a standard for communicating that a software product is NOT affected by a known vulnerability. When maintainers dismiss Dependabot alerts, they're making exactly this kind of assessment — but today that knowledge is lost. This workflow captures it in a machine-readable format.
+VEX (Vulnerability Exploitability eXchange) is a standard for communicating that a software product is NOT affected by a known vulnerability. Some Dependabot dismissals include that kind of assessment, but a dismissal reason alone is not enough to assert an OpenVEX status or justification. This workflow captures explicit maintainer-provided VEX metadata in a machine-readable format.
 
 The OpenVEX specification: https://openvex.dev/
 
@@ -105,36 +136,51 @@ All alert details are available as environment variables. Read them with bash:
 ```bash
 echo "Alert #: $ALERT_NUMBER"
 echo "GHSA ID: $ALERT_GHSA_ID"
-echo "CVE ID: $ALERT_CVE_ID"
-echo "Package: $ALERT_PACKAGE"
-echo "Ecosystem: $ALERT_ECOSYSTEM"
+echo "CVE ID: ${ALERT_CVE_ID:-<none>}"
+echo "Vulnerable package: $ALERT_VULNERABLE_PACKAGE"
+echo "Vulnerable ecosystem: $ALERT_VULNERABLE_ECOSYSTEM"
 echo "Severity: $ALERT_SEVERITY"
 echo "Summary: $ALERT_SUMMARY"
 echo "Manifest path override: ${ALERT_MANIFEST_PATH:-<auto>}"
 echo "Product version override: ${ALERT_PRODUCT_VERSION:-<auto>}"
 echo "Dismissed reason: $ALERT_DISMISSED_REASON"
+echo "Dismissed comment: ${ALERT_DISMISSED_COMMENT:-<none>}"
+echo "Alert URL: ${ALERT_URL:-<none>}"
+echo "Dismissed at: ${ALERT_DISMISSED_AT:-<none>}"
+echo "Explicit VEX status: ${ALERT_VEX_STATUS:-<none>}"
+echo "Explicit VEX justification: ${ALERT_VEX_JUSTIFICATION:-<none>}"
+echo "Explicit VEX impact statement: ${ALERT_VEX_IMPACT_STATEMENT:-<none>}"
 ```
 
 The repository is `${{ github.repository }}`.
 
-Verify all required fields are present before proceeding. If `ALERT_MANIFEST_PATH` is set, use that manifest as the source of truth for product metadata. Otherwise, inspect the repository and identify the manifest that corresponds to the affected product instead of assuming the root manifest is correct. Use `ALERT_PRODUCT_VERSION` as the product version whenever it is provided; otherwise derive the version from that manifest or the repository's release metadata.
+Verify all required fields are present before proceeding. `ALERT_VULNERABLE_PACKAGE` and `ALERT_VULNERABLE_ECOSYSTEM` describe the dependency flagged by Dependabot; they provide vulnerability context, but they are not the OpenVEX product identity. If `ALERT_MANIFEST_PATH` is set, use that manifest as the source of truth for product metadata. Otherwise, inspect the repository and identify the manifest that corresponds to the affected product instead of assuming the root manifest is correct. Use `ALERT_PRODUCT_VERSION` as the product version whenever it is provided; otherwise derive the version from that manifest or the repository's release metadata. If you cannot map the alert to a single product manifest deterministically, stop and skip instead of guessing.
 
-### Step 2: Map Dismissal Reason to VEX Status
+### Step 2: Evaluate Dismissal Context and Explicit VEX Metadata
 
-Map the Dependabot dismissal reason to an OpenVEX status and justification:
+Treat `ALERT_DISMISSED_REASON` as advisory workflow context only. A Dependabot dismissal reason is not, by itself, proof of an OpenVEX status or justification.
 
-| Dependabot Dismissal | VEX Status | VEX Justification |
-|---|---|---|
-| `not_used` | `not_affected` | `vulnerable_code_not_present` |
-| `inaccurate` | `not_affected` | `vulnerable_code_not_in_execute_path` |
-| `tolerable_risk` | `not_affected` | `inline_mitigations_already_exist` |
-| `no_bandwidth` | `under_investigation` | *(none - this is not a VEX-worthy dismissal)* |
+For this workflow:
 
-**Important**: If the dismissal reason is `no_bandwidth`, do NOT generate a VEX statement. Instead, skip and post a comment explaining that "no_bandwidth" dismissals don't represent a security assessment and therefore shouldn't generate VEX statements.
+- If the dismissal reason is `no_bandwidth`, do NOT generate a VEX statement. Skip and clearly explain in the workflow logs that `no_bandwidth` dismissals do not represent a security assessment.
+- For every other dismissal reason, only proceed when all of these explicit inputs are present: `ALERT_VEX_STATUS`, `ALERT_VEX_JUSTIFICATION`, and `ALERT_VEX_IMPACT_STATEMENT`.
+- If any explicit VEX input is missing, skip and explain that the workflow requires structured maintainer-provided VEX metadata instead of inferring VEX truth from the dismissal reason.
+- For this repository workflow, only generate a statement when `ALERT_VEX_STATUS` is `not_affected`. If another explicit status is supplied, skip instead of guessing how to represent it.
+- Use `ALERT_VEX_JUSTIFICATION` exactly as supplied after confirming it is plausible for `not_affected`. Do not substitute a different justification based only on the dismissal reason.
+- Use `ALERT_VEX_IMPACT_STATEMENT` as the source of truth for `impact_statement`. Preserve the maintainer's meaning and make only minimal formatting cleanup if needed.
 
-### Step 3: Determine Package URL (purl)
+The dispatcher typically populates the explicit VEX inputs from a dismissal comment block like this:
 
-Construct a valid Package URL (purl) for the affected product. The purl format depends on the ecosystem:
+```text
+VEX:
+status: not_affected
+justification: vulnerable_code_not_present
+impact: vulnerable package is not shipped in the released product
+```
+
+### Step 3: Determine Product Package URL (purl)
+
+Construct a valid Package URL (purl) for the affected product this repository ships, not for the vulnerable dependency reported by Dependabot. Determine the product ecosystem from the selected manifest or release metadata, then build the purl using that product metadata. The purl format depends on the product ecosystem:
 
 - npm: `pkg:npm/<package>@<version>`
 - PyPI: `pkg:pypi/<package>@<version>`
@@ -147,6 +193,10 @@ If `ALERT_MANIFEST_PATH` is provided, use it to identify the affected product. I
 
 If `ALERT_PRODUCT_VERSION` is provided, use it as the product version. Otherwise, read the version from the selected manifest when possible. For manifests without an embedded version (for example `go.mod`), fall back to repository release metadata only if no explicit override was supplied.
 
+Keep the dependency and product identities separate:
+- `vulnerability.@id` comes from `ALERT_GHSA_ID` or `ALERT_CVE_ID`
+- `products[].@id` must be the purl of the product shipped by this repository
+- `ALERT_VULNERABLE_PACKAGE` and `ALERT_VULNERABLE_ECOSYSTEM` refer to the vulnerable dependency from the alert and should be used only as supporting context
 ### Step 4: Generate the OpenVEX Document
 
 Create a valid OpenVEX JSON document following the v0.2.0 specification:
@@ -169,20 +219,22 @@ Create a valid OpenVEX JSON document following the v0.2.0 specification:
       },
       "products": [
         {
-          "@id": "<purl of this package>"
+          "@id": "<purl of the product shipped by this repository>"
         }
       ],
-      "status": "<mapped VEX status>",
-      "justification": "<mapped VEX justification>",
-      "impact_statement": "<human-readable explanation combining the dismissal reason and any maintainer comment>"
+      "status": "<explicit VEX status from ALERT_VEX_STATUS>",
+      "justification": "<explicit VEX justification from ALERT_VEX_JUSTIFICATION>",
+      "impact_statement": "<explicit VEX impact statement from ALERT_VEX_IMPACT_STATEMENT>"
     }
   ]
 }
 ```
+Do not synthesize or upgrade `status` or `justification` from `ALERT_DISMISSED_REASON` alone. If `ALERT_DISMISSED_COMMENT`, `ALERT_DISMISSED_AT`, or `ALERT_URL` are present, use them as provenance in the PR body and workflow logs, not as a substitute for missing explicit VEX metadata.
 
 ### Step 5: Write the VEX File
 
 Save the OpenVEX document to `.vex/<ghsa-id>.json` in the repository.
+Before writing anything, check whether `.vex/<ghsa-id>.json` already exists. If it does, skip without modifying the repository so duplicate VEX statements are not created.
 
 If the `.vex/` directory doesn't exist yet, create it. Also create or update a `.vex/README.md` explaining the VEX directory:
 
@@ -192,8 +244,9 @@ If the `.vex/` directory doesn't exist yet, create it. Also create or update a `
 This directory contains [OpenVEX](https://openvex.dev/) statements documenting
 vulnerabilities that have been assessed and determined to not affect this project.
 
-These statements are auto-generated when Dependabot alerts are dismissed by
-maintainers, capturing their security assessment in a machine-readable format.
+These statements are auto-generated when Dependabot alerts are dismissed and
+maintainers provide explicit VEX metadata, capturing that security assessment
+in a machine-readable format.
 
 ## Format
 
@@ -205,19 +258,26 @@ downstream consumers of this package.
 ### Step 6: Create a Pull Request
 
 Create a pull request with:
-- Title: `Add VEX statement for <CVE-ID> (<package name>)`
+- Title: `Add VEX statement for <CVE-ID or GHSA-ID> (<vulnerable package name>)`
 - Body explaining:
   - Which vulnerability was assessed
   - The maintainer's dismissal reason
-  - What VEX status was assigned and why
+  - The maintainer's explicit VEX status, justification, and impact statement
+  - The maintainer's dismissal comment block, if one was provided
+  - When the alert was dismissed, if that timestamp is available
+  - Why the explicit VEX metadata was considered sufficient to generate a statement
   - A note that this is auto-generated and should be reviewed
   - Link to the original Dependabot alert
 
 Use the `create-pull-request` safe output to create the PR.
 
+Before opening a PR, check whether an open pull request already exists for the same GHSA or the same `.vex/<ghsa-id>.json` file. If a duplicate is already open, skip instead of creating another PR.
 ## Important Notes
 
 - Always validate that the generated JSON is valid before creating the PR
 - Use clear, descriptive impact statements — these will be consumed by downstream users
 - If multiple alerts are dismissed at once, handle each one individually
 - The VEX document should be self-contained and not require external context to understand
+- Use `ALERT_URL` in the PR body whenever it is available so reviewers can trace the VEX back to the originating Dependabot alert
+- If the repository layout or manifest metadata makes the product mapping ambiguous, skip and explain why rather than guessing
+- If explicit VEX metadata is missing or inconsistent, skip instead of inferring `not_affected`
