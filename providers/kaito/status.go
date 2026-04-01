@@ -178,8 +178,15 @@ func (t *StatusTranslator) extractReplicas(upstream *unstructured.Unstructured, 
 		replicas.Desired = int32(count)
 	}
 
-	// If WorkspaceSucceeded=True, all desired replicas are ready
-	if ws, ok := condMap[conditionWorkspaceSucceeded]; ok && ws.Status == "True" {
+	// Mark all replicas ready when workspace is in a successful state.
+	// Two sources: status.state (KAITO 0.9.0+) or WorkspaceSucceeded condition (older KAITO).
+	state, _, _ := unstructured.NestedString(upstream.Object, "status", "state")
+	stateReady := state == "Ready" || state == "Succeeded"
+	condReady := func() bool {
+		ws, ok := condMap[conditionWorkspaceSucceeded]
+		return ok && ws.Status == "True"
+	}()
+	if stateReady || condReady {
 		replicas.Ready = replicas.Desired
 		replicas.Available = replicas.Desired
 	}
