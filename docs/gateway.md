@@ -175,6 +175,7 @@ The controller automatically deploys an EPP (Endpoint Picker Proxy) per ModelDep
 ```
 --epp-service-port=9002               # EPP Service port (default: 9002)
 --epp-image=<image>                   # EPP container image (default: upstream GAIE image)
+--patch-gateway-allowed-routes=true   # Patch Gateway allowedRoutes for cross-namespace routing (default: true)
 ```
 
 ### Body-Based Routing (BBR)
@@ -219,6 +220,13 @@ allowedRoutes:
       matchLabels:
         kubernetes.io/metadata.name: <modeldeployment-namespace>
 ```
+
+This is required because Gateway API uses `allowedRoutes` on the listener to control cross-namespace route binding. Without it, the Gateway will reject HTTPRoutes from other namespaces.
+
+**Opting out of Gateway patching:** In security-conscious environments where a Gateway admin manages `allowedRoutes` independently, start the controller with `--patch-gateway-allowed-routes=false`. The controller will skip patching the Gateway globally, and the admin is responsible for configuring the listener to accept HTTPRoutes from ModelDeployment namespaces.
+
+> [!NOTE]
+> When `--patch-gateway-allowed-routes=false` is set and the Gateway does not allow routes from the ModelDeployment's namespace, the HTTPRoute will not be accepted by the Gateway and the model will not be reachable through the gateway endpoint.
 
 ### Per-deployment Configuration
 

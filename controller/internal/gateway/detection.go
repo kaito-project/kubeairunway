@@ -63,6 +63,11 @@ type Detector struct {
 	// EPP (Endpoint Picker Proxy) configuration
 	EPPServicePort int32
 	EPPImage       string
+
+	// PatchGateway controls whether the controller patches the Gateway's allowedRoutes
+	// to accept HTTPRoutes from ModelDeployment namespaces. Defaults to true.
+	// Set to false when a Gateway admin manages allowedRoutes independently.
+	PatchGateway bool
 }
 
 // NewDetector creates a new Gateway API detector

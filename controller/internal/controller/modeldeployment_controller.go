@@ -79,6 +79,11 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Fetch the ModelDeployment
 	var md airunwayv1alpha1.ModelDeployment
 	if err := r.Get(ctx, req.NamespacedName, &md); err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			// MD was deleted — check if the namespace should be removed from
+			// the Gateway's allowedRoutes.
+			r.cleanupGatewayAllowedRoutesForNamespace(ctx, req.Namespace)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 

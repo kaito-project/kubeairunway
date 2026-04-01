@@ -156,6 +156,7 @@ func main() {
 	var gatewayNamespace string
 	var eppServicePort int
 	var eppImage string
+	var patchGateway bool
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -186,6 +187,9 @@ func main() {
 	flag.StringVar(&eppImage, "epp-image",
 		"registry.k8s.io/gateway-api-inference-extension/epp:"+gateway.DefaultGAIEVersion,
 		"Container image for the Endpoint Picker Proxy (EPP).")
+	flag.BoolVar(&patchGateway, "patch-gateway-allowed-routes", true,
+		"Patch the Gateway's allowedRoutes to accept HTTPRoutes from ModelDeployment namespaces. "+
+			"Set to false when a Gateway admin manages allowedRoutes independently.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -360,6 +364,7 @@ func main() {
 	gatewayDetector.ExplicitGatewayNamespace = gatewayNamespace
 	gatewayDetector.EPPServicePort = int32(eppServicePort)
 	gatewayDetector.EPPImage = eppImage
+	gatewayDetector.PatchGateway = patchGateway
 
 	if err := (&controller.ModelDeploymentReconciler{
 		Client:                 mgr.GetClient(),
