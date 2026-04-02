@@ -1,0 +1,247 @@
+// backend/src/routes/oauth-secrets-flow.test.ts
+import { describe, test, expect, afterEach } from 'bun:test';
+import app from '../hono-app';
+import { secretsService } from '../services/secrets';
+import { kubernetesService } from '../services/kubernetes';
+import { configService } from '../services/config';
+import { mockServiceMethod, mockFetchByUrl } from '../test/helpers';
+import {
+  mockHfUser,
+  mockHfSecretStatusConfigured,
+  mockHfSecretStatusEmpty,
+  mockHfDistributeResult,
+  mockHfDeleteResult,
+  mockGpuCapacity,
+} from '../test/fixtures';
+
+describe('OAuth → Secrets → Deploy Flow', () => {
+  const restores: (() => void)[] = [];
+
+  afterEach(() => {
+    restores.forEach((r) => r());
+    restores.length = 0;
+  });
+
+  test('full flow: OAuth start → token exchange → save secret → deploy → cleanup', async () => {
+    // ---- Step 1: Get OAuth config ----
+    const configRes = await app.request('/api/oauth/huggingface/config');
+    expect(configRes.status).toBe(200);
+    const config = await configRes.json();
+    expect(typeof config.clientId).toBe('string');
+    expect(config.clientId.length).toBeGreaterThan(0);
+    expect(config.authorizeUrl).toBe('https://huggingface.co/oauth/authorize');
+    expect(config.scopes).toContain('openid');
+
+    // ---- Step 2: Start OAuth flow (PKCE) ----
+    const startRes = await app.request('/api/oauth/huggingface/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirectUri: 'http://localhost:3000/callback' }),
+    });
+    expect(startRes.status).toBe(200);
+    const startData = await startRes.json();
+    expect(startData.authorizationUrl).toContain('huggingface.co/oauth/authorize');
+    expect(startData.authorizationUrl).toContain('code_challenge');
+    expect(startData.state).toBeDefined();
+
+    const { state } = startData;
+
+    // ---- Step 3: Retrieve PKCE verifier (one-time use) ----
+    const verifierRes = await app.request(`/api/oauth/huggingface/verifier/${state}`);
+    expect(verifierRes.status).toBe(200);
+    const verifierData = await verifierRes.json();
+    expect(verifierData.codeVerifier).toBeDefined();
+    expect(verifierData.codeVerifier.length).toBeGreaterThanOrEqual(43);
+    expect(verifierData.redirectUri).toBe('http://localhost:3000/callback');
+
+    // ---- Step 4: Verify verifier is consumed (one-time use) ----
+    const verifierRes2 = await app.request(`/api/oauth/huggingface/verifier/${state}`);
+    expect(verifierRes2.status).toBe(404);
+
+    // ---- Step 5: Exchange code for token ----
+    // Mock at fetch level to be immune to module cache invalidation from huggingface.test.ts.
+    // handleOAuthCallback calls fetch(HF_TOKEN_URL) then fetch(HF_WHOAMI_URL).
+    restores.push(
+      mockFetchByUrl({
+        '/oauth/token': {
+          body: { access_token: 'hf_test_token_abc123', expires_in: 3600, scope: 'openid profile read-repos' },
+        },
+        '/api/whoami': {
+          body: { id: 'user-123', name: 'testuser', fullname: 'Test User', email: 'test@example.com', avatarUrl: 'https://huggingface.co/avatars/testuser.png' },
+        },
+      }),
+    );
+
+    const tokenRes = await app.request('/api/oauth/huggingface/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: 'auth-code-123',
+        codeVerifier: verifierData.codeVerifier,
+        redirectUri: 'http://localhost:3000/callback',
+      }),
+    });
+    expect(tokenRes.status).toBe(200);
+    const tokenData = await tokenRes.json();
+    expect(tokenData.accessToken).toBe('hf_test_token_abc123');
+    expect(tokenData.user.name).toBe('testuser');
+
+    // ---- Step 6: Save HuggingFace secret ----
+    // validateToken calls fetch(HF_WHOAMI_URL) — fetch mock for /api/whoami still active
+    restores.push(
+      mockServiceMethod(
+        secretsService,
+        'distributeHfSecret',
+        (async () => mockHfDistributeResult) as typeof secretsService.distributeHfSecret,
+      ),
+    );
+
+    const saveRes = await app.request('/api/secrets/huggingface', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: tokenData.accessToken }),
+    });
+    expect(saveRes.status).toBe(200);
+    const saveData = await saveRes.json();
+    expect(saveData.success).toBe(true);
+    expect(saveData.user.name).toBe('testuser');
+    expect(saveData.results).toHaveLength(4);
+
+    // Restore fetch before next steps that don't need it
+    restores.forEach((r) => r());
+    restores.length = 0;
+
+    // ---- Step 7: Verify secret status ----
+    restores.push(
+      mockServiceMethod(
+        secretsService,
+        'getHfSecretStatus',
+        (async () => mockHfSecretStatusConfigured) as typeof secretsService.getHfSecretStatus,
+      ),
+    );
+
+    const statusRes = await app.request('/api/secrets/huggingface/status');
+    expect(statusRes.status).toBe(200);
+    const statusData = await statusRes.json();
+    expect(statusData.configured).toBe(true);
+    expect(statusData.user.name).toBe('testuser');
+
+    // ---- Step 8: Create deployment with gated model ----
+    restores.push(
+      mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+    );
+    restores.push(
+      mockServiceMethod(kubernetesService, 'createDeployment', async () => {}),
+    );
+    restores.push(
+      mockServiceMethod(
+        kubernetesService,
+        'getClusterGpuCapacity',
+        (async () => mockGpuCapacity) as typeof kubernetesService.getClusterGpuCapacity,
+      ),
+    );
+
+    const deployRes = await app.request('/api/deployments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'gated-model-deploy',
+        modelId: 'meta-llama/Llama-3.1-8B-Instruct',
+        engine: 'vllm',
+      }),
+    });
+    expect(deployRes.status).toBe(201);
+    const deployData = await deployRes.json();
+    expect(deployData.name).toBe('gated-model-deploy');
+
+    // ---- Step 9: Delete secrets ----
+    restores.push(
+      mockServiceMethod(
+        secretsService,
+        'deleteHfSecrets',
+        (async () => mockHfDeleteResult) as typeof secretsService.deleteHfSecrets,
+      ),
+    );
+
+    const deleteRes = await app.request('/api/secrets/huggingface', { method: 'DELETE' });
+    expect(deleteRes.status).toBe(200);
+    const deleteData = await deleteRes.json();
+    expect(deleteData.success).toBe(true);
+
+    // ---- Step 10: Verify secrets removed ----
+    restores.push(
+      mockServiceMethod(
+        secretsService,
+        'getHfSecretStatus',
+        (async () => mockHfSecretStatusEmpty) as typeof secretsService.getHfSecretStatus,
+      ),
+    );
+
+    const statusRes2 = await app.request('/api/secrets/huggingface/status');
+    expect(statusRes2.status).toBe(200);
+    const statusData2 = await statusRes2.json();
+    expect(statusData2.configured).toBe(false);
+  });
+
+  // ==========================================================================
+  // Edge cases
+  // ==========================================================================
+
+  test('POST /token with invalid code returns 400', async () => {
+    // Mock fetch to return an error from HuggingFace token endpoint
+    restores.push(
+      mockFetchByUrl({
+        '/oauth/token': {
+          body: { error: 'invalid_grant', error_description: 'Invalid code' },
+          ok: false,
+          status: 400,
+        },
+      }),
+    );
+
+    const res = await app.request('/api/oauth/huggingface/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: 'invalid-code',
+        codeVerifier: 'a'.repeat(43),
+        redirectUri: 'http://localhost:3000/callback',
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('POST /secrets/huggingface with invalid token returns 400', async () => {
+    // Mock fetch to return 401 from whoami endpoint (invalid token)
+    restores.push(
+      mockFetchByUrl({
+        '/api/whoami': {
+          body: { error: 'Invalid username or password.' },
+          ok: false,
+          status: 401,
+        },
+      }),
+    );
+
+    const res = await app.request('/api/secrets/huggingface', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: 'invalid-token' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test('GET /verifier/:state with unknown state returns 404', async () => {
+    const res = await app.request('/api/oauth/huggingface/verifier/nonexistent-state');
+    expect(res.status).toBe(404);
+  });
+
+  test('POST /secrets/huggingface with empty body returns 400', async () => {
+    const res = await app.request('/api/secrets/huggingface', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+});
