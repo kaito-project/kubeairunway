@@ -175,6 +175,7 @@ The controller automatically deploys an EPP (Endpoint Picker Proxy) per ModelDep
 ```
 --epp-service-port=9002               # EPP Service port (default: 9002)
 --epp-image=<image>                   # EPP container image (default: upstream GAIE image)
+--patch-gateway-allowed-routes=true   # Patch Gateway allowedRoutes for cross-namespace routing (default: true)
 ```
 
 ### Body-Based Routing (BBR)
@@ -209,23 +210,23 @@ If no labeled Gateway is found, the controller skips gateway reconciliation and 
 
 ### Cross-namespace Gateway
 
-When the Gateway is in a different namespace than the ModelDeployment, a [ReferenceGrant](https://gateway-api.sigs.k8s.io/api-types/referencegrant/) must exist in the Gateway's namespace to allow cross-namespace HTTPRoute attachment:
+When the Gateway is in a different namespace than the ModelDeployment, the controller automatically patches each Gateway listener to allow HTTPRoutes from the ModelDeployment's namespace using a namespace selector:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-model-routes
-  namespace: gateway-system  # Gateway's namespace
-spec:
-  from:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      namespace: default  # ModelDeployment's namespace
-  to:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
+allowedRoutes:
+  namespaces:
+    from: Selector
+    selector:
+      matchLabels:
+        kubernetes.io/metadata.name: <modeldeployment-namespace>
 ```
+
+This is required because Gateway API uses `allowedRoutes` on the listener to control cross-namespace route binding. Without it, the Gateway will reject HTTPRoutes from other namespaces.
+
+**Opting out of Gateway patching:** In security-conscious environments where a Gateway admin manages `allowedRoutes` independently, start the controller with `--patch-gateway-allowed-routes=false`. The controller will skip patching the Gateway globally, and the admin is responsible for configuring the listener to accept HTTPRoutes from ModelDeployment namespaces.
+
+> [!NOTE]
+> When `--patch-gateway-allowed-routes=false` is set and the Gateway does not allow routes from the ModelDeployment's namespace, the HTTPRoute will not be accepted by the Gateway and the model will not be reachable through the gateway endpoint.
 
 ### Per-deployment Configuration
 

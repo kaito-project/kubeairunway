@@ -680,6 +680,10 @@ spec:
                   endpoint:
                     description: endpoint is the unified gateway endpoint URL
                     type: string
+                  gatewayNamespace:
+                    description: gatewayNamespace is the namespace of the Gateway
+                      resource used for routing.
+                    type: string
                   modelName:
                     description: modelName is the model name to use in API requests
                     type: string

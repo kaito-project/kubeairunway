@@ -67,6 +67,7 @@ func newModelDeployment(name, ns string) *airunwayv1alpha1.ModelDeployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
+			UID:       types.UID(ns + "/" + name),
 		},
 		Spec: airunwayv1alpha1.ModelDeploymentSpec{
 			Model: airunwayv1alpha1.ModelSpec{
@@ -107,6 +108,14 @@ func fakeDetector(available bool, gwName, gwNs string) *gateway.Detector {
 	return d
 }
 
+// newTestGateway creates a minimal Gateway object in the given namespace.
+func newTestGateway(name, ns string) *gatewayv1.Gateway {
+	return &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec:       gatewayv1.GatewaySpec{GatewayClassName: "istio"},
+	}
+}
+
 // --- Tests ---
 
 func TestGateway_InferencePoolCreation(t *testing.T) {
@@ -116,7 +125,7 @@ func TestGateway_InferencePoolCreation(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md)
 	ctx := context.Background()
 
-	err := r.reconcileInferencePool(ctx, md, 8080)
+	err := r.reconcileInferencePool(ctx, md, 8080, "gateway-ns")
 	if err != nil {
 		t.Fatalf("reconcileInferencePool failed: %v", err)
 	}
@@ -174,7 +183,7 @@ func TestGateway_InferencePoolDefaultPort(t *testing.T) {
 	ctx := context.Background()
 
 	// reconcileGateway uses default port 8000 when no endpoint
-	err := r.reconcileInferencePool(ctx, md, 8000)
+	err := r.reconcileInferencePool(ctx, md, 8000, "gateway-ns")
 	if err != nil {
 		t.Fatalf("reconcileInferencePool failed: %v", err)
 	}
@@ -421,11 +430,38 @@ func TestGateway_NilDetectorSkipsSilently(t *testing.T) {
 	}
 }
 
+func TestGateway_PatchGatewayOptOut(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "model-ns")
+	// Gateway in a different namespace — without patching, allowedRoutes won't be modified.
+	gw := newTestGateway("my-gateway", "gateway-ns")
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	detector.PatchGateway = false // global opt-out via --patch-gateway-allowed-routes=false
+	r := newTestReconciler(scheme, detector, md, gw)
+	ctx := context.Background()
+
+	err := r.reconcileGateway(ctx, md)
+	if err != nil {
+		t.Fatalf("reconcileGateway failed: %v", err)
+	}
+
+	// Verify Gateway listeners were NOT patched (no allowedRoutes selector added)
+	var updated gatewayv1.Gateway
+	if err := r.Get(ctx, types.NamespacedName{Name: "my-gateway", Namespace: "gateway-ns"}, &updated); err != nil {
+		t.Fatalf("could not get gateway: %v", err)
+	}
+	for _, l := range updated.Spec.Listeners {
+		if l.AllowedRoutes != nil && l.AllowedRoutes.Namespaces != nil && l.AllowedRoutes.Namespaces.Selector != nil {
+			t.Error("expected Gateway listeners NOT to be patched when --patch-gateway-allowed-routes=false")
+		}
+	}
+}
+
 func TestGateway_StatusUpdate(t *testing.T) {
 	scheme := newTestScheme()
 	md := newModelDeployment("test-model", "default")
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
-	r := newTestReconciler(scheme, detector, md)
+	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
 	err := r.reconcileGateway(ctx, md)
@@ -500,7 +536,7 @@ func TestGateway_StatusModelNameOverride(t *testing.T) {
 		ModelName: "custom-model-name",
 	}
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
-	r := newTestReconciler(scheme, detector, md)
+	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
 	err := r.reconcileGateway(ctx, md)
@@ -518,7 +554,7 @@ func TestGateway_StatusServedNameFallback(t *testing.T) {
 	md := newModelDeployment("test-model", "default")
 	md.Spec.Model.ServedName = "llama-3"
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
-	r := newTestReconciler(scheme, detector, md)
+	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
 	err := r.reconcileGateway(ctx, md)
@@ -632,6 +668,251 @@ func TestGateway_CleanupNonExistentResourcesNoError(t *testing.T) {
 	}
 	if md.Status.Gateway != nil {
 		t.Error("expected gateway status to be cleared")
+	}
+}
+
+// gwWithNamespaceSelector creates a Gateway with a matchExpressions In-list for the given namespaces.
+func gwWithNamespaceSelector(name, ns string, namespaces ...string) *gatewayv1.Gateway {
+	fromSelector := gatewayv1.NamespacesFromSelector
+	return &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: "istio",
+			Listeners: []gatewayv1.Listener{
+				{
+					Name:     "http",
+					Port:     80,
+					Protocol: gatewayv1.HTTPProtocolType,
+					AllowedRoutes: &gatewayv1.AllowedRoutes{
+						Namespaces: &gatewayv1.RouteNamespaces{
+							From: &fromSelector,
+							Selector: &metav1.LabelSelector{
+								MatchExpressions: []metav1.LabelSelectorRequirement{
+									{
+										Key:      "kubernetes.io/metadata.name",
+										Operator: metav1.LabelSelectorOpIn,
+										Values:   namespaces,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestGateway_CleanupRevertsAllowedRoutes(t *testing.T) {
+	scheme := newTestScheme()
+	gw := gwWithNamespaceSelector("my-gateway", "gateway-ns", "model-ns")
+
+	md := newModelDeployment("test-model", "model-ns")
+	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{Endpoint: "10.0.0.1"}
+
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	detector.PatchGateway = true
+
+	r := newTestReconciler(scheme, detector, md, gw)
+	ctx := context.Background()
+
+	err := r.cleanupGatewayResources(ctx, md)
+	if err != nil {
+		t.Fatalf("cleanupGatewayResources failed: %v", err)
+	}
+
+	// Verify Gateway allowedRoutes was reverted to SameNamespace
+	var updatedGW gatewayv1.Gateway
+	if err := r.Get(ctx, types.NamespacedName{Name: "my-gateway", Namespace: "gateway-ns"}, &updatedGW); err != nil {
+		t.Fatalf("failed to get Gateway: %v", err)
+	}
+	for _, l := range updatedGW.Spec.Listeners {
+		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil || l.AllowedRoutes.Namespaces.From == nil {
+			t.Fatal("expected allowedRoutes to be set after revert")
+		}
+		if *l.AllowedRoutes.Namespaces.From != gatewayv1.NamespacesFromSame {
+			t.Errorf("expected allowedRoutes.from=Same, got %s", *l.AllowedRoutes.Namespaces.From)
+		}
+		if l.AllowedRoutes.Namespaces.Selector != nil {
+			t.Error("expected selector to be nil after revert")
+		}
+	}
+}
+
+func TestGateway_CleanupKeepsAllowedRoutesWhenOtherMDExists(t *testing.T) {
+	scheme := newTestScheme()
+	gw := gwWithNamespaceSelector("my-gateway", "gateway-ns", "model-ns")
+
+	md := newModelDeployment("test-model", "model-ns")
+	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{Endpoint: "10.0.0.1"}
+
+	// Another MD in the same namespace with gateway enabled (default)
+	otherMD := newModelDeployment("other-model", "model-ns")
+
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	detector.PatchGateway = true
+
+	r := newTestReconciler(scheme, detector, md, otherMD, gw)
+	ctx := context.Background()
+
+	err := r.cleanupGatewayResources(ctx, md)
+	if err != nil {
+		t.Fatalf("cleanupGatewayResources failed: %v", err)
+	}
+
+	// Verify Gateway allowedRoutes was NOT reverted (other MD still needs it)
+	var updatedGW gatewayv1.Gateway
+	if err := r.Get(ctx, types.NamespacedName{Name: "my-gateway", Namespace: "gateway-ns"}, &updatedGW); err != nil {
+		t.Fatalf("failed to get Gateway: %v", err)
+	}
+	for _, l := range updatedGW.Spec.Listeners {
+		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil || l.AllowedRoutes.Namespaces.From == nil {
+			t.Fatal("expected allowedRoutes to still be set")
+		}
+		if *l.AllowedRoutes.Namespaces.From != gatewayv1.NamespacesFromSelector {
+			t.Errorf("expected allowedRoutes.from=Selector (kept for other MD), got %s", *l.AllowedRoutes.Namespaces.From)
+		}
+	}
+}
+
+func TestGateway_CleanupRemovesOneNamespaceFromMultiple(t *testing.T) {
+	scheme := newTestScheme()
+	// Gateway allows both dynamo-system and kaito-workspace
+	gw := gwWithNamespaceSelector("my-gateway", "gateway-ns", "dynamo-system", "kaito-workspace")
+
+	md := newModelDeployment("test-model", "dynamo-system")
+	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{Endpoint: "10.0.0.1"}
+
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	detector.PatchGateway = true
+
+	r := newTestReconciler(scheme, detector, md, gw)
+	ctx := context.Background()
+
+	err := r.cleanupGatewayResources(ctx, md)
+	if err != nil {
+		t.Fatalf("cleanupGatewayResources failed: %v", err)
+	}
+
+	// Verify only dynamo-system was removed; kaito-workspace remains
+	var updatedGW gatewayv1.Gateway
+	if err := r.Get(ctx, types.NamespacedName{Name: "my-gateway", Namespace: "gateway-ns"}, &updatedGW); err != nil {
+		t.Fatalf("failed to get Gateway: %v", err)
+	}
+	for _, l := range updatedGW.Spec.Listeners {
+		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil || l.AllowedRoutes.Namespaces.From == nil {
+			t.Fatal("expected allowedRoutes to still be set")
+		}
+		if *l.AllowedRoutes.Namespaces.From != gatewayv1.NamespacesFromSelector {
+			t.Errorf("expected allowedRoutes.from=Selector, got %s", *l.AllowedRoutes.Namespaces.From)
+		}
+		sel := l.AllowedRoutes.Namespaces.Selector
+		if sel == nil || len(sel.MatchExpressions) == 0 {
+			t.Fatal("expected matchExpressions to be set")
+		}
+		values := sel.MatchExpressions[0].Values
+		if len(values) != 1 || values[0] != "kaito-workspace" {
+			t.Errorf("expected only [kaito-workspace] in selector values, got %v", values)
+		}
+	}
+}
+
+func TestGateway_EnsureAddsNamespaceToExistingSelector(t *testing.T) {
+	scheme := newTestScheme()
+	// Gateway already allows dynamo-system
+	gw := gwWithNamespaceSelector("my-gateway", "gateway-ns", "dynamo-system")
+
+	md := newModelDeployment("test-model", "kaito-workspace")
+
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	detector.PatchGateway = true
+
+	r := newTestReconciler(scheme, detector, md, gw)
+	ctx := context.Background()
+
+	gwConfig := &gateway.GatewayConfig{GatewayName: "my-gateway", GatewayNamespace: "gateway-ns"}
+	err := r.ensureGatewayAllowsNamespace(ctx, gwConfig, "kaito-workspace")
+	if err != nil {
+		t.Fatalf("ensureGatewayAllowsNamespace failed: %v", err)
+	}
+
+	// Verify both namespaces are now allowed
+	var updatedGW gatewayv1.Gateway
+	if err := r.Get(ctx, types.NamespacedName{Name: "my-gateway", Namespace: "gateway-ns"}, &updatedGW); err != nil {
+		t.Fatalf("failed to get Gateway: %v", err)
+	}
+	for _, l := range updatedGW.Spec.Listeners {
+		sel := l.AllowedRoutes.Namespaces.Selector
+		if sel == nil || len(sel.MatchExpressions) == 0 {
+			t.Fatal("expected matchExpressions to be set")
+		}
+		values := sel.MatchExpressions[0].Values
+		if len(values) != 2 {
+			t.Fatalf("expected 2 namespaces in selector, got %v", values)
+		}
+		// Values are sorted
+		if values[0] != "dynamo-system" || values[1] != "kaito-workspace" {
+			t.Errorf("expected [dynamo-system, kaito-workspace], got %v", values)
+		}
+	}
+}
+
+func TestGateway_EnsureMigratesLegacyMatchLabels(t *testing.T) {
+	scheme := newTestScheme()
+	// Gateway has legacy matchLabels format (single namespace)
+	fromSelector := gatewayv1.NamespacesFromSelector
+	gw := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-gateway", Namespace: "gateway-ns"},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: "istio",
+			Listeners: []gatewayv1.Listener{
+				{
+					Name:     "http",
+					Port:     80,
+					Protocol: gatewayv1.HTTPProtocolType,
+					AllowedRoutes: &gatewayv1.AllowedRoutes{
+						Namespaces: &gatewayv1.RouteNamespaces{
+							From: &fromSelector,
+							Selector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"kubernetes.io/metadata.name": "dynamo-system"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	detector.PatchGateway = true
+
+	md := newModelDeployment("test-model", "kaito-workspace")
+	r := newTestReconciler(scheme, detector, md, gw)
+	ctx := context.Background()
+
+	gwConfig := &gateway.GatewayConfig{GatewayName: "my-gateway", GatewayNamespace: "gateway-ns"}
+	err := r.ensureGatewayAllowsNamespace(ctx, gwConfig, "kaito-workspace")
+	if err != nil {
+		t.Fatalf("ensureGatewayAllowsNamespace failed: %v", err)
+	}
+
+	// Verify both namespaces are now in matchExpressions
+	var updatedGW gatewayv1.Gateway
+	if err := r.Get(ctx, types.NamespacedName{Name: "my-gateway", Namespace: "gateway-ns"}, &updatedGW); err != nil {
+		t.Fatalf("failed to get Gateway: %v", err)
+	}
+	for _, l := range updatedGW.Spec.Listeners {
+		sel := l.AllowedRoutes.Namespaces.Selector
+		if sel == nil || len(sel.MatchExpressions) == 0 {
+			t.Fatal("expected matchExpressions after migration")
+		}
+		values := sel.MatchExpressions[0].Values
+		if len(values) != 2 {
+			t.Fatalf("expected 2 namespaces after migration, got %v", values)
+		}
+		if values[0] != "dynamo-system" || values[1] != "kaito-workspace" {
+			t.Errorf("expected [dynamo-system, kaito-workspace], got %v", values)
+		}
 	}
 }
 

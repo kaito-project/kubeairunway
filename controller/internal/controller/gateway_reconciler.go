@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -70,7 +71,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	}
 
 	// Resolve gateway configuration
-	gwConfig, err := r.resolveGatewayConfig(ctx, md)
+	gwConfig, err := r.resolveGatewayConfig(ctx)
 	if err != nil {
 		logger.Info("No gateway found for routing, skipping gateway reconciliation", "reason", err.Error())
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "NoGateway", err.Error())
@@ -94,8 +95,18 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 		// Non-fatal: pods may not exist yet or provider may handle labels
 	}
 
+	// If the ModelDeployment is in a different namespace than the Gateway, patch the Gateway
+	// listener to allow routes from md.Namespace. This can be disabled globally via the
+	// --patch-gateway-allowed-routes=false flag for environments where the admin manages allowedRoutes.
+	if r.GatewayDetector.PatchGateway && md.Namespace != gwConfig.GatewayNamespace {
+		if err := r.ensureGatewayAllowsNamespace(ctx, gwConfig, md.Namespace); err != nil {
+			r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayPatchFailed", err.Error())
+			return fmt.Errorf("patching Gateway allowedRoutes: %w", err)
+		}
+	}
+
 	// Create or update InferencePool
-	if err := r.reconcileInferencePool(ctx, md, port); err != nil {
+	if err := r.reconcileInferencePool(ctx, md, port, gwConfig.GatewayNamespace); err != nil {
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
 		return fmt.Errorf("reconciling InferencePool: %w", err)
 	}
@@ -122,8 +133,9 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 	// Update gateway status
 	endpoint := r.resolveGatewayEndpoint(ctx, gwConfig)
 	md.Status.Gateway = &airunwayv1alpha1.GatewayStatus{
-		Endpoint:  endpoint,
-		ModelName: modelName,
+		Endpoint:         endpoint,
+		ModelName:        modelName,
+		GatewayNamespace: gwConfig.GatewayNamespace,
 	}
 	r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionTrue, "GatewayConfigured", "InferencePool and HTTPRoute created")
 
@@ -132,7 +144,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 }
 
 // resolveGatewayConfig determines which Gateway to use as the HTTPRoute parent.
-func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) (*gateway.GatewayConfig, error) {
+func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context) (*gateway.GatewayConfig, error) {
 	// Try explicit configuration first
 	if cfg, err := r.GatewayDetector.GetGatewayConfig(); err == nil {
 		return cfg, nil
@@ -177,7 +189,7 @@ func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context, md
 }
 
 // reconcileInferencePool creates or updates the InferencePool for a ModelDeployment.
-func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, port int32) error {
+func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, port int32, bbrNamespace string) error {
 	pool := &inferencev1.InferencePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      md.Name,
@@ -216,7 +228,7 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 	// discovers the new model. BBR watches ConfigMaps via controller-runtime and rebuilds
 	// its internal model registry on startup.
 	if result == controllerutil.OperationResultCreated {
-		if err := r.restartBBRIfPresent(ctx, md.Namespace); err != nil {
+		if err := r.restartBBRIfPresent(ctx, bbrNamespace); err != nil {
 			log.FromContext(ctx).Info("Could not restart BBR deployment (non-fatal)", "error", err)
 		}
 	}
@@ -827,6 +839,102 @@ func (r *ModelDeploymentReconciler) discoverModelName(ctx context.Context, servi
 	return ""
 }
 
+// ensureGatewayAllowsNamespace patches every listener on the Gateway so its
+// allowedRoutes selector includes the given namespace. The selector uses a
+// matchExpressions In-list so that multiple cross-namespace ModelDeployments
+// can coexist.
+func (r *ModelDeploymentReconciler) ensureGatewayAllowsNamespace(ctx context.Context, gwConfig *gateway.GatewayConfig, namespace string) error {
+	var gw gatewayv1.Gateway
+	if err := r.Get(ctx, client.ObjectKey{Name: gwConfig.GatewayName, Namespace: gwConfig.GatewayNamespace}, &gw); err != nil {
+		return fmt.Errorf("getting Gateway: %w", err)
+	}
+
+	existing := allowedNamespacesFromGateway(&gw)
+	if existing[namespace] {
+		return nil // already allowed
+	}
+	existing[namespace] = true
+
+	if err := r.patchGatewayListenerSelector(ctx, gwConfig, existing); err != nil {
+		return err
+	}
+
+	log.FromContext(ctx).Info("Patched Gateway listeners to allow routes from namespace",
+		"gateway", gwConfig.GatewayName, "namespace", namespace)
+	return nil
+}
+
+// patchGatewayListenerSelector fetches the Gateway fresh and patches the listener selectors.
+func (r *ModelDeploymentReconciler) patchGatewayListenerSelector(ctx context.Context, gwConfig *gateway.GatewayConfig, namespaces map[string]bool) error {
+	var gw gatewayv1.Gateway
+	if err := r.Get(ctx, client.ObjectKey{Name: gwConfig.GatewayName, Namespace: gwConfig.GatewayNamespace}, &gw); err != nil {
+		return fmt.Errorf("getting Gateway: %w", err)
+	}
+
+	base := gw.DeepCopy()
+	fromSelector := gatewayv1.NamespacesFromSelector
+	selector := namespaceSelectorFromSet(namespaces)
+
+	for i := range gw.Spec.Listeners {
+		if gw.Spec.Listeners[i].AllowedRoutes == nil {
+			gw.Spec.Listeners[i].AllowedRoutes = &gatewayv1.AllowedRoutes{}
+		}
+		gw.Spec.Listeners[i].AllowedRoutes.Namespaces = &gatewayv1.RouteNamespaces{
+			From:     &fromSelector,
+			Selector: selector,
+		}
+	}
+	if err := r.Patch(ctx, &gw, client.MergeFrom(base)); err != nil {
+		return fmt.Errorf("patching Gateway listeners: %w", err)
+	}
+	return nil
+}
+
+// allowedNamespacesFromGateway extracts the set of namespaces currently allowed
+// by the Gateway's listener selectors (supports both matchLabels and matchExpressions).
+func allowedNamespacesFromGateway(gw *gatewayv1.Gateway) map[string]bool {
+	ns := make(map[string]bool)
+	for _, l := range gw.Spec.Listeners {
+		if l.AllowedRoutes == nil || l.AllowedRoutes.Namespaces == nil || l.AllowedRoutes.Namespaces.Selector == nil {
+			continue
+		}
+		sel := l.AllowedRoutes.Namespaces.Selector
+		// Legacy single-namespace matchLabels
+		if v, ok := sel.MatchLabels["kubernetes.io/metadata.name"]; ok {
+			ns[v] = true
+		}
+		// matchExpressions In-list
+		for _, expr := range sel.MatchExpressions {
+			if expr.Key == "kubernetes.io/metadata.name" && expr.Operator == metav1.LabelSelectorOpIn {
+				for _, v := range expr.Values {
+					ns[v] = true
+				}
+			}
+		}
+		break // all listeners share the same selector
+	}
+	return ns
+}
+
+// namespaceSelectorFromSet builds a LabelSelector with a matchExpressions In-list
+// for the given namespace set.
+func namespaceSelectorFromSet(namespaces map[string]bool) *metav1.LabelSelector {
+	values := make([]string, 0, len(namespaces))
+	for ns := range namespaces {
+		values = append(values, ns)
+	}
+	sort.Strings(values)
+	return &metav1.LabelSelector{
+		MatchExpressions: []metav1.LabelSelectorRequirement{
+			{
+				Key:      "kubernetes.io/metadata.name",
+				Operator: metav1.LabelSelectorOpIn,
+				Values:   values,
+			},
+		},
+	}
+}
+
 // cleanupGatewayResources removes gateway resources when gateway is disabled or
 // the deployment is no longer running. Also sets GatewayReady=False.
 func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
@@ -881,6 +989,13 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 		}
 	}
 
+	// Revert Gateway allowedRoutes if no other ModelDeployments in this namespace need gateway access.
+	if r.GatewayDetector != nil && r.GatewayDetector.PatchGateway {
+		if err := r.cleanupGatewayAllowedRoutes(ctx, md); err != nil {
+			logger.V(1).Info("Could not revert Gateway allowedRoutes", "error", err)
+		}
+	}
+
 	md.Status.Gateway = nil
 	r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "GatewayDisabled", "Gateway resources cleaned up")
 
@@ -897,6 +1012,146 @@ func (r *ModelDeploymentReconciler) cleanupGatewayResources(ctx context.Context,
 
 	logger.Info("Gateway resources cleaned up", "name", md.Name)
 	return nil
+}
+
+// cleanupGatewayAllowedRoutes removes the namespace from the Gateway's allowedRoutes
+// if no other gateway-enabled ModelDeployments remain in that namespace.
+func (r *ModelDeploymentReconciler) cleanupGatewayAllowedRoutes(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
+	logger := log.FromContext(ctx)
+
+	// Resolve gateway config; if we can't find the gateway, nothing to revert.
+	gwConfig, err := r.resolveGatewayConfig(ctx)
+	if err != nil {
+		return nil
+	}
+
+	// Only relevant for cross-namespace routing.
+	if md.Namespace == gwConfig.GatewayNamespace {
+		return nil
+	}
+
+	// Check if any other ModelDeployments in the same namespace still need gateway access.
+	var mdList airunwayv1alpha1.ModelDeploymentList
+	if err := r.List(ctx, &mdList, client.InNamespace(md.Namespace)); err != nil {
+		return fmt.Errorf("listing ModelDeployments: %w", err)
+	}
+	for i := range mdList.Items {
+		other := &mdList.Items[i]
+		if other.UID == md.UID {
+			continue
+		}
+		// If another MD exists that hasn't opted out of gateway, keep the route.
+		if other.Spec.Gateway == nil || other.Spec.Gateway.Enabled == nil || *other.Spec.Gateway.Enabled {
+			return nil
+		}
+	}
+
+	// No other MDs need gateway in this namespace — remove it from the In-list.
+	var gw gatewayv1.Gateway
+	if err := r.Get(ctx, client.ObjectKey{Name: gwConfig.GatewayName, Namespace: gwConfig.GatewayNamespace}, &gw); err != nil {
+		return fmt.Errorf("getting Gateway: %w", err)
+	}
+
+	existing := allowedNamespacesFromGateway(&gw)
+	if !existing[md.Namespace] {
+		return nil // not in the list, nothing to do
+	}
+	delete(existing, md.Namespace)
+
+	if len(existing) == 0 {
+		// No cross-namespace routes remain — revert to SameNamespace.
+		fromSame := gatewayv1.NamespacesFromSame
+		base := gw.DeepCopy()
+		for i := range gw.Spec.Listeners {
+			if gw.Spec.Listeners[i].AllowedRoutes != nil {
+				gw.Spec.Listeners[i].AllowedRoutes.Namespaces = &gatewayv1.RouteNamespaces{
+					From: &fromSame,
+				}
+			}
+		}
+		if err := r.Patch(ctx, &gw, client.MergeFrom(base)); err != nil {
+			return fmt.Errorf("reverting Gateway listeners: %w", err)
+		}
+	} else {
+		// Other namespaces still need access — update the In-list without this namespace.
+		if err := r.patchGatewayListenerSelector(ctx, gwConfig, existing); err != nil {
+			return fmt.Errorf("updating Gateway listeners: %w", err)
+		}
+	}
+
+	logger.Info("Removed namespace from Gateway allowedRoutes", "gateway", gwConfig.GatewayName, "namespace", md.Namespace)
+	return nil
+}
+
+// cleanupGatewayAllowedRoutesForNamespace removes a namespace from the Gateway's
+// allowedRoutes when a ModelDeployment has already been deleted (no MD object available).
+// It checks whether any remaining MDs in the namespace still need gateway access.
+func (r *ModelDeploymentReconciler) cleanupGatewayAllowedRoutesForNamespace(ctx context.Context, namespace string) {
+	logger := log.FromContext(ctx)
+
+	if r.GatewayDetector == nil || !r.GatewayDetector.PatchGateway {
+		return
+	}
+	if !r.GatewayDetector.IsAvailable(ctx) {
+		return
+	}
+
+	gwConfig, err := r.resolveGatewayConfig(ctx)
+	if err != nil {
+		return
+	}
+	if namespace == gwConfig.GatewayNamespace {
+		return
+	}
+
+	// Check if any remaining MDs in the namespace still need gateway access.
+	var mdList airunwayv1alpha1.ModelDeploymentList
+	if err := r.List(ctx, &mdList, client.InNamespace(namespace)); err != nil {
+		logger.V(1).Info("Could not list ModelDeployments for gateway cleanup", "namespace", namespace, "error", err)
+		return
+	}
+	for i := range mdList.Items {
+		other := &mdList.Items[i]
+		if other.Spec.Gateway == nil || other.Spec.Gateway.Enabled == nil || *other.Spec.Gateway.Enabled {
+			return // another MD still needs gateway
+		}
+	}
+
+	// No MDs need gateway in this namespace — remove it from the In-list.
+	var gw gatewayv1.Gateway
+	if err := r.Get(ctx, client.ObjectKey{Name: gwConfig.GatewayName, Namespace: gwConfig.GatewayNamespace}, &gw); err != nil {
+		logger.V(1).Info("Could not get Gateway for cleanup", "error", err)
+		return
+	}
+
+	existing := allowedNamespacesFromGateway(&gw)
+	if !existing[namespace] {
+		return
+	}
+	delete(existing, namespace)
+
+	if len(existing) == 0 {
+		fromSame := gatewayv1.NamespacesFromSame
+		base := gw.DeepCopy()
+		for i := range gw.Spec.Listeners {
+			if gw.Spec.Listeners[i].AllowedRoutes != nil {
+				gw.Spec.Listeners[i].AllowedRoutes.Namespaces = &gatewayv1.RouteNamespaces{
+					From: &fromSame,
+				}
+			}
+		}
+		if err := r.Patch(ctx, &gw, client.MergeFrom(base)); err != nil {
+			logger.V(1).Info("Could not revert Gateway listeners", "error", err)
+			return
+		}
+	} else {
+		if err := r.patchGatewayListenerSelector(ctx, gwConfig, existing); err != nil {
+			logger.V(1).Info("Could not update Gateway listeners", "error", err)
+			return
+		}
+	}
+
+	logger.Info("Removed namespace from Gateway allowedRoutes after MD deletion", "gateway", gwConfig.GatewayName, "namespace", namespace)
 }
 
 // restartBBRIfPresent triggers a rolling restart of the body-based-router Deployment (if present
