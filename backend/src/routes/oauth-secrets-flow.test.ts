@@ -6,7 +6,6 @@ import { kubernetesService } from '../services/kubernetes';
 import { configService } from '../services/config';
 import { mockServiceMethod, mockFetchByUrl } from '../test/helpers';
 import {
-  mockHfUser,
   mockHfSecretStatusConfigured,
   mockHfSecretStatusEmpty,
   mockHfDistributeResult,
