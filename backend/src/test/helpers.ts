@@ -67,3 +67,50 @@ export function mockServiceMethod<S extends Record<string, any>, K extends keyof
     service[method] = original;
   };
 }
+
+/**
+ * Creates a mock fetch function that routes responses by URL substring match.
+ * First matching pattern wins. Unmatched URLs return 404.
+ * Returns a restore function to reset globalThis.fetch.
+ *
+ * Usage:
+ *   const restore = mockFetchByUrl({
+ *     '/oauth/token': { body: { access_token: 'tok' } },
+ *     '/api/whoami': { body: { name: 'user' }, status: 200 },
+ *     '/api/fail': { body: { error: 'bad' }, ok: false, status: 400 },
+ *   });
+ */
+export function mockFetchByUrl(
+  routes: Record<string, { body: unknown; ok?: boolean; status?: number }>
+): () => void {
+  const originalFetch = globalThis.fetch;
+  // @ts-expect-error - mocking fetch for tests
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+    for (const [pattern, response] of Object.entries(routes)) {
+      if (url.includes(pattern)) {
+        return {
+          ok: response.ok ?? true,
+          status: response.status ?? 200,
+          statusText: 'OK',
+          json: () => Promise.resolve(response.body),
+          text: () => Promise.resolve(JSON.stringify(response.body)),
+        } as Response;
+      }
+    }
+    return {
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve(''),
+    } as Response;
+  };
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
