@@ -1,4 +1,3 @@
-// backend/src/routes/provider-installation-flow.test.ts
 import { describe, test, expect, afterEach } from 'bun:test';
 import app from '../hono-app';
 import { kubernetesService } from '../services/kubernetes';
@@ -61,7 +60,8 @@ describe('Provider Installation Flow', () => {
     expect(gpuOpRes.status).toBe(200);
     const gpuOpData = await gpuOpRes.json();
     expect(gpuOpData.installed).toBe(true);
-    expect(gpuOpData.healthy).toBe(true);
+    expect(gpuOpData.operatorRunning).toBe(true);
+    expect(gpuOpData.gpusAvailable).toBe(true);
 
     // ---- Step 3: Check provider status (not yet ready) ----
     restores.push(
@@ -155,6 +155,9 @@ describe('Provider Installation Flow', () => {
     expect(uninstallRes.status).toBe(200);
     const uninstallData = await uninstallRes.json();
     expect(uninstallData.success).toBe(true);
+    expect(typeof uninstallData.message).toBe('string');
+    expect(uninstallData.results).toBeDefined();
+    expect(uninstallData.results.length).toBeGreaterThan(0);
 
     // ---- Step 9: Verify provider removed ----
     restores.push(

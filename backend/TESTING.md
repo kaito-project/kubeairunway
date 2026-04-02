@@ -96,7 +96,7 @@ exercise cross-route interactions. Mocks are re-pushed between steps to simulate
 changes.
 
 See these files for examples:
-- `src/routes/lifecycle.test.ts` — deployment create → get → delete → verify
+- `src/routes/lifecycle.test.ts` — deployment create → get → delete → verify (predates this test infrastructure; uses inline mocks)
 - `src/routes/oauth-secrets-flow.test.ts` — OAuth → secrets → deploy → cleanup
 - `src/routes/provider-installation-flow.test.ts` — GPU check → install → verify → uninstall
 
@@ -130,7 +130,7 @@ Located in `src/test/helpers.ts`:
 |--------|---------|
 | `mockServiceMethod(service, method, impl)` | Replace a method on a service singleton. Returns a restore function. |
 | `mockFetch(response, options?)` | Replace `globalThis.fetch` with a static response. Returns a restore function. |
-| `mockFetchByUrl(routes)` | Replace `globalThis.fetch` with URL-based routing. First substring match wins. Returns a restore function. |
+| `mockFetchByUrl(routes)` | Replace `globalThis.fetch` with URL-based routing. **First substring match wins** — list more-specific patterns before less-specific ones (e.g. `/api/whoami-v2` before `/api/whoami`). Returns a restore function. |
 | `withTimeout(promise, ms)` | Race a promise against a timeout. Used for K8s-tolerant tests. |
 | `K8S_TEST_TIMEOUT` | Default timeout (2000ms) for K8s-dependent tests. |
 

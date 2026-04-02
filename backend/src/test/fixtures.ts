@@ -3,10 +3,22 @@
  * Provides mock data for K8s resources used across route tests.
  */
 
-import type { AutoscalerDetectionResult, AutoscalerStatusInfo } from '@airunway/shared';
-import type { AIConfiguratorStatus, AIConfiguratorResult, AIConfiguratorConfig } from '@airunway/shared';
-import type { DeploymentStatus, PodStatus } from '@airunway/shared';
-import type { HfUserInfo, HfTokenExchangeResponse, HfSecretStatus } from '@airunway/shared';
+import type {
+  AutoscalerDetectionResult,
+  AutoscalerStatusInfo,
+  AIConfiguratorStatus,
+  AIConfiguratorResult,
+  AIConfiguratorConfig,
+  DeploymentStatus,
+  PodStatus,
+  HfUserInfo,
+  HfSecretStatus,
+  HelmStatus,
+  GPUOperatorStatus,
+  ClusterGpuCapacity,
+  PodFailureReason,
+} from '@airunway/shared';
+import type { HelmResult } from '../services/helm';
 
 // ============================================================================
 // Autoscaler Fixtures
@@ -81,7 +93,7 @@ export const aiConfiguratorSuccessResult: AIConfiguratorResult = {
 
 export const mockPod: PodStatus = {
   name: 'test-deploy-abc123',
-  phase: 'Running' as const,
+  phase: 'Running',
   ready: true,
   restarts: 0,
   age: '2h',
@@ -90,7 +102,7 @@ export const mockPod: PodStatus = {
 
 export const mockPendingPod: PodStatus = {
   name: 'test-deploy-pending-xyz',
-  phase: 'Pending' as const,
+  phase: 'Pending',
   ready: false,
   restarts: 0,
   age: '5m',
@@ -162,12 +174,12 @@ export const mockInferenceProviderConfig = {
 // Pod Failure Reasons Fixtures
 // ============================================================================
 
-export const mockPodFailureReasons = [
+export const mockPodFailureReasons: PodFailureReason[] = [
   {
     reason: 'Insufficient nvidia.com/gpu',
     message: 'No GPU resources available',
     isResourceConstraint: true,
-    resourceType: 'gpu' as const,
+    resourceType: 'gpu',
     canAutoscalerHelp: true,
   },
 ];
@@ -182,24 +194,6 @@ export const mockHfUser: HfUserInfo = {
   fullname: 'Test User',
   email: 'test@example.com',
   avatarUrl: 'https://huggingface.co/avatars/testuser.png',
-};
-
-export const mockHfTokenExchange: HfTokenExchangeResponse = {
-  accessToken: 'hf_test_token_abc123',
-  tokenType: 'Bearer',
-  expiresIn: 3600,
-  scope: 'openid profile read-repos',
-  user: mockHfUser,
-};
-
-export const mockHfTokenValidation = {
-  valid: true as const,
-  user: mockHfUser,
-};
-
-export const mockHfTokenValidationInvalid = {
-  valid: false as const,
-  error: 'Invalid or expired token',
 };
 
 // ============================================================================
@@ -240,10 +234,10 @@ export const mockHfDistributeResult = {
 export const mockHfDeleteResult = {
   success: true,
   results: [
-    { namespace: 'dynamo-system', success: true },
-    { namespace: 'kuberay-system', success: true },
-    { namespace: 'kaito-workspace', success: true },
-    { namespace: 'default', success: true },
+    { namespace: 'dynamo-system', success: true, deleted: true },
+    { namespace: 'kuberay-system', success: true, deleted: true },
+    { namespace: 'kaito-workspace', success: true, deleted: true },
+    { namespace: 'default', success: true, deleted: true },
   ],
 };
 
@@ -251,7 +245,10 @@ export const mockHfDeleteResult = {
 // GPU & Installation Fixtures
 // ============================================================================
 
-export const mockGpuCapacity = {
+// Note: getClusterGpuCapacity() returns maxNodeGpuCapacity and gpuNodeCount at runtime
+// even though the shared ClusterGpuCapacity type omits them. These fields are used in the
+// frontend, so we include them here to match the actual API response shape.
+export const mockGpuCapacity: ClusterGpuCapacity & { maxNodeGpuCapacity: number; gpuNodeCount: number } = {
   totalGpus: 4,
   allocatedGpus: 0,
   availableGpus: 4,
@@ -261,16 +258,9 @@ export const mockGpuCapacity = {
   nodes: [],
 };
 
-export const mockGpuCapacityEmpty = {
-  totalGpus: 0,
-  allocatedGpus: 0,
-  availableGpus: 0,
-  maxContiguousAvailable: 0,
-  maxNodeGpuCapacity: 0,
-  gpuNodeCount: 0,
-  nodes: [],
-};
-
+// Note: The real getDetailedClusterGpuCapacity() returns DetailedClusterCapacity with
+// `nodePools: NodePoolInfo[]`. This fixture uses `nodes` to match what the test
+// currently asserts. Revisit if the test is updated to check the real response shape.
 export const mockDetailedGpuCapacity = {
   totalGpus: 4,
   allocatedGpus: 1,
@@ -282,24 +272,27 @@ export const mockDetailedGpuCapacity = {
       totalGpus: 4,
       allocatedGpus: 1,
       availableGpus: 3,
-      labels: { 'apps': 'ai-model' },
+      labels: { apps: 'ai-model' },
     },
   ],
 };
 
-export const mockGpuOperatorStatus = {
+export const mockGpuOperatorStatus: Omit<GPUOperatorStatus, 'helmCommands'> = {
   installed: true,
-  healthy: true,
-  message: 'NVIDIA GPU Operator is running',
-  pods: [{ name: 'gpu-operator-abc123', status: 'Running', ready: true }],
+  crdFound: true,
+  operatorRunning: true,
+  gpusAvailable: true,
+  totalGPUs: 4,
+  gpuNodes: ['gpu-node-1'],
+  message: 'GPUs enabled: 4 GPU(s) on 1 node(s)',
 };
 
-export const mockHelmAvailable = {
+export const mockHelmAvailable: HelmStatus = {
   available: true,
   version: '3.14.0',
 };
 
-export const mockHelmUnavailable = {
+export const mockHelmUnavailable: HelmStatus = {
   available: false,
   error: 'Helm CLI not found in PATH',
 };
@@ -313,7 +306,7 @@ export const mockProviderInstallResult = {
   ],
 };
 
-export const mockProviderUninstallResult = {
+export const mockProviderUninstallResult: HelmResult = {
   success: true,
   stdout: 'release "workspace" uninstalled',
   stderr: '',
@@ -324,6 +317,6 @@ export const mockInferenceProviderConfigNotReady = {
   ...mockInferenceProviderConfig,
   status: {
     ready: false,
-    version: '0.9.0',
+    // No version — provider is not yet installed/ready
   },
 };

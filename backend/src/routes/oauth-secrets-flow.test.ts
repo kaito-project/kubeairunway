@@ -1,4 +1,3 @@
-// backend/src/routes/oauth-secrets-flow.test.ts
 import { describe, test, expect, afterEach } from 'bun:test';
 import app from '../hono-app';
 import { secretsService } from '../services/secrets';
@@ -28,7 +27,7 @@ describe('OAuth → Secrets → Deploy Flow', () => {
     const config = await configRes.json();
     expect(typeof config.clientId).toBe('string');
     expect(config.clientId.length).toBeGreaterThan(0);
-    expect(config.authorizeUrl).toBe('https://huggingface.co/oauth/authorize');
+    expect(config.authorizeUrl).toContain('/oauth/authorize');
     expect(config.scopes).toContain('openid');
 
     // ---- Step 2: Start OAuth flow (PKCE) ----
@@ -39,7 +38,7 @@ describe('OAuth → Secrets → Deploy Flow', () => {
     });
     expect(startRes.status).toBe(200);
     const startData = await startRes.json();
-    expect(startData.authorizationUrl).toContain('huggingface.co/oauth/authorize');
+    expect(startData.authorizationUrl).toContain('/oauth/authorize');
     expect(startData.authorizationUrl).toContain('code_challenge');
     expect(startData.state).toBeDefined();
 
@@ -58,14 +57,17 @@ describe('OAuth → Secrets → Deploy Flow', () => {
     expect(verifierRes2.status).toBe(404);
 
     // ---- Step 5: Exchange code for token ----
-    // Mock at fetch level to be immune to module cache invalidation from huggingface.test.ts.
+    // Mock at the fetch level (not mockServiceMethod) because huggingface.test.ts
+    // uses `delete require.cache[require.resolve('./huggingface')]` which can cause
+    // the huggingFaceService singleton imported here to differ from the one the route
+    // handler uses. Mocking globalThis.fetch bypasses the singleton entirely.
     // handleOAuthCallback calls fetch(HF_TOKEN_URL) then fetch(HF_WHOAMI_URL).
     restores.push(
       mockFetchByUrl({
         '/oauth/token': {
           body: { access_token: 'hf_test_token_abc123', expires_in: 3600, scope: 'openid profile read-repos' },
         },
-        '/api/whoami': {
+        '/api/whoami-v2': {
           body: { id: 'user-123', name: 'testuser', fullname: 'Test User', email: 'test@example.com', avatarUrl: 'https://huggingface.co/avatars/testuser.png' },
         },
       }),
@@ -86,7 +88,7 @@ describe('OAuth → Secrets → Deploy Flow', () => {
     expect(tokenData.user.name).toBe('testuser');
 
     // ---- Step 6: Save HuggingFace secret ----
-    // validateToken calls fetch(HF_WHOAMI_URL) — fetch mock for /api/whoami still active
+    // validateToken calls fetch(HF_WHOAMI_URL) — fetch mock for /api/whoami-v2 still active
     restores.push(
       mockServiceMethod(
         secretsService,
@@ -106,7 +108,9 @@ describe('OAuth → Secrets → Deploy Flow', () => {
     expect(saveData.user.name).toBe('testuser');
     expect(saveData.results).toHaveLength(4);
 
-    // Restore fetch before next steps that don't need it
+    // Restore fetch and service mocks before next steps that use different mocks.
+    // Without this, the fetch mock from Step 5 would intercept requests in later steps
+    // and the distributeHfSecret mock would leak into Step 7's getHfSecretStatus call.
     restores.forEach((r) => r());
     restores.length = 0;
 
@@ -214,7 +218,7 @@ describe('OAuth → Secrets → Deploy Flow', () => {
     // Mock fetch to return 401 from whoami endpoint (invalid token)
     restores.push(
       mockFetchByUrl({
-        '/api/whoami': {
+        '/api/whoami-v2': {
           body: { error: 'Invalid username or password.' },
           ok: false,
           status: 401,

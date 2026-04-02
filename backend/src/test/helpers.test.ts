@@ -59,4 +59,30 @@ describe('mockFetchByUrl', () => {
     restore = undefined;
     expect(globalThis.fetch).toBe(originalFetch);
   });
+
+  test('first matching pattern wins for overlapping URL substrings', async () => {
+    // '/api/whoami-v2' should match before '/api/whoami' when listed first
+    restore = mockFetchByUrl({
+      '/api/whoami-v2': { body: { version: 2 } },
+      '/api/whoami': { body: { version: 1 } },
+    });
+
+    const res = await fetch('https://huggingface.co/api/whoami-v2');
+    const data = await res.json();
+    expect(data.version).toBe(2);
+  });
+
+  test('less-specific pattern matches when more-specific is listed second', async () => {
+    // When '/api/whoami' is listed first, it matches '/api/whoami-v2' too
+    restore = mockFetchByUrl({
+      '/api/whoami': { body: { version: 1 } },
+      '/api/whoami-v2': { body: { version: 2 } },
+    });
+
+    const res = await fetch('https://huggingface.co/api/whoami-v2');
+    const data = await res.json();
+    // The less-specific pattern '/api/whoami' matches first — this is the
+    // "first match wins" footgun documented in TESTING.md and helpers.ts.
+    expect(data.version).toBe(1);
+  });
 });
