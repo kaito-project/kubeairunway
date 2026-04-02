@@ -1,6 +1,7 @@
 import * as k8s from '@kubernetes/client-node';
 import type { AutoscalerDetectionResult, AutoscalerStatusInfo } from '@airunway/shared';
 import { withRetry } from '../lib/retry';
+import { loadKubeConfig } from '../lib/kubeconfig';
 import logger from '../lib/logger';
 import * as yaml from 'js-yaml';
 
@@ -11,14 +12,7 @@ class AutoscalerService {
   private customObjectsApi: k8s.CustomObjectsApi;
 
   constructor() {
-    this.kc = new k8s.KubeConfig();
-
-    try {
-      this.kc.loadFromDefault();
-    } catch {
-      logger.warn('No kubeconfig found, using mock mode');
-    }
-
+    this.kc = loadKubeConfig();
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
     this.appsV1Api = this.kc.makeApiClient(k8s.AppsV1Api);
     this.customObjectsApi = this.kc.makeApiClient(k8s.CustomObjectsApi);

@@ -1,4 +1,5 @@
 import * as k8s from '@kubernetes/client-node';
+import { loadKubeConfig } from '../lib/kubeconfig';
 import logger from '../lib/logger';
 
 // Default namespace for AI Runway deployments
@@ -26,14 +27,7 @@ class ConfigService {
   private initialized = false;
 
   constructor() {
-    this.kc = new k8s.KubeConfig();
-
-    try {
-      this.kc.loadFromDefault();
-    } catch {
-      logger.warn('No kubeconfig found for ConfigService');
-    }
-
+    this.kc = loadKubeConfig();
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
   }
 

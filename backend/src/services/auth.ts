@@ -2,6 +2,7 @@ import * as k8s from '@kubernetes/client-node';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { loadKubeConfig } from '../lib/kubeconfig';
 import logger from '../lib/logger';
 
 /**
@@ -44,14 +45,7 @@ class AuthService {
   private authApi: k8s.AuthenticationV1Api;
 
   constructor() {
-    this.kc = new k8s.KubeConfig();
-
-    try {
-      this.kc.loadFromDefault();
-    } catch {
-      logger.warn('No kubeconfig found for AuthService');
-    }
-
+    this.kc = loadKubeConfig();
     this.authApi = this.kc.makeApiClient(k8s.AuthenticationV1Api);
   }
 

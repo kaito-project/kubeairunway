@@ -3,6 +3,7 @@ import { configService } from './config';
 import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo, GatewayCRDStatus } from '@airunway/shared';
 import { toModelDeploymentManifest, toDeploymentStatus } from '@airunway/shared';
 import { withRetry } from '../lib/retry';
+import { loadKubeConfig } from '../lib/kubeconfig';
 import logger from '../lib/logger';
 
 // ModelDeployment CRD configuration
@@ -96,14 +97,7 @@ class KubernetesService {
   private defaultNamespace: string;
 
   constructor() {
-    this.kc = new k8s.KubeConfig();
-
-    try {
-      this.kc.loadFromDefault();
-    } catch {
-      logger.warn('No kubeconfig found, using mock mode');
-    }
-
+    this.kc = loadKubeConfig();
     this.customObjectsApi = this.kc.makeApiClient(k8s.CustomObjectsApi);
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
     this.apiExtensionsApi = this.kc.makeApiClient(k8s.ApiextensionsV1Api);
@@ -111,41 +105,30 @@ class KubernetesService {
   }
 
   /**
-   * Create K8s API clients authenticated with a user's bearer token.
-   * Used for tenant-scoped operations so K8s RBAC filters results per user.
+   * Create a CustomObjectsApi client authenticated with the given user token.
    */
-  private createUserClients(userToken: string): {
-    customObjectsApi: k8s.CustomObjectsApi;
-    coreV1Api: k8s.CoreV1Api;
-    authorizationV1Api: k8s.AuthorizationV1Api;
-  } {
-    const cluster = this.kc.getCurrentCluster();
-    if (!cluster) {
-      throw new Error('No active Kubernetes cluster configured');
+  private getCustomObjectsApi(userToken?: string): k8s.CustomObjectsApi {
+    if (!userToken) {
+      return this.customObjectsApi;
     }
-
     const userKc = new k8s.KubeConfig();
-    userKc.loadFromClusterAndUser(
-      cluster,
-      { name: 'authenticated-user', token: userToken }
-    );
-
-    return {
-      customObjectsApi: userKc.makeApiClient(k8s.CustomObjectsApi),
-      coreV1Api: userKc.makeApiClient(k8s.CoreV1Api),
-      authorizationV1Api: userKc.makeApiClient(k8s.AuthorizationV1Api),
-    };
+    const cluster = this.kc.getCurrentCluster();
+    const user: k8s.User = { name: 'user', token: userToken };
+    userKc.loadFromClusterAndUser(cluster!, user);
+    return userKc.makeApiClient(k8s.CustomObjectsApi);
   }
 
   /**
-   * Get the appropriate CustomObjectsApi client.
-   * Uses the user's token when provided, otherwise the service account.
+   * Create user-scoped API clients for authorization checks (e.g. SSAR).
    */
-  private getCustomObjectsApi(userToken?: string): k8s.CustomObjectsApi {
-    if (userToken) {
-      return this.createUserClients(userToken).customObjectsApi;
-    }
-    return this.customObjectsApi;
+  private createUserClients(userToken: string) {
+    const userKc = new k8s.KubeConfig();
+    const cluster = this.kc.getCurrentCluster();
+    const user: k8s.User = { name: 'user', token: userToken };
+    userKc.loadFromClusterAndUser(cluster!, user);
+    return {
+      authorizationV1Api: userKc.makeApiClient(k8s.AuthorizationV1Api),
+    };
   }
 
   async checkClusterConnection(): Promise<ClusterStatus> {
