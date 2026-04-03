@@ -656,6 +656,9 @@ describe('Deployment Routes', () => {
   describe('GET /api/deployments/:name/logs', () => {
     test('returns logs for deployment', async () => {
       restores.push(
+        mockServiceMethod(kubernetesService, 'getDeployment', async () => mockDeployment),
+      );
+      restores.push(
         mockServiceMethod(kubernetesService, 'getDeploymentPods', async () => [{ name: 'test-deploy-abc123' }]),
       );
       restores.push(
@@ -672,6 +675,9 @@ describe('Deployment Routes', () => {
 
     test('returns empty logs when no pods found', async () => {
       restores.push(
+        mockServiceMethod(kubernetesService, 'getDeployment', async () => mockDeployment),
+      );
+      restores.push(
         mockServiceMethod(kubernetesService, 'getDeploymentPods', async () => []),
       );
 
@@ -684,6 +690,9 @@ describe('Deployment Routes', () => {
     });
 
     test('returns 400 when specified pod not in deployment', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDeployment', async () => mockDeployment),
+      );
       restores.push(
         mockServiceMethod(kubernetesService, 'getDeploymentPods', async () => [{ name: 'test-deploy-abc123' }]),
       );

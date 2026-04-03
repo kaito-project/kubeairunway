@@ -1,4 +1,5 @@
 import * as k8s from '@kubernetes/client-node';
+import { loadKubeConfig } from '../lib/kubeconfig';
 import logger from '../lib/logger';
 import { withRetry } from '../lib/retry';
 import type { HfSecretStatus, HfUserInfo } from '@airunway/shared';
@@ -29,14 +30,7 @@ class SecretsService {
   private coreV1Api: k8s.CoreV1Api;
 
   constructor() {
-    this.kc = new k8s.KubeConfig();
-
-    try {
-      this.kc.loadFromDefault();
-    } catch {
-      logger.warn('No kubeconfig found for SecretsService');
-    }
-
+    this.kc = loadKubeConfig();
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
   }
 

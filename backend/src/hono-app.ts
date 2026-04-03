@@ -110,8 +110,9 @@ app.use('/api/*', async (c, next) => {
     );
   }
 
-  // Attach user info to context for logging/audit
+  // Attach user info and raw token to context
   c.set('user', result.user as UserInfo);
+  c.set('token', token);
   logger.debug({ username: result.user?.username }, 'Authenticated request');
 
   return next();
