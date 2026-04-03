@@ -1,131 +1,15 @@
 import { test as base, type Page, type Route } from '@playwright/test'
+import {
+  mockModels,
+  mockDeployments,
+  mockSettings,
+  mockClusterStatus,
+  mockRuntimesStatus,
+  mockGpuCapacity,
+} from '../src/test/mocks/data'
 
-/**
- * Mock data matching the shapes used by the frontend MSW handlers.
- * This data is served via Playwright page.route() interception so no
- * backend is required.
- */
-
-export const mockModels = [
-  {
-    id: 'Qwen/Qwen3-0.6B',
-    name: 'Qwen3-0.6B',
-    description: 'Small but capable Qwen model',
-    size: '0.6B',
-    task: 'chat',
-    parameters: 600_000_000,
-    contextLength: 8192,
-    license: 'Apache 2.0',
-    supportedEngines: ['vllm', 'sglang', 'trtllm'],
-    minGpuMemory: '4GB',
-    gated: false,
-  },
-  {
-    id: 'meta-llama/Llama-3.2-1B-Instruct',
-    name: 'Llama-3.2-1B-Instruct',
-    description: 'Instruction-tuned Llama model',
-    size: '1B',
-    task: 'chat',
-    parameters: 1_000_000_000,
-    contextLength: 4096,
-    license: 'Meta Llama License',
-    supportedEngines: ['vllm', 'sglang', 'trtllm'],
-    minGpuMemory: '8GB',
-    gated: true,
-  },
-]
-
-export const mockDeployments = [
-  {
-    name: 'qwen3-0-6b-vllm-abc123',
-    namespace: 'airunway-system',
-    modelId: 'Qwen/Qwen3-0.6B',
-    engine: 'vllm',
-    mode: 'aggregated',
-    phase: 'Running',
-    replicas: { desired: 1, ready: 1, available: 1 },
-    pods: [
-      {
-        name: 'qwen3-0-6b-vllm-abc123-worker-0',
-        phase: 'Running',
-        ready: true,
-        restarts: 0,
-        node: 'gpu-node-1',
-      },
-    ],
-    createdAt: new Date().toISOString(),
-    frontendService: 'qwen3-0-6b-vllm-abc123-frontend:8000',
-  },
-  {
-    name: 'llama-1b-pending-def456',
-    namespace: 'airunway-system',
-    modelId: 'meta-llama/Llama-3.2-1B-Instruct',
-    engine: 'sglang',
-    mode: 'aggregated',
-    phase: 'Pending',
-    replicas: { desired: 1, ready: 0, available: 0 },
-    pods: [],
-    createdAt: new Date().toISOString(),
-  },
-]
-
-export const mockSettings = {
-  config: { defaultNamespace: 'airunway-system' },
-  auth: { enabled: false },
-  providers: [
-    {
-      id: 'runtime-a',
-      name: 'Primary Runtime',
-      description: 'General-purpose runtime for standard workloads',
-      defaultNamespace: 'runtime-a-system',
-    },
-    {
-      id: 'runtime-b',
-      name: 'Distributed Runtime',
-      description: 'Runtime for larger distributed workloads',
-      defaultNamespace: 'runtime-b-system',
-    },
-  ],
-}
-
-export const mockClusterStatus = {
-  connected: true,
-  namespace: 'airunway-system',
-  clusterName: 'test-cluster',
-  provider: { id: 'runtime-a', name: 'Primary Runtime' },
-  providerInstallation: {
-    installed: true,
-    version: '1.0.0',
-    crdFound: true,
-    operatorRunning: true,
-  },
-}
-
-export const mockRuntimesStatus = {
-  runtimes: [
-    {
-      id: 'runtime-a',
-      name: 'Primary Runtime',
-      installed: true,
-      version: '1.0.0',
-      crdFound: true,
-      operatorRunning: true,
-    },
-  ],
-}
-
-export const mockGpuCapacity = {
-  totalGpus: 4,
-  allocatedGpus: 2,
-  availableGpus: 2,
-  maxContiguousAvailable: 2,
-  maxNodeGpuCapacity: 2,
-  gpuNodeCount: 2,
-  totalMemoryGb: 80,
-  nodePools: [
-    { name: 'gpu-pool', gpuType: 'NVIDIA A100', gpuCount: 2, nodeCount: 2, availableGpus: 2, totalMemoryGb: 80 },
-  ],
-}
+// Re-export shared mock data for use in spec files
+export { mockModels, mockDeployments, mockSettings } from '../src/test/mocks/data'
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
@@ -165,7 +49,7 @@ export async function mockApiRoutes(page: Page) {
 
     // --- Health ---
     if (path === '/api/health' || path === '/api/health/') {
-      return json(route, { status: 'ok', timestamp: new Date().toISOString() })
+      return json(route, { status: 'ok', timestamp: '2025-01-15T10:00:00.000Z' })
     }
 
     // --- Cluster ---
@@ -332,20 +216,22 @@ export async function mockApiRoutes(page: Page) {
     if (path === '/api/aikit/models' || path === '/api/aikit/models/') {
       return json(route, { models: [], total: 0 })
     }
-    if (path.startsWith('/api/aikit/')) {
-      return json(route, {})
-    }
 
-    // Fallback
-    return json(route, {})
+    // Fail loudly on unmatched API routes so new endpoints don't silently pass
+    console.error(`[e2e] Unhandled API route: ${method} ${path}`)
+    return route.abort('failed')
   })
 }
 
 /**
- * Extended test fixture that sets up API mocking before each test.
+ * Extended test fixture that sets up API mocking and disables
+ * React Query retries before each test.
  */
 export const test = base.extend<{ mockedPage: Page }>({
   mockedPage: async ({ page }, use) => {
+    await page.addInitScript(() => {
+      ;(window as any).__E2E_TEST__ = true
+    })
     await mockApiRoutes(page)
     await use(page)
   },

@@ -1,20 +1,27 @@
 import { test as base, expect } from '@playwright/test'
-import { mockSettings } from './fixtures'
+import { mockApiRoutes } from './fixtures'
+import { mockSettings } from '../src/test/mocks/data'
 
 const test = base
 
+/**
+ * Helper to set up the __E2E_TEST__ flag for tests that don't use the
+ * mockedPage fixture (because they need custom route overrides).
+ */
+async function setupE2EFlag(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => {
+    ;(window as any).__E2E_TEST__ = true
+  })
+}
+
 test.describe('Error states', () => {
   test('shows fallback models when models API fails', async ({ page }) => {
-    // The useModels hook catches API errors and returns static fallback models
-    await page.route(/\/api\//, (route) => {
-      const path = new URL(route.request().url()).pathname
-      if (path === '/api/settings' || path === '/api/settings/') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockSettings) })
-      }
-      if (path === '/api/models' || path === '/api/models/') {
-        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Internal server error' } }) })
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+    await setupE2EFlag(page)
+    // Register base mocks first, then override specific routes.
+    // Playwright matches routes in LIFO order, so later routes take priority.
+    await mockApiRoutes(page)
+    await page.route(/\/api\/models\/?$/, (route) => {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Internal server error' } }) })
     })
     await page.goto('/')
     // Fallback models are shown when API is unavailable
@@ -23,31 +30,25 @@ test.describe('Error states', () => {
   })
 
   test('shows error when deployments API fails', async ({ page }) => {
-    await page.route(/\/api\//, (route) => {
-      const path = new URL(route.request().url()).pathname
-      if (path === '/api/settings' || path === '/api/settings/') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockSettings) })
-      }
-      if (path === '/api/deployments' || path === '/api/deployments/') {
-        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Internal server error' } }) })
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+    await setupE2EFlag(page)
+    await mockApiRoutes(page)
+    await page.route(/\/api\/deployments\/?$/, (route) => {
+      return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Internal server error' } }) })
     })
     await page.goto('/deployments')
-    // React Query retries 3 times with backoff
-    await expect(page.getByText(/Failed to load deployments/i)).toBeVisible({ timeout: 15000 })
+    // With retries disabled, error appears immediately
+    await expect(page.getByText(/Failed to load deployments/i)).toBeVisible()
   })
 })
 
 test.describe('Auth redirect', () => {
   test('redirects to login when auth is enabled and no token', async ({ page }) => {
+    await setupE2EFlag(page)
     const authSettings = { ...mockSettings, auth: { enabled: true } }
-    await page.route(/\/api\//, (route) => {
-      const path = new URL(route.request().url()).pathname
-      if (path === '/api/settings' || path === '/api/settings/') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authSettings) })
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+    await mockApiRoutes(page)
+    // Override settings to enable auth
+    await page.route(/\/api\/settings\/?$/, (route) => {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authSettings) })
     })
     await page.goto('/')
     await expect(page).toHaveURL('/login')
@@ -55,13 +56,11 @@ test.describe('Auth redirect', () => {
   })
 
   test('login page shows CLI instructions', async ({ page }) => {
+    await setupE2EFlag(page)
     const authSettings = { ...mockSettings, auth: { enabled: true } }
-    await page.route(/\/api\//, (route) => {
-      const path = new URL(route.request().url()).pathname
-      if (path === '/api/settings' || path === '/api/settings/') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authSettings) })
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+    await mockApiRoutes(page)
+    await page.route(/\/api\/settings\/?$/, (route) => {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authSettings) })
     })
     await page.goto('/login')
     await expect(page.getByText('airunway login')).toBeVisible()
@@ -70,26 +69,21 @@ test.describe('Auth redirect', () => {
 })
 
 test.describe('Loading states', () => {
-  test('shows loading indicator while models load', async ({ page }) => {
-    await page.route(/\/api\//, (route) => {
-      const path = new URL(route.request().url()).pathname
-      if (path === '/api/settings' || path === '/api/settings/') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockSettings) })
-      }
-      if (path === '/api/cluster/status') {
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ connected: true }) })
-      }
-      // Delay models response
-      if (path === '/api/models' || path === '/api/models/') {
-        return new Promise((resolve) => {
-          setTimeout(() => {
-            resolve(route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: [] }) }))
-          }, 2000)
-        })
-      }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+  test('shows loading skeleton while models load', async ({ page }) => {
+    await setupE2EFlag(page)
+    await mockApiRoutes(page)
+    // Override models route with a delayed response
+    await page.route(/\/api\/models\/?$/, (route) => {
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: [] }) }))
+        }, 2000)
+      })
     })
     await page.goto('/')
-    await expect(page.getByText('Model Catalog')).toBeVisible()
+    // Should show skeleton loading grid while waiting for models
+    await expect(page.locator('.animate-pulse').first()).toBeVisible()
+    // After models load, catalog heading should still be visible
+    await expect(page.getByText('Model Catalog')).toBeVisible({ timeout: 5000 })
   })
 })

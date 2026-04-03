@@ -30,7 +30,7 @@ test.describe('Deployments page', () => {
     await expect(page.getByText('SGLANG')).toBeVisible()
   })
 
-  test('has New Deployment button that links to models', async ({ mockedPage: page }) => {
+  test('has New Deployment button that navigates to model catalog', async ({ mockedPage: page }) => {
     await page.goto('/deployments')
     const newBtn = page.getByRole('link', { name: /New Deployment/i })
     await expect(newBtn).toBeVisible()
@@ -53,8 +53,8 @@ test.describe('Deployment detail page', () => {
 
   test('shows not found for non-existent deployment', async ({ mockedPage: page }) => {
     await page.goto('/deployments/does-not-exist')
-    // React Query retries 3 times on 404, so "Deployment not found" takes ~7s to appear
-    await expect(page.getByText('Deployment not found')).toBeVisible({ timeout: 15000 })
+    // With React Query retries disabled via __E2E_TEST__, 404 is shown immediately
+    await expect(page.getByText('Deployment not found')).toBeVisible()
   })
 
   test('navigating from list to detail works', async ({ mockedPage: page }) => {

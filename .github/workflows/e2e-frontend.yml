@@ -3,8 +3,16 @@ name: E2E Frontend
 on:
   push:
     branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'shared/**'
+      - '.github/workflows/e2e-frontend.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'shared/**'
+      - '.github/workflows/e2e-frontend.yml'
 
 jobs:
   e2e-frontend:
@@ -18,13 +26,19 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: latest
+          bun-version: 1.2.12
 
       - name: Install dependencies
         run: bun ci
 
       - name: Build frontend
         run: bun run build:frontend
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package.json') }}
 
       - name: Install Playwright browsers
         run: cd frontend && bunx playwright install --with-deps chromium
