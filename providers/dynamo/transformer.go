@@ -40,6 +40,7 @@ const (
 	defaultVLLMRuntimeImage   = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:" + DynamoRuntimeVersion
 	defaultSGLangRuntimeImage = "nvcr.io/nvidia/ai-dynamo/sglang-runtime:" + DynamoRuntimeVersion
 	defaultTRTLLMRuntimeImage = "nvcr.io/nvidia/ai-dynamo/tensorrtllm-runtime:" + DynamoRuntimeVersion
+	defaultFrontendImage      = "nvcr.io/nvidia/ai-dynamo/frontend:" + DynamoRuntimeVersion
 
 	// Default component settings
 	DefaultFrontendReplicas = 1
@@ -315,7 +316,7 @@ func (t *Transformer) buildEPP(md *airunwayv1alpha1.ModelDeployment, overrides *
 	// EPP image defaults to the frontend runtime image (per Dynamo docs, the
 	// frontend image can be used for the EPP) but can be overridden if you
 	// choose to build the EPP image.
-	eppImage := t.getImage(md)
+	eppImage := defaultFrontendImage
 	if overrides.Epp != nil && overrides.Epp.Image != "" {
 		eppImage = overrides.Epp.Image
 	}
