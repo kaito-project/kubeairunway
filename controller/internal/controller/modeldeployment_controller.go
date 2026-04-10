@@ -255,21 +255,24 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 		return fmt.Errorf("engine.type must be specified or auto-selected from provider capabilities")
 	}
 
-	// Validate GPU requirements for certain engines
+	// Validate GPU requirements based on provider capabilities
 	gpuCount := int32(0)
 	if spec.Resources != nil && spec.Resources.GPU != nil {
 		gpuCount = spec.Resources.GPU.Count
 	}
 
-	switch engineType {
-	case airunwayv1alpha1.EngineTypeVLLM, airunwayv1alpha1.EngineTypeSGLang, airunwayv1alpha1.EngineTypeTRTLLM:
-		// These engines require GPU (unless in disaggregated mode with component-level GPUs)
-		servingMode := airunwayv1alpha1.ServingModeAggregated
-		if spec.Serving != nil && spec.Serving.Mode != "" {
-			servingMode = spec.Serving.Mode
-		}
+	servingMode := airunwayv1alpha1.ServingModeAggregated
+	if spec.Serving != nil && spec.Serving.Mode != "" {
+		servingMode = spec.Serving.Mode
+	}
 
-		if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
+	if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
+		// Check if any registered provider offers CPU support for this engine
+		engineHasCPUSupport, err := r.engineSupportsCPU(ctx, engineType)
+		if err != nil {
+			return fmt.Errorf("failed to check engine CPU support: %w", err)
+		}
+		if !engineHasCPUSupport {
 			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", engineType)
 		}
 	}
@@ -298,6 +301,24 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 	}
 
 	return nil
+}
+
+// engineSupportsCPU checks if any registered provider offers CPU support for the given engine type
+func (r *ModelDeploymentReconciler) engineSupportsCPU(ctx context.Context, engineType airunwayv1alpha1.EngineType) (bool, error) {
+	var providerConfigs airunwayv1alpha1.InferenceProviderConfigList
+	if err := r.List(ctx, &providerConfigs); err != nil {
+		return false, fmt.Errorf("failed to list provider configs: %w", err)
+	}
+
+	for _, pc := range providerConfigs.Items {
+		if !pc.Status.Ready || pc.Spec.Capabilities == nil {
+			continue
+		}
+		if pc.Spec.Capabilities.SupportsCPU(engineType) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // selectEngine auto-selects the engine type from provider capabilities if not specified
@@ -329,14 +350,7 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 		return fmt.Errorf("no providers registered (InferenceProviderConfig resources not found)")
 	}
 
-	// Collect supported engines from ready providers, filtering by compatibility
-	// GPU-requiring engines cannot run on CPU-only deployments
-	gpuRequiringEngines := map[airunwayv1alpha1.EngineType]bool{
-		airunwayv1alpha1.EngineTypeVLLM:   true,
-		airunwayv1alpha1.EngineTypeSGLang: true,
-		airunwayv1alpha1.EngineTypeTRTLLM: true,
-	}
-
+	// Collect supported engines from ready providers, filtering by per-engine compatibility
 	// Determine deployment characteristics
 	hasGPU := false
 	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
@@ -360,33 +374,29 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 
 		caps := pc.Spec.Capabilities
 
-		// Filter by GPU/CPU compatibility
-		if hasGPU && !caps.GPUSupport {
-			continue
-		}
-		if !hasGPU && !caps.CPUSupport {
-			continue
-		}
-
-		// Filter by serving mode compatibility
-		servingModeSupported := false
-		for _, sm := range caps.ServingModes {
-			if sm == servingMode {
-				servingModeSupported = true
-				break
-			}
-		}
-		if !servingModeSupported {
-			continue
-		}
-
-		for _, engine := range caps.Engines {
-			// Skip GPU-requiring engines for CPU-only deployments
-			if !hasGPU && gpuRequiringEngines[engine] {
+		for _, engineCap := range caps.Engines {
+			// Filter by GPU/CPU compatibility at the engine level
+			if hasGPU && !engineCap.GPUSupport {
 				continue
 			}
-			if _, exists := availableEngines[engine]; !exists {
-				availableEngines[engine] = pc.Name
+			if !hasGPU && !engineCap.CPUSupport {
+				continue
+			}
+
+			// Filter by serving mode compatibility at the engine level
+			servingModeSupported := false
+			for _, sm := range engineCap.ServingModes {
+				if sm == servingMode {
+					servingModeSupported = true
+					break
+				}
+			}
+			if !servingModeSupported {
+				continue
+			}
+
+			if _, exists := availableEngines[engineCap.Name]; !exists {
+				availableEngines[engineCap.Name] = pc.Name
 			}
 		}
 	}
@@ -515,33 +525,27 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *airunwayv1alpha1.M
 			continue
 		}
 
-		// Check engine support
-		engineSupported := false
-		for _, e := range caps.Engines {
-			if e == engineType {
-				engineSupported = true
-				break
-			}
-		}
-		if !engineSupported {
+		// Check engine support and get per-engine capabilities
+		engineCap := caps.GetEngineCapability(engineType)
+		if engineCap == nil {
 			continue
 		}
 
-		// Check GPU/CPU support
-		if hasGPU && !caps.GPUSupport {
+		// Check GPU/CPU support for this specific engine
+		if hasGPU && !engineCap.GPUSupport {
 			continue
 		}
-		if !hasGPU && !caps.CPUSupport {
+		if !hasGPU && !engineCap.CPUSupport {
 			continue
 		}
 
-		// Check serving mode support
+		// Check serving mode support for this specific engine
 		servingMode := airunwayv1alpha1.ServingModeAggregated
 		if spec.Serving != nil && spec.Serving.Mode != "" {
 			servingMode = spec.Serving.Mode
 		}
 		servingModeSupported := false
-		for _, sm := range caps.ServingModes {
+		for _, sm := range engineCap.ServingModes {
 			if sm == servingMode {
 				servingModeSupported = true
 				break

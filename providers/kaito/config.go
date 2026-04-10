@@ -61,15 +61,23 @@ func NewProviderConfigManager(c client.Client) *ProviderConfigManager {
 func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 	return airunwayv1alpha1.InferenceProviderConfigSpec{
 		Capabilities: &airunwayv1alpha1.ProviderCapabilities{
-			Engines: []airunwayv1alpha1.EngineType{
-				airunwayv1alpha1.EngineTypeVLLM,
-				airunwayv1alpha1.EngineTypeLlamaCpp,
+			Engines: []airunwayv1alpha1.EngineCapability{
+				{
+					Name: airunwayv1alpha1.EngineTypeVLLM,
+					ServingModes: []airunwayv1alpha1.ServingMode{
+						airunwayv1alpha1.ServingModeAggregated,
+					},
+					GPUSupport: true,
+				},
+				{
+					Name: airunwayv1alpha1.EngineTypeLlamaCpp,
+					ServingModes: []airunwayv1alpha1.ServingMode{
+						airunwayv1alpha1.ServingModeAggregated,
+					},
+					GPUSupport: true,
+					CPUSupport: true,
+				},
 			},
-			ServingModes: []airunwayv1alpha1.ServingMode{
-				airunwayv1alpha1.ServingModeAggregated,
-			},
-			CPUSupport: true,
-			GPUSupport: true,
 		},
 		SelectionRules: []airunwayv1alpha1.SelectionRule{
 			{

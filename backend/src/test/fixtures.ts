@@ -166,8 +166,10 @@ export const mockInferenceProviderConfig = {
   },
   spec: {
     capabilities: {
-      engines: ['vllm', 'llamacpp'],
-      servingModes: ['aggregated'],
+      engines: [
+        { name: 'vllm', servingModes: ['aggregated'], gpuSupport: true, cpuSupport: false },
+        { name: 'llamacpp', servingModes: ['aggregated'], gpuSupport: true, cpuSupport: true },
+      ],
     },
   },
   status: {
