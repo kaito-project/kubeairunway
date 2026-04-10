@@ -98,10 +98,16 @@ metadata:
       }
 spec:
   capabilities:
-    engines: [vllm, sglang, trtllm]
-    servingModes: [aggregated, disaggregated]
-    gpuSupport: true
-    cpuSupport: false
+    engines:
+      - name: vllm
+        servingModes: [aggregated, disaggregated]
+        gpuSupport: true
+      - name: sglang
+        servingModes: [aggregated, disaggregated]
+        gpuSupport: true
+      - name: trtllm
+        servingModes: [aggregated]
+        gpuSupport: true
     gateway:                                         # Optional: provider gateway capabilities
       inferencePoolNamePattern: "{namespace}-{name}-pool"  # Pool naming pattern ({name}, {namespace} accepted)
       inferencePoolNamespace: "dynamo-system"         # Namespace for provider's InferencePool

@@ -303,7 +303,9 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 	return nil
 }
 
-// engineSupportsCPU checks if any registered provider offers CPU support for the given engine type
+// engineSupportsCPU checks if any registered provider offers CPU support for the given engine type.
+// Note: controller-runtime's client.Reader uses an informer cache, so this List is served from
+// the in-memory cache and does not make a round-trip to the API server.
 func (r *ModelDeploymentReconciler) engineSupportsCPU(ctx context.Context, engineType airunwayv1alpha1.EngineType) (bool, error) {
 	var providerConfigs airunwayv1alpha1.InferenceProviderConfigList
 	if err := r.List(ctx, &providerConfigs); err != nil {
@@ -384,14 +386,7 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 			}
 
 			// Filter by serving mode compatibility at the engine level
-			servingModeSupported := false
-			for _, sm := range engineCap.ServingModes {
-				if sm == servingMode {
-					servingModeSupported = true
-					break
-				}
-			}
-			if !servingModeSupported {
+			if !caps.SupportsServingMode(engineCap.Name, servingMode) {
 				continue
 			}
 
@@ -544,14 +539,7 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *airunwayv1alpha1.M
 		if spec.Serving != nil && spec.Serving.Mode != "" {
 			servingMode = spec.Serving.Mode
 		}
-		servingModeSupported := false
-		for _, sm := range engineCap.ServingModes {
-			if sm == servingMode {
-				servingModeSupported = true
-				break
-			}
-		}
-		if !servingModeSupported {
+		if !caps.SupportsServingMode(engineType, servingMode) {
 			continue
 		}
 
