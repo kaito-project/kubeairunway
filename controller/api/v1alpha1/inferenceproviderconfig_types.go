@@ -43,6 +43,8 @@ type EngineCapability struct {
 // ProviderCapabilities defines what a provider supports
 type ProviderCapabilities struct {
 	// engines is the list of supported inference engines with per-engine capabilities
+	// +listType=map
+	// +listMapKey=name
 	// +optional
 	Engines []EngineCapability `json:"engines,omitempty"`
 
