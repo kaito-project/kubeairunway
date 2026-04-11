@@ -150,15 +150,22 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		md.Status.Phase = airunwayv1alpha1.DeploymentPhasePending
 	}
 
-	// Step 1: List all InferenceProviderConfigs once for use across selection and validation.
+	// Step 1: List all InferenceProviderConfigs once for use across validation and selection.
+	// This is loaded regardless of EnableProviderSelector because validateSpec needs
+	// provider capabilities to determine whether an engine supports CPU-only inference.
 	var providerConfigs []airunwayv1alpha1.InferenceProviderConfig
-	if r.EnableProviderSelector {
+	{
 		var providerConfigList airunwayv1alpha1.InferenceProviderConfigList
 		if err := r.List(ctx, &providerConfigList); err != nil {
-			logger.Error(err, "Failed to list provider configs")
-			return ctrl.Result{}, err
+			// If InferenceProviderConfig CRD is not installed, proceed with an empty list.
+			// This allows the controller to run without any providers registered.
+			if !isNoMatchError(err) {
+				logger.Error(err, "Failed to list provider configs")
+				return ctrl.Result{}, err
+			}
+		} else {
+			providerConfigs = providerConfigList.Items
 		}
-		providerConfigs = providerConfigList.Items
 	}
 
 	// Step 2: Select engine if needed (before validation, since validation needs engine type)
