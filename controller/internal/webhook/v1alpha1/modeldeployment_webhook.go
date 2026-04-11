@@ -82,7 +82,12 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *airunwa
 	}
 
 	// Default GPU to 1 in aggregated mode when resources are unspecified
-	if spec.Serving.Mode == airunwayv1alpha1.ServingModeAggregated && spec.Resources == nil {
+	// and an engine type is explicitly set. Skip the default when:
+	// - engine is not specified (auto-selection will determine GPU requirements)
+	// - engine is llamacpp (supports CPU-only inference)
+	// - the user provided a custom image (may not need GPU)
+	if spec.Serving.Mode == airunwayv1alpha1.ServingModeAggregated && spec.Resources == nil &&
+		spec.Engine.Type != "" && spec.Engine.Type != airunwayv1alpha1.EngineTypeLlamaCpp {
 		spec.Resources = &airunwayv1alpha1.ResourceSpec{
 			GPU: &airunwayv1alpha1.GPUSpec{
 				Count: 1,
