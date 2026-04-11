@@ -1,15 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { createGatewayApi } from './gateway';
-import type { RequestFn } from './client';
+import { mockRequest } from './test-helpers';
+import type { GatewayInfo } from '../types';
 
 describe('createGatewayApi', () => {
   describe('getStatus', () => {
     it('calls request with /gateway/status and returns the resolved value', async () => {
-      const mockResponse = {
+      const mockResponse: GatewayInfo = {
         available: true,
         endpoint: 'http://gateway.example.com',
       };
-      const request = vi.fn().mockResolvedValue(mockResponse) as unknown as RequestFn;
+      const request = mockRequest(mockResponse);
 
       const api = createGatewayApi(request);
       const result = await api.getStatus();
