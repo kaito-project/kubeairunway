@@ -35,7 +35,7 @@ export interface GpuModelsResponse {
   note: string;
 }
 
-export interface NormalizeGpuResponse {
+export interface CostsNormalizeGpuResponse {
   success: boolean;
   originalLabel: string;
   normalizedModel: string;
@@ -58,7 +58,7 @@ export interface CostsApi {
   /** Get list of supported GPU models with specifications */
   getGpuModels: () => Promise<GpuModelsResponse>;
   /** Normalize a GPU model name to our pricing key */
-  normalizeGpu: (label: string) => Promise<NormalizeGpuResponse>;
+  normalizeGpu: (label: string) => Promise<CostsNormalizeGpuResponse>;
 }
 
 export function createCostsApi(request: RequestFn): CostsApi {
@@ -74,7 +74,7 @@ export function createCostsApi(request: RequestFn): CostsApi {
       ),
     getGpuModels: () => request<GpuModelsResponse>('/costs/gpu-models'),
     normalizeGpu: (label) =>
-      request<NormalizeGpuResponse>(
+      request<CostsNormalizeGpuResponse>(
         `/costs/normalize-gpu?label=${encodeURIComponent(label)}`,
       ),
   };

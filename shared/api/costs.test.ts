@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createCostsApi, type NodePoolCostsResponse, type GpuModelsResponse, type NormalizeGpuResponse } from './costs';
+import { createCostsApi, type NodePoolCostsResponse, type GpuModelsResponse, type CostsNormalizeGpuResponse } from './costs';
 import { mockRequest } from './test-helpers';
 import type { CostEstimateRequest, CostEstimateResponse } from '../types';
 
@@ -98,7 +98,7 @@ describe('createCostsApi', () => {
 
   describe('normalizeGpu', () => {
     it('URL-encodes the label and calls /costs/normalize-gpu', async () => {
-      const mockResponse: NormalizeGpuResponse = {
+      const mockResponse: CostsNormalizeGpuResponse = {
         success: true,
         originalLabel: 'NVIDIA A100 80GB',
         normalizedModel: 'A100-80GB',
@@ -115,7 +115,7 @@ describe('createCostsApi', () => {
     });
 
     it('returns a pricing object when the backend has a match', async () => {
-      const mockResponse: NormalizeGpuResponse = {
+      const mockResponse: CostsNormalizeGpuResponse = {
         success: true,
         originalLabel: 'a100',
         normalizedModel: 'A100',

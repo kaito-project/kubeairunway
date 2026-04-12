@@ -29,7 +29,7 @@ import {
   type CostsApi,
   type NodePoolCostsResponse,
   type GpuModelsResponse,
-  type NormalizeGpuResponse as CostsNormalizeGpuResponse,
+  type CostsNormalizeGpuResponse,
 } from './costs';
 
 // Re-export API types
@@ -77,7 +77,7 @@ export type {
   CostsApi,
   NodePoolCostsResponse,
   GpuModelsResponse,
-  NormalizeGpuResponse as CostsNormalizeGpuResponse,
+  CostsNormalizeGpuResponse,
 } from './costs';
 
 /**
