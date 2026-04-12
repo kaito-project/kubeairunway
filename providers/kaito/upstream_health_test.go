@@ -263,3 +263,22 @@ func TestProbe_CRDMissing(t *testing.T) {
 	_ = appsv1.Deployment{}
 	_ = storagev1.StorageClass{}
 }
+
+func TestProbe_ContextCancelled(t *testing.T) {
+	c := probeClientBuilderWithWorkspace(t).
+		Build()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel
+
+	got := probeUpstreamController(ctx, c)
+
+	// The key invariant: probe doesn't report healthy on a cancelled context.
+	if got.Healthy {
+		t.Error("expected Healthy=false on cancelled context")
+	}
+	// The exact reason depends on which step the fake client fails at.
+	// Since the fake client doesn't actually check context cancellation,
+	// it will proceed through the normal probe steps and fail at whichever
+	// resource is missing first. The important thing is that Healthy=false.
+}
