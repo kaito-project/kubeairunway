@@ -17,7 +17,7 @@ const validDeploymentBody = {
   engine: 'vllm',
   namespace: 'default',
   mode: 'aggregated',
-  routerMode: 'none',
+  routerMode: 'default',
   replicas: 1,
   enforceEager: false,
   enablePrefixCaching: false,

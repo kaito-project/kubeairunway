@@ -102,69 +102,43 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 		}
 	}
 
-	// Determine the HTTPRoute backend. Providers that signal HTTPRouteBackendService
-	// bypass the GAIE InferencePool/EPP/BBR path and route HTTPRoute straight
-	// to a core Kubernetes Service. This is used for providers whose pool
-	// target port is incompatible with direct-to-pod routing and who perform their
-	// own KV-aware routing inside a shared frontend.
-	var backend httpRouteBackendTarget
-	if gatewayCapabilities != nil && gatewayCapabilities.HTTPRouteBackendService != "" {
-		logger.Info("Provider routes via Service backendRef, skipping InferencePool/EPP/BBR",
-			"provider", md.Spec.Provider.Name,
-			"service", gatewayCapabilities.HTTPRouteBackendService)
-		// Assumption: the provider's backend Service lives in the same namespace
-		// as the ModelDeployment (true for all current providers, which create
-		// per-model workloads in md.Namespace). If a future provider exposes a
-		// cluster-wide frontend in its own namespace, add a namespace field to
-		// GatewayCapabilities and emit a ReferenceGrant here.
-		svcName := resolveProviderInferencePoolName(gatewayCapabilities.HTTPRouteBackendService, md.Name, md.Namespace)
-		backend = httpRouteBackendTarget{
-			kind:      "Service",
-			name:      svcName,
-			namespace: md.Namespace,
-			port:      gatewayCapabilities.HTTPRouteBackendServicePort,
-			// Service backends handle model selection internally (e.g. via
-			// request body), so no header match is needed and BBR is skipped.
-			skipHeaderMatch: true,
-		}
-	} else {
-		poolName, poolNamespace := md.Name, md.Namespace
+	// Determine the HTTPRoute backend via the GAIE InferencePool/EPP path.
+	poolName, poolNamespace := md.Name, md.Namespace
 
-		// Use provider managed inference pool if it exists,
-		// otherwise use the default inference pool.
-		if ok, err := r.providerInferencePoolExistsOrCreateDefault(ctx, md, gatewayCapabilities, gwConfig); ok && err == nil {
-			logger.Info("Skipping InferencePool creation, provider manages InferencePool", "provider", md.Spec.Provider.Name)
+	// Use provider managed inference pool if it exists,
+	// otherwise use the default inference pool.
+	if ok, err := r.providerInferencePoolExistsOrCreateDefault(ctx, md, gatewayCapabilities, gwConfig); ok && err == nil {
+		logger.Info("Skipping InferencePool creation, provider manages InferencePool", "provider", md.Spec.Provider.Name)
 
-			// Resolve the InferencePool name for the provider.
-			// The provider-managed pool will be configured to be named with the model deployment name and namespace.
-			poolName = resolveProviderInferencePoolName(gatewayCapabilities.InferencePoolNamePattern, md.Name, md.Namespace)
-			poolNamespace = resolveProviderInferencePoolName(gatewayCapabilities.InferencePoolNamespace, md.Name, md.Namespace)
+		// Resolve the InferencePool name for the provider.
+		// The provider-managed pool will be configured to be named with the model deployment name and namespace.
+		poolName = resolveProviderInferencePoolName(gatewayCapabilities.InferencePoolNamePattern, md.Name, md.Namespace)
+		poolNamespace = resolveProviderInferencePoolName(gatewayCapabilities.InferencePoolNamespace, md.Name, md.Namespace)
 
-			// Use provider-managed InferencePool
-			if err := r.reconcileProviderManagedInferencePool(ctx, md, poolName, poolNamespace, gwConfig.GatewayNamespace); err != nil {
-				logger.Info("Error reconciling provider-managed InferencePool", "error", err)
-				return err
-			}
-		} else if err != nil {
+		// Use provider-managed InferencePool
+		if err := r.reconcileProviderManagedInferencePool(ctx, md, poolName, poolNamespace, gwConfig.GatewayNamespace); err != nil {
+			logger.Info("Error reconciling provider-managed InferencePool", "error", err)
 			return err
 		}
+	} else if err != nil {
+		return err
+	}
 
-		if gatewayCapabilities != nil {
-			logger.Info("Skipping EPP creation, provider manages EPP", "provider", md.Spec.Provider.Name)
-		} else { // Use default EPP
-			// Create or update EPP (EndPoint Picker) for the InferencePool
-			if err := r.reconcileEPP(ctx, md); err != nil {
-				r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
-				return fmt.Errorf("reconciling EPP: %w", err)
-			}
+	if gatewayCapabilities != nil {
+		logger.Info("Skipping EPP creation, provider manages EPP", "provider", md.Spec.Provider.Name)
+	} else { // Use default EPP
+		// Create or update EPP (EndPoint Picker) for the InferencePool
+		if err := r.reconcileEPP(ctx, md); err != nil {
+			r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "EPPFailed", err.Error())
+			return fmt.Errorf("reconciling EPP: %w", err)
 		}
+	}
 
-		backend = httpRouteBackendTarget{
-			group:     "inference.networking.k8s.io",
-			kind:      "InferencePool",
-			name:      poolName,
-			namespace: poolNamespace,
-		}
+	backend := httpRouteBackendTarget{
+		group:     "inference.networking.k8s.io",
+		kind:      "InferencePool",
+		name:      poolName,
+		namespace: poolNamespace,
 	}
 
 	// Resolve model name early (needed for HTTPRoute header match and status)
@@ -650,26 +624,18 @@ func (r *ModelDeploymentReconciler) resolveProviderGatewayCapabilities(ctx conte
 	return gatewayCapabilities, nil
 }
 
-// httpRouteBackendTarget describes where an HTTPRoute should forward traffic.
-// It abstracts over GAIE InferencePool backends (default path) and core
-// Kubernetes Service backends (used by providers that signal
-// GatewayCapabilities.HTTPRouteBackendService).
+// httpRouteBackendTarget describes where an HTTPRoute should forward traffic
+// via a GAIE InferencePool backend.
 type httpRouteBackendTarget struct {
-	// group is the backend API group. Empty string means core/v1 (Service).
+	// group is the backend API group (e.g. "inference.networking.k8s.io").
 	group gatewayv1.Group
-	// kind is the backend kind: "InferencePool" or "Service".
+	// kind is the backend kind (e.g. "InferencePool").
 	kind gatewayv1.Kind
 	// name is the backend object name.
 	name string
 	// namespace is the backend object namespace. May differ from the
 	// ModelDeployment namespace for provider-managed backends.
 	namespace string
-	// port is only used for Service backends; InferencePool carries its own port.
-	port int32
-	// skipHeaderMatch skips the X-Gateway-Model-Name header match. Used when
-	// routing directly to a provider frontend that reads the model from the
-	// request body (so BBR isn't in the path and there's no header to match).
-	skipHeaderMatch bool
 }
 
 func buildHTTPRouteSpec(gwConfig *gateway.GatewayConfig, modelName string, backend httpRouteBackendTarget) gatewayv1.HTTPRouteSpec {
@@ -683,15 +649,13 @@ func buildHTTPRouteSpec(gwConfig *gateway.GatewayConfig, modelName string, backe
 			Value: strPtr("/"),
 		},
 	}
-	if !backend.skipHeaderMatch {
-		headerExact := gatewayv1.HeaderMatchExact
-		match.Headers = []gatewayv1.HTTPHeaderMatch{
-			{
-				Type:  &headerExact,
-				Name:  "X-Gateway-Model-Name", // https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/pkg/bbr/README.md
-				Value: modelName,
-			},
-		}
+	headerExact := gatewayv1.HeaderMatchExact
+	match.Headers = []gatewayv1.HTTPHeaderMatch{
+		{
+			Type:  &headerExact,
+			Name:  "X-Gateway-Model-Name", // https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/pkg/bbr/README.md
+			Value: modelName,
+		},
 	}
 
 	backendGroup := backend.group
@@ -702,10 +666,6 @@ func buildHTTPRouteSpec(gwConfig *gateway.GatewayConfig, modelName string, backe
 		Kind:      &backendKind,
 		Name:      gatewayv1.ObjectName(backend.name),
 		Namespace: &backendNs,
-	}
-	if backend.kind == "Service" && backend.port > 0 {
-		portNum := gatewayv1.PortNumber(backend.port)
-		backendRef.Port = &portNum
 	}
 
 	return gatewayv1.HTTPRouteSpec{

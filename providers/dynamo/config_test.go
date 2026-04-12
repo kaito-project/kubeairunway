@@ -73,8 +73,8 @@ func TestGetProviderConfigSpec(t *testing.T) {
 		t.Errorf("expected inference pool name pattern to be '{name}-pool', got %s", spec.Capabilities.Gateway.InferencePoolNamePattern)
 	}
 
-	if spec.Capabilities.Gateway.InferencePoolNamespace != "dynamo-system" {
-		t.Errorf("expected inference pool namespace to be 'dynamo-system', got %s", spec.Capabilities.Gateway.InferencePoolNamespace)
+	if spec.Capabilities.Gateway.InferencePoolNamespace != "{namespace}" {
+		t.Errorf("expected inference pool namespace to be '{namespace}', got %s", spec.Capabilities.Gateway.InferencePoolNamespace)
 	}
 }
 

@@ -31,7 +31,7 @@ export interface StorageSpec {
 // Legacy types for backward compatibility
 export type DeploymentMode = ServingMode;
 export type GgufRunMode = 'build' | 'direct';
-export type RouterMode = 'none' | 'kv' | 'round-robin';
+export type RouterMode = 'default' | 'kv' | 'round-robin';
 export type KaitoResourceType = 'workspace' | 'inferenceset';
 
 export interface DeploymentConfig {
@@ -490,7 +490,7 @@ export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeployment
   // Merge routerMode into providerOverrides when set to a non-default value.
   const effectiveOverrides: Record<string, unknown> = {
     ...config.providerOverrides,
-    ...(config.routerMode && config.routerMode !== 'none' && { routerMode: config.routerMode }),
+    ...(config.routerMode && config.routerMode !== 'default' && { routerMode: config.routerMode }),
   };
   const hasOverrides = Object.keys(effectiveOverrides).length > 0;
 

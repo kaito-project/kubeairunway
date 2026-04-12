@@ -368,8 +368,25 @@ func stripEmptyDefaults(obj map[string]interface{}) map[string]interface{} {
 			if len(stripped) > 0 {
 				result[k] = stripped
 			}
+		case []interface{}:
+			result[k] = stripEmptyDefaultsSlice(val)
 		default:
 			result[k] = v
+		}
+	}
+	return result
+}
+
+func stripEmptyDefaultsSlice(arr []interface{}) []interface{} {
+	result := make([]interface{}, len(arr))
+	for i, v := range arr {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			result[i] = stripEmptyDefaults(val)
+		case []interface{}:
+			result[i] = stripEmptyDefaultsSlice(val)
+		default:
+			result[i] = v
 		}
 	}
 	return result

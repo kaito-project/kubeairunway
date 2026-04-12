@@ -39,7 +39,7 @@ const (
 	ProviderVersion = "dynamo-provider:v0.2.0"
 
 	// DynamoPlatformChartVersion is the upstream Dynamo platform chart version.
-	DynamoPlatformChartVersion = "1.0.1"
+	DynamoPlatformChartVersion = "1.1.0-dev.1"
 
 	// DynamoPlatformChartURL is the upstream Dynamo platform chart package.
 	DynamoPlatformChartURL = "https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-" + DynamoPlatformChartVersion + ".tgz"
@@ -79,22 +79,15 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 			CPUSupport: false,
 			GPUSupport: true,
 			Gateway: &airunwayv1alpha1.GatewayCapabilities{
-				// The Dynamo operator (v1.0.1) creates the InferencePool as
+				// The Dynamo operator creates the InferencePool as
 				// "{DynamoGraphDeployment.metadata.name}-pool" in the same
-				// namespace as the DGD. Pattern mismatch can cause the controller
-				// to look up a pool that didn't exist and never created the HTTPRoute.
+				// namespace as the DGD.
 				InferencePoolNamePattern: "{name}-pool",
 				InferencePoolNamespace:   "{namespace}",
-				// TODO: Remove this workaround once we bump past Dynamo v1.0.1
-				// and the upstream `frontendSidecar` feature is available. In
-				// v1.0.1, worker pods don't listen on the InferencePool target
-				// port (8000), only the shared Dynamo Frontend does.
-				// Skip the GAIE InferencePool/EPP/BBR path and route HTTPRoute
-				// straight to the Frontend Service; Dynamo's internal KV
-				// router handles worker selection. Uses only Gateway API core
-				// conformance (HTTPRoute + Service backendRef).
-				HTTPRouteBackendService:     "{name}-frontend",
-				HTTPRouteBackendServicePort: 8000,
+				// With Dynamo v1.1.0+, the frontendSidecar feature colocates a
+				// frontend on each worker pod, making the InferencePool/EPP
+				// path viable. No need to bypass to the Frontend
+				// Service. Requests route through InferencePool directly.
 			},
 		},
 		SelectionRules: []airunwayv1alpha1.SelectionRule{

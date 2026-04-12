@@ -266,7 +266,7 @@ B1_LAT=$(cat "$TMPDIR/B1.latency")
 latest_metric() {
   local pod="$1" pattern="$2"
   kubectl logs -n "$WORKER_NAMESPACE" "$pod" --since-time="$SINCE" 2>/dev/null \
-    | grep -oE "$pattern" | tail -1
+    | grep -oE "$pattern" | tail -1 || true
 }
 
 echo

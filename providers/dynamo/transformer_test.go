@@ -107,8 +107,11 @@ func TestTransformAggregated(t *testing.T) {
 	}
 
 	services, _ := spec["services"].(map[string]interface{})
-	if _, ok := services["Frontend"]; !ok {
-		t.Error("expected Frontend service")
+	if _, ok := services["Frontend"]; ok {
+		t.Error("did not expect Frontend service when gateway is enabled (default)")
+	}
+	if _, ok := services["Epp"]; !ok {
+		t.Error("expected Epp service when gateway is enabled (default)")
 	}
 	if _, ok := services["VllmWorker"]; !ok {
 		t.Error("expected VllmWorker service in aggregated mode")
@@ -328,6 +331,120 @@ func TestIsValidArgKey(t *testing.T) {
 	}
 }
 
+func TestEPPInitContainerWaitsForWorkers(t *testing.T) {
+	tr := NewTransformer()
+
+	tests := []struct {
+		name         string
+		servingMode  airunwayv1alpha1.ServingMode
+		eppImageWant string
+	}{
+		{
+			name:         "aggregated",
+			servingMode:  airunwayv1alpha1.ServingModeAggregated,
+			eppImageWant: defaultFrontendImage,
+		},
+		{
+			name:         "disaggregated",
+			servingMode:  airunwayv1alpha1.ServingModeDisaggregated,
+			eppImageWant: defaultFrontendImage,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			md := newTestMD("my-deployment", "dynamo-system")
+			epp := tr.buildEPP(md, &DynamoOverrides{}, tt.servingMode)
+
+			eps, ok := epp["extraPodSpec"].(map[string]interface{})
+			if !ok {
+				t.Fatal("expected extraPodSpec in EPP service")
+			}
+
+			initContainers, ok := eps["initContainers"].([]interface{})
+			if !ok || len(initContainers) == 0 {
+				t.Fatal("expected at least one init container in EPP extraPodSpec")
+			}
+
+			ic, ok := initContainers[0].(map[string]interface{})
+			if !ok {
+				t.Fatal("expected init container to be a map")
+			}
+
+			if ic["name"] != "wait-for-workers" {
+				t.Errorf("expected init container name 'wait-for-workers', got %v", ic["name"])
+			}
+
+			if ic["image"] != tt.eppImageWant {
+				t.Errorf("expected init container image %q, got %v", tt.eppImageWant, ic["image"])
+			}
+
+			// Verify command uses python3 to run the readiness script
+			cmd, ok := ic["command"].([]interface{})
+			if !ok || len(cmd) < 3 {
+				t.Fatal("expected command with at least 3 elements (python3 -c <script>)")
+			}
+			if cmd[0] != "python3" || cmd[1] != "-c" {
+				t.Errorf("expected command to start with 'python3 -c', got %v %v", cmd[0], cmd[1])
+			}
+			script, ok := cmd[2].(string)
+			if !ok || !strings.Contains(script, "urllib.request") {
+				t.Error("expected init container script to use urllib.request for Kubernetes API polling")
+			}
+
+			// Verify env vars include LABEL_SELECTOR with the deployment name
+			envList, ok := ic["env"].([]interface{})
+			if !ok {
+				t.Fatal("expected env list on init container")
+			}
+			foundSelector := false
+			for _, e := range envList {
+				envMap, _ := e.(map[string]interface{})
+				if envMap["name"] == "LABEL_SELECTOR" {
+					val, _ := envMap["value"].(string)
+					if !strings.Contains(val, "my-deployment") {
+						t.Errorf("expected LABEL_SELECTOR to contain deployment name 'my-deployment', got %q", val)
+					}
+					if !strings.Contains(val, "nvidia.com/dynamo-component-type=worker") {
+						t.Errorf("expected LABEL_SELECTOR to select worker component type, got %q", val)
+					}
+					foundSelector = true
+				}
+			}
+			if !foundSelector {
+				t.Error("expected LABEL_SELECTOR env var on init container")
+			}
+		})
+	}
+}
+
+func TestEPPInitContainerUsesOverrideImage(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	customImage := "my-registry.io/custom-epp:v2"
+	overrides := &DynamoOverrides{
+		Epp: &EPPOverrides{
+			Image: customImage,
+		},
+	}
+
+	epp := tr.buildEPP(md, overrides, airunwayv1alpha1.ServingModeAggregated)
+
+	eps := epp["extraPodSpec"].(map[string]interface{})
+	initContainers := eps["initContainers"].([]interface{})
+	ic := initContainers[0].(map[string]interface{})
+
+	if ic["image"] != customImage {
+		t.Errorf("expected init container to use override image %q, got %v", customImage, ic["image"])
+	}
+
+	// Main container should also use the same override image
+	mc := eps["mainContainer"].(map[string]interface{})
+	if mc["image"] != customImage {
+		t.Errorf("expected main container to use override image %q, got %v", customImage, mc["image"])
+	}
+}
+
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
 }
@@ -481,65 +598,12 @@ func int32Ptr(i int32) *int32 {
 	return &i
 }
 
-func TestBuildFrontendService(t *testing.T) {
-	tr := NewTransformer()
-	md := newTestMD("test", "default")
-
-	// Default frontend
-	frontend := tr.buildFrontendService(md, &DynamoOverrides{})
-	if frontend["replicas"] != int64(DefaultFrontendReplicas) {
-		t.Errorf("expected default replicas, got %v", frontend["replicas"])
-	}
-	if _, ok := frontend["router-mode"]; ok {
-		t.Errorf("did not expect legacy router-mode field, got %v", frontend["router-mode"])
-	}
-	eps, _ := frontend["extraPodSpec"].(map[string]interface{})
-	mc, _ := eps["mainContainer"].(map[string]interface{})
-	if routerMode, ok := containerEnvValue(mc, "DYN_ROUTER_MODE"); !ok || routerMode != DefaultRouterMode {
-		t.Errorf("expected DYN_ROUTER_MODE=%q, got %q (found=%v)", DefaultRouterMode, routerMode, ok)
-	}
-
-	// With overrides
-	overrides := &DynamoOverrides{
-		RouterMode: "kv",
-		Frontend: &FrontendOverrides{
-			Replicas: int32Ptr(5),
-			Resources: &ResourceOverrides{
-				CPU:    "8",
-				Memory: "16Gi",
-			},
-		},
-	}
-	frontend = tr.buildFrontendService(md, overrides)
-	if frontend["replicas"] != int64(5) {
-		t.Errorf("expected replicas 5, got %v", frontend["replicas"])
-	}
-	eps, _ = frontend["extraPodSpec"].(map[string]interface{})
-	mc, _ = eps["mainContainer"].(map[string]interface{})
-	if routerMode, ok := containerEnvValue(mc, "DYN_ROUTER_MODE"); !ok || routerMode != "kv" {
-		t.Errorf("expected DYN_ROUTER_MODE=%q, got %q (found=%v)", "kv", routerMode, ok)
-	}
-}
-
-func TestBuildFrontendWithSecret(t *testing.T) {
-	tr := NewTransformer()
-	md := newTestMD("test", "default")
-	md.Spec.Secrets = &airunwayv1alpha1.SecretsSpec{
-		HuggingFaceToken: "my-hf-secret",
-	}
-
-	frontend := tr.buildFrontendService(md, &DynamoOverrides{})
-	if frontend["envFromSecret"] != "my-hf-secret" {
-		t.Errorf("expected envFromSecret 'my-hf-secret', got %v", frontend["envFromSecret"])
-	}
-}
-
 func TestBuildAggregatedWorker(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test", "default")
 	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{Replicas: 2}
 
-	worker, err := tr.buildAggregatedWorker(md, "test-image:v1")
+	worker, err := tr.buildAggregatedWorker(md, "test-image:v1", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -567,7 +631,7 @@ func TestBuildAggregatedWorkerWithSecret(t *testing.T) {
 	md := newTestMD("test", "default")
 	md.Spec.Secrets = &airunwayv1alpha1.SecretsSpec{HuggingFaceToken: "hf-secret"}
 
-	worker, err := tr.buildAggregatedWorker(md, "img")
+	worker, err := tr.buildAggregatedWorker(md, "img", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -674,7 +738,7 @@ func TestBuildPrefillWorkerWithSecret(t *testing.T) {
 		},
 	}
 
-	worker, err := tr.buildPrefillWorker(md, "img")
+	worker, err := tr.buildPrefillWorker(md, "img", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -715,7 +779,7 @@ func TestBuildDecodeWorkerWithSecret(t *testing.T) {
 		},
 	}
 
-	worker, err := tr.buildDecodeWorker(md, "img")
+	worker, err := tr.buildDecodeWorker(md, "img", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -889,7 +953,7 @@ func TestBuildPrefillWorkerWithCustomGPUType(t *testing.T) {
 		},
 	}
 
-	worker, err := tr.buildPrefillWorker(md, "img")
+	worker, err := tr.buildPrefillWorker(md, "img", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

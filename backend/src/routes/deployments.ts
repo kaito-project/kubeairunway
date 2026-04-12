@@ -76,7 +76,7 @@ const createDeploymentSchema = z.object({
   mode: z.enum(['aggregated', 'disaggregated']).optional().default('aggregated'),
   provider: z.string().optional(),
   servedModelName: z.string().optional(),
-  routerMode: z.enum(['none', 'kv', 'round-robin']).optional().default('none'),
+  routerMode: z.enum(['default', 'kv', 'round-robin']).optional().default('default'),
   replicas: z.number().int().min(0).optional().default(1),
   hfTokenSecret: z.string().optional().default(''),
   contextLength: z.number().int().positive().optional(),

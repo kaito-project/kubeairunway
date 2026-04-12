@@ -36,18 +36,14 @@ const (
 	// DynamoGraphDeploymentKind is the kind for DynamoGraphDeployment
 	DynamoGraphDeploymentKind = "DynamoGraphDeployment"
 	// DynamoRuntimeVersion is the default upstream runtime tag used for Dynamo engines.
-	DynamoRuntimeVersion      = "1.0.1"
+	DynamoRuntimeVersion      = "1.1.0-dev.1"
 	defaultVLLMRuntimeImage   = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:" + DynamoRuntimeVersion
 	defaultSGLangRuntimeImage = "nvcr.io/nvidia/ai-dynamo/sglang-runtime:" + DynamoRuntimeVersion
 	defaultTRTLLMRuntimeImage = "nvcr.io/nvidia/ai-dynamo/tensorrtllm-runtime:" + DynamoRuntimeVersion
 	defaultFrontendImage      = "nvcr.io/nvidia/ai-dynamo/dynamo-frontend:" + DynamoRuntimeVersion
 
 	// Default component settings
-	DefaultFrontendReplicas = 1
-	DefaultFrontendCPU      = "2"
-	DefaultFrontendMemory   = "4Gi"
-	DefaultRouterMode       = "round-robin"
-	DefaultEppReplicas      = 1
+	DefaultEppReplicas = 1
 
 	// The KV cache block size advertised to the Dynamo
 	// EPP via DYN_KV_CACHE_BLOCK_SIZE. It MUST match the worker's vLLM --block-size
@@ -56,9 +52,8 @@ const (
 	DefaultKVCacheBlockSize = "16"
 
 	// Component types
-	ComponentTypeFrontend = "frontend"
-	ComponentTypeWorker   = "worker"
-	ComponentTypeEpp      = "epp"
+	ComponentTypeWorker = "worker"
+	ComponentTypeEpp    = "epp"
 
 	// Sub-component types for disaggregated mode
 	SubComponentTypePrefill = "prefill"
@@ -67,6 +62,49 @@ const (
 	// VLLMKVTransferConfig is the --kv-transfer-config value required by
 	// newer vLLM for NIXL-based disaggregated serving (replaces --connector).
 	VLLMKVTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
+
+	// workerReadinessScript is a Python script used by the EPP init container
+	// to wait for at least one worker pod to become Ready before starting the
+	// EPP. This prevents the Dynamo FFI create_routers crash that occurs when
+	// no workers are discoverable yet (error code 3).
+	//
+	// The script polls the Kubernetes API via the pod's mounted service account
+	// token. LABEL_SELECTOR and POD_NAMESPACE are injected as env vars by the
+	// transformer so the script itself is deployment-agnostic. Python is used
+	// because the dynamo-frontend image does not ship curl or wget.
+	workerReadinessScript = `
+import json, os, ssl, time, urllib.request, urllib.parse, sys
+
+sa      = "/var/run/secrets/kubernetes.io/serviceaccount"
+token   = open(f"{sa}/token").read()
+ns      = os.environ["POD_NAMESPACE"]
+sel     = os.environ["LABEL_SELECTOR"]
+api     = "https://kubernetes.default.svc"
+url     = f"{api}/api/v1/namespaces/{ns}/pods?labelSelector={urllib.parse.quote(sel)}"
+headers = {"Authorization": f"Bearer {token}"}
+ctx     = ssl.create_default_context(cafile=f"{sa}/ca.crt")
+timeout_s, interval = 600, 5
+elapsed = 0
+
+print(f"Waiting for a worker pod matching selector '{sel}' in namespace '{ns}' to become Ready ...")
+sys.stdout.flush()
+while elapsed < timeout_s:
+    try:
+        req  = urllib.request.Request(url, headers=headers)
+        resp = json.loads(urllib.request.urlopen(req, context=ctx, timeout=10).read())
+        for pod in resp.get("items", []):
+            for c in pod.get("status", {}).get("conditions", []):
+                if c.get("type") == "Ready" and c.get("status") == "True":
+                    print(f"Worker pod(s) ready after {elapsed}s - starting EPP")
+                    sys.exit(0)
+    except Exception as e:
+        print(f"Poll error (will retry): {e}", file=sys.stderr)
+    time.sleep(interval)
+    elapsed += interval
+
+print(f"ERROR: timed out after {timeout_s}s waiting for workers")
+sys.exit(1)
+`
 )
 
 // DynamoOverrides contains Dynamo-specific override configuration
@@ -212,11 +250,17 @@ func (t *Transformer) buildServices(md *airunwayv1alpha1.ModelDeployment, overri
 	// Get the image to use
 	image := t.getImage(md)
 
-	// Add frontend service
-	services["Frontend"] = t.buildFrontendService(md, overrides)
+	gatewayEnabled := md.Spec.Gateway == nil || md.Spec.Gateway.Enabled == nil || *md.Spec.Gateway.Enabled
 
-	// Add EPP service (mode-aware: agg vs disagg shape the plugin set + env)
-	services["Epp"] = t.buildEPP(md, overrides, servingMode)
+	if gatewayEnabled {
+		// GAIE path: Gateway → EPP → worker frontendSidecar. No standalone
+		// Frontend — each worker's sidecar handles requests locally.
+		services["Epp"] = t.buildEPP(md, overrides, servingMode)
+	} else {
+		// Non-GAIE path: standalone Frontend service handles routing.
+		// No EPP or frontendSidecars needed.
+		services["Frontend"] = t.buildFrontendService(md, overrides)
+	}
 
 	if servingMode == airunwayv1alpha1.ServingModeDisaggregated {
 		if md.Spec.Scaling == nil {
@@ -229,19 +273,19 @@ func (t *Transformer) buildServices(md *airunwayv1alpha1.ModelDeployment, overri
 			return nil, fmt.Errorf("spec.scaling.decode is required for disaggregated serving mode")
 		}
 		// Disaggregated mode: separate prefill and decode workers
-		prefillWorker, err := t.buildPrefillWorker(md, image)
+		prefillWorker, err := t.buildPrefillWorker(md, image, gatewayEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build prefill worker: %w", err)
 		}
 		services["VllmPrefillWorker"] = prefillWorker
-		decodeWorker, err := t.buildDecodeWorker(md, image)
+		decodeWorker, err := t.buildDecodeWorker(md, image, gatewayEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build decode worker: %w", err)
 		}
 		services["VllmDecodeWorker"] = decodeWorker
 	} else {
 		// Aggregated mode: single worker
-		aggregatedWorker, err := t.buildAggregatedWorker(md, image)
+		aggregatedWorker, err := t.buildAggregatedWorker(md, image, gatewayEnabled)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build aggregated worker: %w", err)
 		}
@@ -251,23 +295,22 @@ func (t *Transformer) buildServices(md *airunwayv1alpha1.ModelDeployment, overri
 	return services, nil
 }
 
-// buildFrontendService creates the frontend service configuration
+// buildFrontendService creates the standalone frontend service for non-GAIE
+// deployments (gateway disabled). The Frontend handles request routing when
+// there is no InferencePool/EPP path.
 func (t *Transformer) buildFrontendService(md *airunwayv1alpha1.ModelDeployment, overrides *DynamoOverrides) map[string]interface{} {
-	// Determine replicas
-	replicas := int64(DefaultFrontendReplicas)
+	replicas := int64(1)
 	if overrides.Frontend != nil && overrides.Frontend.Replicas != nil {
 		replicas = int64(*overrides.Frontend.Replicas)
 	}
 
-	// Determine router mode
-	routerMode := DefaultRouterMode
+	routerMode := "round-robin"
 	if overrides.RouterMode != "" {
 		routerMode = overrides.RouterMode
 	}
 
-	// Determine resources
-	cpu := DefaultFrontendCPU
-	memory := DefaultFrontendMemory
+	cpu := "2"
+	memory := "4Gi"
 	if overrides.Frontend != nil && overrides.Frontend.Resources != nil {
 		if overrides.Frontend.Resources.CPU != "" {
 			cpu = overrides.Frontend.Resources.CPU
@@ -278,8 +321,8 @@ func (t *Transformer) buildFrontendService(md *airunwayv1alpha1.ModelDeployment,
 	}
 
 	frontend := map[string]interface{}{
-		"componentType":   ComponentTypeFrontend,
-		"replicas":        replicas,
+		"componentType": "frontend",
+		"replicas":      replicas,
 		"resources": map[string]interface{}{
 			"requests": map[string]interface{}{
 				"cpu":    cpu,
@@ -299,7 +342,6 @@ func (t *Transformer) buildFrontendService(md *airunwayv1alpha1.ModelDeployment,
 		},
 	}
 
-	// Add secret reference if specified
 	if md.Spec.Secrets != nil && md.Spec.Secrets.HuggingFaceToken != "" {
 		frontend["envFromSecret"] = md.Spec.Secrets.HuggingFaceToken
 	}
@@ -356,13 +398,56 @@ func (t *Transformer) buildEPP(md *airunwayv1alpha1.ModelDeployment, overrides *
 
 	plugins, schedulingProfiles := t.buildEPPPluginsAndProfiles(isDisagg)
 
+	// Build an init container that waits for at least one worker pod to
+	// become Ready before the EPP starts. The Dynamo FFI create_routers
+	// call fails (code 3) when no workers are discoverable, so we gate
+	// EPP startup on worker readiness to avoid CrashLoopBackOff.
+	labelSelector := fmt.Sprintf(
+		"nvidia.com/dynamo-component-type=%s,nvidia.com/dynamo-graph-deployment-name=%s",
+		ComponentTypeWorker, md.Name,
+	)
+	initContainer := map[string]interface{}{
+		"name":  "wait-for-workers",
+		"image": eppImage,
+		"command": []interface{}{
+			"python3", "-c", workerReadinessScript,
+		},
+		"env": []interface{}{
+			map[string]interface{}{
+				"name": "POD_NAMESPACE",
+				"valueFrom": map[string]interface{}{
+					"fieldRef": map[string]interface{}{
+						"fieldPath": "metadata.namespace",
+					},
+				},
+			},
+			map[string]interface{}{
+				"name":  "LABEL_SELECTOR",
+				"value": labelSelector,
+			},
+		},
+	}
+
 	epp := map[string]interface{}{
-		"componentType":   ComponentTypeEpp,
-		"replicas":        replicas,
+		"componentType": ComponentTypeEpp,
+		"replicas":      replicas,
 		"extraPodSpec": map[string]interface{}{
+			"initContainers": []interface{}{initContainer},
 			"mainContainer": map[string]interface{}{
 				"image": eppImage,
 				"env":   env,
+				// Override the entrypoint to disable TLS on the ext_proc gRPC
+				// server. The operator sets args (--pool-name, etc.) separately,
+				// and Kubernetes concatenates command + args at runtime.
+				//
+				// --model-server-metrics-port tells the EPP to scrape vLLM
+				// prometheus metrics (gpu_cache_usage_perc, num_requests_waiting,
+				// etc.) from port 9090 on each worker instead of the
+				// InferencePool targetPort (8000, which serves the Dynamo
+				// sidecar-frontend, not vLLM metrics). Without this the EPP
+				// sees all-zero metrics and cannot make informed routing
+				// decisions. 9090 matches the worker's "system" container port.
+				"command": []interface{}{"/epp", "--secure-serving=false", "--model-server-metrics-port=9090"},
 			},
 		},
 		"eppConfig": map[string]interface{}{
@@ -477,7 +562,7 @@ func (t *Transformer) buildEPPPluginsAndProfiles(isDisagg bool) ([]interface{}, 
 // DefaultKVCacheBlockSize so the worker's vLLM cache geometry agrees with the
 // EPP's DYN_KV_CACHE_BLOCK_SIZE. Today we rely on the vLLM default (16) lining
 // up with the EPP env, which is fragile. See ai-dynamo/dynamo agg.yaml example.
-func (t *Transformer) buildAggregatedWorker(md *airunwayv1alpha1.ModelDeployment, image string) (map[string]interface{}, error) {
+func (t *Transformer) buildAggregatedWorker(md *airunwayv1alpha1.ModelDeployment, image string, gatewayEnabled bool) (map[string]interface{}, error) {
 	// Get replicas
 	replicas := int64(1)
 	if md.Spec.Scaling != nil && md.Spec.Scaling.Replicas > 0 {
@@ -494,9 +579,9 @@ func (t *Transformer) buildAggregatedWorker(md *airunwayv1alpha1.ModelDeployment
 	}
 
 	worker := map[string]interface{}{
-		"componentType":   ComponentTypeWorker,
-		"replicas":        replicas,
-		"resources":       resources,
+		"componentType": ComponentTypeWorker,
+		"replicas":      replicas,
+		"resources":     resources,
 		"extraPodSpec": map[string]interface{}{
 			"mainContainer": map[string]interface{}{
 				"image":   image,
@@ -504,6 +589,10 @@ func (t *Transformer) buildAggregatedWorker(md *airunwayv1alpha1.ModelDeployment
 				"args":    toInterfaceSlice(args),
 			},
 		},
+	}
+
+	if gatewayEnabled {
+		worker["frontendSidecar"] = t.buildFrontendSidecar(md, false)
 	}
 
 	// Add secret reference if specified
@@ -521,17 +610,32 @@ func (t *Transformer) buildAggregatedWorker(md *airunwayv1alpha1.ModelDeployment
 	return worker, nil
 }
 
-// buildPrefillWorker creates the prefill worker for disaggregated mode.
+// buildFrontendSidecar returns the frontendSidecar config for a worker service.
+// The Dynamo operator (v1.1.0+) injects a frontend container on each worker pod
+// so the InferencePool can route directly to workers on port 8000.
 //
-// Phase 2 TODO (Dynamo EPP integration for disagg):
-//   - Add --block-size matching DefaultKVCacheBlockSize so the worker agrees
-//     with the EPP's DYN_KV_CACHE_BLOCK_SIZE.
-//   - Add --kv-events-config '{"enable_kv_cache_events":true}' so the EPP's
-//     dyn-decode-scorer can subscribe to per-worker KV cache events; without
-//     this, the scorer has no signal and disagg routing degrades to round-robin.
-//   - Add sharedMemory (e.g. 2Gi) and a frontendSidecar — required by the
-//     canonical disagg.yaml example for end-to-end traffic to work.
-func (t *Transformer) buildPrefillWorker(md *airunwayv1alpha1.ModelDeployment, image string) (map[string]interface{}, error) {
+// Aggregated mode uses "--router-mode direct" — the sidecar forwards to the
+// colocated engine without internal routing since the EPP handles pod selection.
+//
+// Disaggregated mode omits --router-mode so the sidecar uses the Dynamo default,
+// allowing the prefill router to coordinate worker selection.
+func (t *Transformer) buildFrontendSidecar(md *airunwayv1alpha1.ModelDeployment, disagg bool) map[string]interface{} {
+	args := []interface{}{"-m", "dynamo.frontend"}
+	if !disagg {
+		args = append(args, "--router-mode", "direct")
+	}
+	sidecar := map[string]interface{}{
+		"image": defaultVLLMRuntimeImage,
+		"args":  args,
+	}
+	if md.Spec.Secrets != nil && md.Spec.Secrets.HuggingFaceToken != "" {
+		sidecar["envFromSecret"] = md.Spec.Secrets.HuggingFaceToken
+	}
+	return sidecar
+}
+
+// buildPrefillWorker creates the prefill worker for disaggregated mode.
+func (t *Transformer) buildPrefillWorker(md *airunwayv1alpha1.ModelDeployment, image string, gatewayEnabled bool) (map[string]interface{}, error) {
 	prefillSpec := md.Spec.Scaling.Prefill
 
 	// Build resource limits and requests from component spec
@@ -576,6 +680,10 @@ func (t *Transformer) buildPrefillWorker(md *airunwayv1alpha1.ModelDeployment, i
 		},
 	}
 
+	if gatewayEnabled {
+		worker["frontendSidecar"] = t.buildFrontendSidecar(md, true)
+	}
+
 	// Add secret reference if specified
 	if md.Spec.Secrets != nil && md.Spec.Secrets.HuggingFaceToken != "" {
 		worker["envFromSecret"] = md.Spec.Secrets.HuggingFaceToken
@@ -592,11 +700,7 @@ func (t *Transformer) buildPrefillWorker(md *airunwayv1alpha1.ModelDeployment, i
 }
 
 // buildDecodeWorker creates the decode worker for disaggregated mode.
-//
-// Phase 2 TODO (Dynamo EPP integration for disagg): see buildPrefillWorker —
-// the same --block-size, --kv-events-config, sharedMemory, and frontendSidecar
-// gaps apply here.
-func (t *Transformer) buildDecodeWorker(md *airunwayv1alpha1.ModelDeployment, image string) (map[string]interface{}, error) {
+func (t *Transformer) buildDecodeWorker(md *airunwayv1alpha1.ModelDeployment, image string, gatewayEnabled bool) (map[string]interface{}, error) {
 	decodeSpec := md.Spec.Scaling.Decode
 
 	// Build resource limits and requests from component spec
@@ -639,6 +743,10 @@ func (t *Transformer) buildDecodeWorker(md *airunwayv1alpha1.ModelDeployment, im
 				"args":    toInterfaceSlice(args),
 			},
 		},
+	}
+
+	if gatewayEnabled {
+		worker["frontendSidecar"] = t.buildFrontendSidecar(md, true)
 	}
 
 	// Add secret reference if specified
