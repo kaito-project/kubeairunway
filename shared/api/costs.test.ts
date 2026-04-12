@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createCostsApi, type NodePoolCostsResponse, type GpuModelsResponse } from './costs';
+import { createCostsApi, type NodePoolCostsResponse, type GpuModelsResponse, type NormalizeGpuResponse } from './costs';
 import { mockRequest } from './test-helpers';
 import type { CostEstimateRequest, CostEstimateResponse } from '../types';
 
@@ -93,6 +93,45 @@ describe('createCostsApi', () => {
 
       expect(request).toHaveBeenCalledWith('/costs/gpu-models');
       expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('normalizeGpu', () => {
+    it('URL-encodes the label and calls /costs/normalize-gpu', async () => {
+      const mockResponse: NormalizeGpuResponse = {
+        success: true,
+        originalLabel: 'NVIDIA A100 80GB',
+        normalizedModel: 'A100-80GB',
+        pricing: null,
+      };
+      const request = mockRequest(mockResponse);
+
+      const api = createCostsApi(request);
+      const result = await api.normalizeGpu('NVIDIA A100 80GB');
+
+      // Spaces must be percent-encoded
+      expect(request).toHaveBeenCalledWith('/costs/normalize-gpu?label=NVIDIA%20A100%2080GB');
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('returns a pricing object when the backend has a match', async () => {
+      const mockResponse: NormalizeGpuResponse = {
+        success: true,
+        originalLabel: 'a100',
+        normalizedModel: 'A100',
+        pricing: {
+          memoryGb: 80,
+          generation: 'ampere',
+          hourlyRate: { aws: 3.0, azure: 3.2, gcp: 2.9 },
+        },
+      };
+      const request = mockRequest(mockResponse);
+
+      const api = createCostsApi(request);
+      const result = await api.normalizeGpu('a100');
+
+      expect(request).toHaveBeenCalledWith('/costs/normalize-gpu?label=a100');
+      expect(result.pricing?.hourlyRate.aws).toBe(3.0);
     });
   });
 });

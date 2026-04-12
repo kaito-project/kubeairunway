@@ -35,6 +35,17 @@ export interface GpuModelsResponse {
   note: string;
 }
 
+export interface NormalizeGpuResponse {
+  success: boolean;
+  originalLabel: string;
+  normalizedModel: string;
+  pricing: {
+    memoryGb: number;
+    generation: string;
+    hourlyRate: { aws?: number; azure?: number; gcp?: number };
+  } | null;
+}
+
 export interface CostsApi {
   /** Estimate deployment cost based on GPU configuration */
   estimate: (input: CostEstimateRequest) => Promise<CostEstimateResponse>;
@@ -46,6 +57,8 @@ export interface CostsApi {
   ) => Promise<NodePoolCostsResponse>;
   /** Get list of supported GPU models with specifications */
   getGpuModels: () => Promise<GpuModelsResponse>;
+  /** Normalize a GPU model name to our pricing key */
+  normalizeGpu: (label: string) => Promise<NormalizeGpuResponse>;
 }
 
 export function createCostsApi(request: RequestFn): CostsApi {
@@ -60,5 +73,9 @@ export function createCostsApi(request: RequestFn): CostsApi {
         `/costs/node-pools?gpuCount=${gpuCount}&replicas=${replicas}&computeType=${computeType}`,
       ),
     getGpuModels: () => request<GpuModelsResponse>('/costs/gpu-models'),
+    normalizeGpu: (label) =>
+      request<NormalizeGpuResponse>(
+        `/costs/normalize-gpu?label=${encodeURIComponent(label)}`,
+      ),
   };
 }
