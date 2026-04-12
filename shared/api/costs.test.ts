@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createCostsApi, type NodePoolCostsResponse } from './costs';
+import { createCostsApi, type NodePoolCostsResponse, type GpuModelsResponse } from './costs';
 import { mockRequest } from './test-helpers';
 import type { CostEstimateRequest, CostEstimateResponse } from '../types';
 
@@ -73,6 +73,26 @@ describe('createCostsApi', () => {
       await api.getNodePoolCosts();
 
       expect(request).toHaveBeenCalledWith('/costs/node-pools?gpuCount=1&replicas=1&computeType=gpu');
+    });
+  });
+
+  describe('getGpuModels', () => {
+    it('calls request with /costs/gpu-models and returns the resolved value', async () => {
+      const mockResponse: GpuModelsResponse = {
+        success: true,
+        models: [
+          { model: 'A100', memoryGb: 80, generation: 'ampere' },
+          { model: 'H100', memoryGb: 80, generation: 'hopper' },
+        ],
+        note: 'Static pricing fallback',
+      };
+      const request = mockRequest(mockResponse);
+
+      const api = createCostsApi(request);
+      const result = await api.getGpuModels();
+
+      expect(request).toHaveBeenCalledWith('/costs/gpu-models');
+      expect(result).toEqual(mockResponse);
     });
   });
 });

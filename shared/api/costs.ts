@@ -25,6 +25,16 @@ export interface NodePoolCostsResponse {
   };
 }
 
+export interface GpuModelsResponse {
+  success: boolean;
+  models: Array<{
+    model: string;
+    memoryGb: number;
+    generation: string;
+  }>;
+  note: string;
+}
+
 export interface CostsApi {
   /** Estimate deployment cost based on GPU configuration */
   estimate: (input: CostEstimateRequest) => Promise<CostEstimateResponse>;
@@ -34,6 +44,8 @@ export interface CostsApi {
     replicas?: number,
     computeType?: 'gpu' | 'cpu',
   ) => Promise<NodePoolCostsResponse>;
+  /** Get list of supported GPU models with specifications */
+  getGpuModels: () => Promise<GpuModelsResponse>;
 }
 
 export function createCostsApi(request: RequestFn): CostsApi {
@@ -47,5 +59,6 @@ export function createCostsApi(request: RequestFn): CostsApi {
       request<NodePoolCostsResponse>(
         `/costs/node-pools?gpuCount=${gpuCount}&replicas=${replicas}&computeType=${computeType}`,
       ),
+    getGpuModels: () => request<GpuModelsResponse>('/costs/gpu-models'),
   };
 }
