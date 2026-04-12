@@ -81,6 +81,7 @@ export interface RuntimeStatus {
   healthy: boolean;     // Operator pods running
   version?: string;     // Detected version
   message?: string;     // Status message
+  managedBy?: string;   // Detected managing operator (e.g. 'Eno', 'Helm')
 }
 
 /**

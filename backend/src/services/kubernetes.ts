@@ -573,13 +573,29 @@ class KubernetesService {
             ? name.charAt(0).toUpperCase() + name.slice(1)
             : name.charAt(0).toUpperCase() + name.slice(1);
 
+          let healthy = status.ready === true;
+          let message: string | undefined = status.ready ? 'Provider ready' : 'Provider not ready';
+          let managedBy: string | undefined;
+
+          try {
+            // Lazy import to avoid circular dependency (providerHealth imports kubernetesService)
+            const { getProviderHealth } = await import('./providerHealth');
+            const health = await getProviderHealth(name);
+            healthy = health.healthy;
+            message = health.message;
+            managedBy = health.managedBy;
+          } catch (err) {
+            logger.warn({ error: (err as Error)?.message, providerId: name }, 'getProviderHealth failed, using fallback');
+          }
+
           runtimes.push({
             id: name,
             name: displayName,
             installed: true,
-            healthy: status.ready === true,
+            healthy,
             version: status.version,
-            message: status.ready ? 'Provider ready' : 'Provider not ready',
+            message,
+            managedBy,
           });
         }
       } catch (error: any) {
