@@ -105,6 +105,140 @@ func probeTestSchemeWithWorkspace(t *testing.T) *runtime.Scheme {
 	return s
 }
 
+// probeClientBuilderWithWorkspace returns a fake.ClientBuilder pre-configured
+// with the Workspace scheme and a simpleMapper that recognises it. Use this
+// helper for all probe tests that expect the Workspace CRD to be present.
+func probeClientBuilderWithWorkspace(t *testing.T) *fake.ClientBuilder {
+	t.Helper()
+	s := probeTestSchemeWithWorkspace(t)
+	return fake.NewClientBuilder().
+		WithScheme(s).
+		WithRESTMapper(&simpleMapper{scheme: s})
+}
+
+func newStorageClass(name, managedBy string) *storagev1.StorageClass {
+	sc := &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Provisioner: "test",
+	}
+	if managedBy != "" {
+		sc.Labels = map[string]string{managedByLabel: managedBy}
+	}
+	return sc
+}
+
+func newKaitoDeployment(namespace, name string, readyReplicas int32) *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{kaitoDeploymentSelectorKey: kaitoDeploymentSelectorValue},
+		},
+		Status: appsv1.DeploymentStatus{ReadyReplicas: readyReplicas},
+	}
+}
+
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && stringContains(s, substr))
+}
+
+func stringContains(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestProbe_EnoStorageClass_NoController(t *testing.T) {
+	sc := newStorageClass(kaitoStorageClassName, managedByEno)
+	c := probeClientBuilderWithWorkspace(t).
+		WithObjects(sc).
+		Build()
+
+	got := probeUpstreamController(context.Background(), c)
+
+	if got.Healthy {
+		t.Error("expected Healthy=false")
+	}
+	if got.Reason != ReasonEnoPartialInstall {
+		t.Errorf("expected Reason=%s, got %s", ReasonEnoPartialInstall, got.Reason)
+	}
+	if got.ManagedBy != managedByEno {
+		t.Errorf("expected ManagedBy=%s, got %s", managedByEno, got.ManagedBy)
+	}
+	if got.Message != enoPartialInstallUserMessage {
+		t.Errorf("unexpected Message: %s", got.Message)
+	}
+}
+
+func TestProbe_HelmStorageClass_NoController(t *testing.T) {
+	sc := newStorageClass(kaitoStorageClassName, managedByHelm)
+	c := probeClientBuilderWithWorkspace(t).
+		WithObjects(sc).
+		Build()
+
+	got := probeUpstreamController(context.Background(), c)
+
+	if got.Reason != ReasonUpstreamControllerMissing {
+		t.Errorf("expected Reason=%s, got %s", ReasonUpstreamControllerMissing, got.Reason)
+	}
+	if got.ManagedBy != managedByHelm {
+		t.Errorf("expected ManagedBy=%s, got %s", managedByHelm, got.ManagedBy)
+	}
+}
+
+func TestProbe_NoStorageClass_NoController(t *testing.T) {
+	c := probeClientBuilderWithWorkspace(t).
+		Build()
+
+	got := probeUpstreamController(context.Background(), c)
+
+	if got.Reason != ReasonUpstreamControllerMissing {
+		t.Errorf("expected Reason=%s, got %s", ReasonUpstreamControllerMissing, got.Reason)
+	}
+	if got.ManagedBy != "" {
+		t.Errorf("expected ManagedBy='', got %q", got.ManagedBy)
+	}
+}
+
+func TestProbe_ControllerReady(t *testing.T) {
+	d := newKaitoDeployment("kaito-workspace", "kaito-workspace", 1)
+	c := probeClientBuilderWithWorkspace(t).
+		WithObjects(d).
+		Build()
+
+	got := probeUpstreamController(context.Background(), c)
+
+	if !got.Healthy {
+		t.Errorf("expected Healthy=true, got %+v", got)
+	}
+	if got.Reason != ReasonUpstreamHealthy {
+		t.Errorf("expected Reason=%s, got %s", ReasonUpstreamHealthy, got.Reason)
+	}
+}
+
+func TestProbe_ControllerNotReady(t *testing.T) {
+	d := newKaitoDeployment("kaito-workspace", "kaito-workspace", 0)
+	c := probeClientBuilderWithWorkspace(t).
+		WithObjects(d).
+		Build()
+
+	got := probeUpstreamController(context.Background(), c)
+
+	if got.Healthy {
+		t.Error("expected Healthy=false")
+	}
+	if got.Reason != ReasonUpstreamControllerNotReady {
+		t.Errorf("expected Reason=%s, got %s", ReasonUpstreamControllerNotReady, got.Reason)
+	}
+	want := "kaito-workspace/kaito-workspace"
+	if !stringContains(got.Message, want) {
+		t.Errorf("expected Message to contain %q, got %q", want, got.Message)
+	}
+}
+
 func TestProbe_CRDMissing(t *testing.T) {
 	// Scheme without kaito.sh registered — List will fail with NoKindMatchError.
 	// We need to create a simple REST mapper that only knows about registered types.

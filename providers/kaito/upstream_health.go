@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // UpstreamHealth summarises the state of the real KAITO workspace controller.
@@ -74,16 +73,12 @@ const (
 //  3. Find the controller Deployment by label
 //  4. Any unexpected API error returns Reason=ProbeFailed
 func probeUpstreamController(ctx context.Context, direct client.Client) UpstreamHealth {
-	_ = log.FromContext(ctx)
-	// Step 1: Detect CRD presence by querying the REST mapper for the Workspace kind.
+	// Step 1: Detect CRD presence by checking the REST mapper.
 	workspaceGVK := schema.GroupVersionKind{
 		Group:   "kaito.sh",
 		Version: "v1beta1",
 		Kind:    "Workspace",
 	}
-
-	// Try to get the REST mapping for Workspace. If the CRD is not installed,
-	// the REST mapper will not have a mapping and will return a NoKindMatchError.
 	_, err := direct.RESTMapper().RESTMapping(workspaceGVK.GroupKind())
 	if isNoKindMatch(err) {
 		return UpstreamHealth{
@@ -100,11 +95,57 @@ func probeUpstreamController(ctx context.Context, direct client.Client) Upstream
 		}
 	}
 
-	// Steps 2-3 implemented in later tasks.
+	// Step 2: Detect Eno signal from the well-known StorageClass.
+	managedBy, err := getStorageClassManagedBy(ctx, direct)
+	if err != nil {
+		return UpstreamHealth{
+			Healthy: false,
+			Reason:  ReasonProbeFailed,
+			Message: err.Error(),
+		}
+	}
+
+	// Step 3: Find the controller Deployment by label.
+	deploy, found, err := listWorkspaceController(ctx, direct)
+	if err != nil {
+		return UpstreamHealth{
+			Healthy:   false,
+			Reason:    ReasonProbeFailed,
+			Message:   err.Error(),
+			ManagedBy: managedBy,
+		}
+	}
+	if !found {
+		if managedBy == managedByEno {
+			return UpstreamHealth{
+				Healthy:   false,
+				Reason:    ReasonEnoPartialInstall,
+				Message:   enoPartialInstallUserMessage,
+				ManagedBy: managedByEno,
+			}
+		}
+		return UpstreamHealth{
+			Healthy:   false,
+			Reason:    ReasonUpstreamControllerMissing,
+			Message:   controllerMissingUserMessage,
+			ManagedBy: managedBy,
+		}
+	}
+
+	// Step 4: Deployment found — healthy if ReadyReplicas > 0, otherwise NotReady.
+	if deploy.Status.ReadyReplicas > 0 {
+		return UpstreamHealth{
+			Healthy:   true,
+			Reason:    ReasonUpstreamHealthy,
+			Message:   fmt.Sprintf("KAITO workspace controller %s/%s is ready", deploy.Namespace, deploy.Name),
+			ManagedBy: managedBy,
+		}
+	}
 	return UpstreamHealth{
-		Healthy: false,
-		Reason:  ReasonProbeFailed,
-		Message: "probe not implemented",
+		Healthy:   false,
+		Reason:    ReasonUpstreamControllerNotReady,
+		Message:   fmt.Sprintf(controllerNotReadyUserMessage, deploy.Namespace, deploy.Name),
+		ManagedBy: managedBy,
 	}
 }
 
