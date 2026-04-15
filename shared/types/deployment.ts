@@ -86,6 +86,8 @@ export interface EngineSpec {
   type: EngineType;
   contextLength?: number;
   trustRemoteCode?: boolean;
+  enablePrefixCaching?: boolean;
+  enforceEager?: boolean;
   args?: Record<string, string>;
 }
 
@@ -476,6 +478,8 @@ export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeployment
       type: resolveEngineType(config),
       contextLength: config.contextLength || config.maxModelLen,
       trustRemoteCode: config.trustRemoteCode,
+      enablePrefixCaching: config.enablePrefixCaching,
+      enforceEager: config.enforceEager,
       args: normalizeEngineArgs(config.engineArgs),
     },
     serving: {

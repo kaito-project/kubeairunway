@@ -324,7 +324,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     replicas: 1,
     hfTokenSecret: import.meta.env.VITE_DEFAULT_HF_SECRET || '',
     enforceEager: true,
-    enablePrefixCaching: false,
+    enablePrefixCaching: true,
     trustRemoteCode: false,
     // Disaggregated mode defaults
     prefillReplicas: 1,

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # test-kv-routing.sh — smoke-test KV-aware routing for a ModelDeployment.
+# NOTE: This script is meant for demonstrating and validating KV-aware routing 
+# in a live cluster. Can be used for e2e once GPU resources are available.
 #
 # REQUIRED SETUP for this test to be meaningful:
 #   1. AGGREGATED mode (spec.serving.mode: aggregated)
@@ -31,16 +33,22 @@
 #
 # What it does:
 #   1. Resolves the gateway endpoint and model name from the ModelDeployment.
-#   2. Sends three completion requests, timing each:
-#        A1 — long prompt #1                  (cold: full prefill + decode)
-#        A2 — same prompt #1, repeated        (hit:  prefix cache reuse, if
-#                                                    KV router picks same pod)
-#        B1 — different long prompt #2        (cold again: different prefix)
-#   3. Reports latency for each request (A2 should be significantly < A1).
-#   4. Reports the worker pod's own vLLM "Prefix cache hit rate" after the
-#      run — this is the cross-request reuse signal. If the KV router is
-#      doing its job, at least one worker should show a non-trivial hit
-#      rate driven by A2 reusing A1's blocks.
+#   2. Phase 1 — Cold requests (concurrent):
+#        Sends A1, B1, C1, D1 simultaneously. Four distinct prompts hit the
+#        router at once, creating queue pressure that forces distribution
+#        across workers. Without concurrency, the router has no reason to
+#        move off the first (warm-cache) worker.
+#   3. Phase 2 — Warm requests (sequential):
+#        Sends A2, B2, C2, D2 one at a time. Each repeats the prompt from
+#        Phase 1. The KV router should send each back to the same worker
+#        that cached the corresponding cold prompt.
+#   4. Reports latency and target pod for each request.
+#      X2 should be faster than X1 (cache hit) and land on the same pod.
+#      With ≥2 workers, different prompt families (A vs B vs C vs D) should
+#      distribute across workers — demonstrating the router distributes by
+#      prefix, not randomly.
+#   5. Reports the worker pod's own vLLM "Prefix cache hit rate" after the
+#      run — this is the cross-request reuse signal.
 #
 # Usage:
 #   ./scripts/test-kv-routing.sh <md-name> <md-namespace>
@@ -56,22 +64,23 @@ MD_NAME="${1:?usage: $0 <md-name> <md-namespace>}"
 MD_NAMESPACE="${2:?usage: $0 <md-name> <md-namespace>}"
 
 echo "==> Resolving gateway endpoint and model name..."
-ENDPOINT=$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
-  -o jsonpath='{.status.gateway.endpoint}')
-MODEL_NAME=$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
-  -o jsonpath='{.status.gateway.modelName}')
+ENDPOINT="${ENDPOINT:-$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
+  -o jsonpath='{.status.gateway.endpoint}')}"
+MODEL_NAME="${MODEL_NAME:-$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
+  -o jsonpath='{.status.gateway.modelName}')}"
 
 if [[ -z "$ENDPOINT" || -z "$MODEL_NAME" ]]; then
   echo "ERROR: could not resolve gateway endpoint/model name from MD status" >&2
   echo "       .status.gateway must be populated — is the MD Running?" >&2
+  echo "       Or set ENDPOINT and MODEL_NAME env vars to override." >&2
   exit 1
 fi
 
 echo "    endpoint:   $ENDPOINT"
 echo "    modelName:  $MODEL_NAME"
 
-PROVIDER=$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
-  -o jsonpath='{.status.provider.name}')
+PROVIDER="${PROVIDER:-$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
+  -o jsonpath='{.status.provider.name}' 2>/dev/null)}"
 echo "    provider:   ${PROVIDER:-(unknown)}"
 
 # ── Worker pod discovery ──────────────────────────────────────────────
@@ -89,9 +98,16 @@ discover_workers() {
 
 case "$PROVIDER" in
   dynamo)
-    # Dynamo labels workers with the DGD name and component type
+    # Dynamo labels workers with the DGD name and component type.
+    # Workers live in the same namespace as the ModelDeployment, but if the MD
+    # namespace differs from dynamo-system, also check dynamo-system as a fallback.
     WORKERS=$(discover_workers "nvidia.com/dynamo-graph-deployment-name=$MD_NAME" \
       | grep -i worker || true)
+    if [[ -z "$WORKERS" && "$WORKER_NAMESPACE" != "dynamo-system" ]]; then
+      WORKER_NAMESPACE="dynamo-system"
+      WORKERS=$(discover_workers "nvidia.com/dynamo-graph-deployment-name=$MD_NAME" \
+        | grep -i worker || true)
+    fi
     ;;
   kaito)
     # KAITO uses workspace-based labeling
@@ -127,35 +143,95 @@ if [[ "$NUM_WORKERS" -lt 2 ]]; then
   echo "         pod you will only observe on-pod prefix caching, not routing."
 fi
 
+# ── Build pod IP → name map ──────────────────────────────────────────
+# Used to resolve EPP log endpoints (IPs) back to pod names.
+declare -A IP_TO_POD
+for w in $WORKERS; do
+  ip=$(kubectl get pod -n "$WORKER_NAMESPACE" "$w" -o jsonpath='{.status.podIP}' 2>/dev/null || true)
+  if [[ -n "$ip" ]]; then
+    IP_TO_POD["$ip"]="$w"
+  fi
+done
+
+if [[ -n "${EPP_POD:-}" ]]; then
+  echo "==> EPP pod: $EPP_POD"
+fi
+
 # Cut-off timestamp for log scraping (ignore anything earlier).
 SINCE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# send_request <label> <prompt> — writes a temp file capturing:
-#   <label>.latency  — wall-clock seconds (curl -w)
-#   <label>.body     — response JSON (for id extraction)
-send_request() {
-  local label="$1" prompt="$2"
-  local tmpdir="$3"
-  echo
-  echo "==> Sending $label"
-  local before after
-  before=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  # curl -w for latency; -o for body; prompt is JSON-escaped via jq.
+# ── Metrics-based pod detection ──────────────────────────────────────
+# The gateway may send requests to any pod (EPP returns uniform scores),
+# but the sidecar forwards over Dynamo RPC to the actual target worker.
+# To find which worker actually processed the request, we scrape
+# vllm:prompt_tokens_total from each worker before and after the request.
+# The worker whose counter increased is the one that did the work.
+METRICS_PORT=9090
+
+get_prompt_tokens() {
+  local pod="$1"
+  kubectl exec -n "$WORKER_NAMESPACE" "$pod" -c main -- \
+    curl -s "localhost:${METRICS_PORT}/metrics" 2>/dev/null \
+    | grep '^vllm:prompt_tokens_total' \
+    | grep -oE '[0-9.]+$' || echo "0"
+}
+
+# fire_request <label> <prompt> <tmpdir> — sends one request, records latency.
+# Does NOT detect pod (caller handles that separately).
+fire_request() {
+  local label="$1" prompt="$2" tmpdir="$3"
   jq -nc --arg model "$MODEL_NAME" --arg prompt "$prompt" '{
     model: $model, max_tokens: 16, temperature: 0,
     messages: [{role: "user", content: $prompt}]
   }' | curl -sS -X POST "http://$ENDPOINT/v1/chat/completions" \
     -H 'Content-Type: application/json' \
+    -H "X-Gateway-Model-Name: $MODEL_NAME" \
     -d @- \
     -o "$tmpdir/$label.body" \
     -w '%{time_total}' > "$tmpdir/$label.latency"
-  after=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  echo "$before" > "$tmpdir/$label.t0"
-  echo "$after"  > "$tmpdir/$label.t1"
-  local lat id
+}
+
+# detect_pod <label> <tmpdir> — uses per-request before/after metrics snapshots
+# to determine which worker processed the request.
+detect_pod() {
+  local label="$1" tmpdir="$2"
+  sleep 1  # let metrics flush
+  local pod_name="unknown"
+  local max_delta=0
+  for w in $WORKERS; do
+    local after_tok
+    after_tok=$(get_prompt_tokens "$w")
+    local before_tok
+    before_tok=$(cat "$tmpdir/$label.before.$w")
+    local delta
+    delta=$(echo "$after_tok - $before_tok" | bc 2>/dev/null || echo "0")
+    if (( $(echo "$delta > $max_delta" | bc 2>/dev/null) )); then
+      max_delta="$delta"
+      pod_name="$w"
+    fi
+  done
+  echo "$pod_name" > "$tmpdir/$label.pod"
+}
+
+# snapshot_tokens <tmpdir> <prefix> — saves current prompt_tokens for each worker.
+snapshot_tokens() {
+  local tmpdir="$1" prefix="$2"
+  for w in $WORKERS; do
+    get_prompt_tokens "$w" > "$tmpdir/${prefix}.before.$w"
+  done
+}
+
+# send_request <label> <prompt> <tmpdir> — sequential send with per-request pod detection.
+send_request() {
+  local label="$1" prompt="$2" tmpdir="$3"
+  echo
+  echo "==> Sending $label"
+  snapshot_tokens "$tmpdir" "$label"
+  fire_request "$label" "$prompt" "$tmpdir"
+  local lat
   lat=$(cat "$tmpdir/$label.latency")
-  id=$(jq -r '.id // "no-id"' < "$tmpdir/$label.body" 2>/dev/null)
-  printf "    latency: %ss   id: %s\n" "$lat" "$id"
+  detect_pod "$label" "$tmpdir"
+  printf "    latency: %ss   pod: %s\n" "$lat" "$(cat "$tmpdir/$label.pod")"
 }
 
 # Prompts must be long enough that prefill dominates total latency. On H100
@@ -223,12 +299,129 @@ You are a database internals expert. I need an exhaustive technical explanation 
 Be precise and technical. Include pseudocode for all key algorithm steps.
 PROMPT_EOF
 
+read -r -d '' PROMPT_C << 'PROMPT_EOF' || true
+You are a networking expert. I need an exhaustive technical explanation covering all of the following topics in a single, cohesive response. Be extremely thorough — for each topic, include the full protocol specification, correctness invariants, failure modes, and performance characteristics.
+
+1. TCP congestion control in depth:
+   a. Classic TCP Reno and NewReno: Explain slow start (exponential growth of cwnd until ssthresh), congestion avoidance (additive increase of cwnd by 1 MSS per RTT), fast retransmit (triple duplicate ACK triggers retransmit without waiting for RTO), and fast recovery (NewReno's partial ACK handling that avoids re-entering slow start). Explain the AIMD (Additive Increase Multiplicative Decrease) principle and why it converges to fairness. Derive the TCP throughput equation: throughput ≈ (MSS/RTT) * (1/sqrt(p)) where p is the loss probability.
+   b. TCP CUBIC: Explain the cubic function W(t) = C(t-K)^3 + W_max, where K = cbrt(W_max * beta / C), and how it produces concave growth after a loss (fast recovery toward W_max) followed by convex probing (aggressive growth beyond W_max). Explain the TCP-friendly region that ensures CUBIC doesn't starve Reno flows. Explain hystart++ for improved slow-start exit detection using ACK train and delay increase signals.
+   c. BBR (Bottleneck Bandwidth and Round-trip propagation time): Explain the four phases — Startup (exponential probing for bandwidth), Drain (reduce inflight to BDP), ProbeBW (steady-state with 1.25x/0.75x gain cycling), and ProbeRTT (periodic cwnd drain to measure minimum RTT). Explain the BBR model: delivery_rate estimation, RTprop tracking with a 10-second window, and the inflight cap at 2*BDP. Explain BBRv2 improvements: loss-aware bandwidth probing, explicit congestion signaling, and the ecn_alpha parameter.
+   d. QUIC and multipath: Explain how QUIC implements congestion control per-path, the interaction between stream-level flow control and connection-level flow control, and how 0-RTT resumption affects congestion state. Explain MPQUIC's path scheduling algorithms (round-robin, lowest-RTT, redundant) and how they interact with per-path congestion controllers.
+
+2. Software-defined networking and programmable dataplanes:
+   a. OpenFlow and the SDN control plane: Explain the match-action pipeline in OpenFlow switches, the flow table structure (priority, match fields, instructions, counters, timeouts), the role of the controller (reactive vs proactive flow installation), and the consistency challenges when updating distributed flow tables. Explain the Frenetic/NetKAT approach to provably correct network updates using two-phase commit.
+   b. P4 and programmable ASICs: Explain the P4 language model — parser, match-action pipeline, deparser — and how it maps to the PISA (Protocol-Independent Switch Architecture) with configurable parser graph, multiple match-action stages, and stateful ALUs. Explain P4Runtime for control-plane interaction. Explain the constraints of hardware targets: limited stages, TCAM width, stateful memory per stage, and recirculation as an escape hatch.
+   c. eBPF/XDP for programmable host networking: Explain the eBPF verifier (bounded loops, memory safety, helper function interface), the XDP hook point (before sk_buff allocation for zero-copy fast path), TC hook (after sk_buff for full protocol access), and the map abstraction for state sharing between eBPF programs and userspace. Explain Cilium's use of eBPF for Kubernetes networking: per-pod policy enforcement, service load balancing via BPF_MAP_TYPE_LRU_HASH, and transparent encryption using IPsec or WireGuard in eBPF.
+
+3. Modern load balancing at scale:
+   a. L4 load balancing: Explain Maglev's consistent hashing (the lookup table construction algorithm, disruption score minimization, and connection draining on backend changes). Explain ECMP-based DSR (Direct Server Return) where the load balancer only sees the SYN and the backend responds directly. Explain the interaction with TCP connection tracking and the need for consistent hashing to handle asymmetric routing.
+   b. L7 load balancing and service mesh: Explain Envoy's architecture — the listener/filter chain model, the HCM (HTTP Connection Manager), route tables, cluster managers, and the xDS API (LDS, RDS, CDS, EDS, SDS) for dynamic configuration. Explain the ext_proc filter and how it enables external processing (as used by Gateway API Inference Extension). Explain the circuit breaking, outlier detection, and retry budget mechanisms.
+
+4. Compare: (a) loss-based vs delay-based vs model-based congestion control under bufferbloat, (b) hardware vs software dataplanes for latency-sensitive workloads, (c) L4 vs L7 load balancing for long-lived streaming connections like LLM inference.
+
+Be precise and technical. Include pseudocode for all key algorithm steps.
+PROMPT_EOF
+
+read -r -d '' PROMPT_D << 'PROMPT_EOF' || true
+You are an operating systems expert. I need an exhaustive technical explanation covering all of the following topics in a single, cohesive response. Be extremely thorough — for each topic, include the full algorithm specification, correctness invariants, failure modes, and performance characteristics.
+
+1. Virtual memory and page table management:
+   a. Multi-level page tables: Explain the 4-level (PGD, PUD, PMD, PTE) and 5-level page table structures used in x86-64 Linux. Explain the trade-offs between page table depth and memory overhead. Explain huge pages (2MB and 1GB) and transparent huge pages (THP) — the khugepaged kernel thread, compaction, and the split/collapse lifecycle. Explain the performance implications: TLB coverage (a single 2MB TLB entry covers 512x more memory than a 4KB entry), page walk cost reduction, and the defragmentation overhead.
+   b. TLB management: Explain the TLB hierarchy (L1 iTLB, L1 dTLB, L2 STLB), TLB shootdown via IPI (inter-processor interrupt) for maintaining coherence across cores, and the PCID (Process Context ID) optimization that avoids full TLB flushes on context switch. Explain ASID (Address Space ID) on ARM64 and how it differs from PCID. Explain the performance cost of TLB shootdowns in NUMA systems where IPI latency crosses socket boundaries.
+   c. Memory-mapped I/O and page fault handling: Explain the Linux page fault path — do_page_fault, handle_mm_fault, the distinction between minor faults (page in page cache, just needs PTE update) and major faults (page must be read from disk). Explain demand paging, copy-on-write (COW) fork semantics, and the userfaultfd mechanism for userspace page fault handling (used by live migration and garbage collectors).
+   d. IOMMU and device memory: Explain how the IOMMU (VT-d on Intel, AMD-Vi) provides DMA remapping for device isolation, the IOMMU page table structure, and the VFIO framework for safe device passthrough to VMs and containers. Explain the interaction between IOMMU and GPU memory management (unified virtual addressing, page migration between CPU and GPU).
+
+2. Process scheduling on modern hardware:
+   a. CFS (Completely Fair Scheduler): Explain the red-black tree of virtual runtime (vruntime), the calculation of time slices from task weight and sched_latency, the pick_next_task algorithm, and the sleeper fairness adjustment. Explain the bandwidth controller for CFS (cfs_bandwidth: quota, period, hierarchical enforcement) and how it interacts with container cgroups.
+   b. EEVDF (Earliest Eligible Virtual Deadline First): Explain the recent Linux replacement for CFS — the virtual deadline calculation (vd = ve + (request/weight)), the eligibility check (ve ≤ V where V is the server virtual time), and why EEVDF provides better latency guarantees than CFS for interactive workloads. Explain the lag metric and how it prevents starvation.
+   c. Real-time scheduling: Explain SCHED_FIFO, SCHED_DEADLINE (CBS: Constant Bandwidth Server with (runtime, deadline, period) parameters), and the admission control test (sum of runtime_i/period_i ≤ total CPU capacity). Explain priority inversion and the priority inheritance protocol (PI mutex). Explain the PREEMPT_RT patch set and its approach to making all spinlocks preemptible.
+   d. NUMA-aware scheduling: Explain the NUMA balancing algorithm — periodic page scanning via the NUMA hinting fault mechanism (temporarily unmapping pages to detect access patterns), the automatic NUMA page migration policy, and the task placement heuristics that try to co-locate tasks with their memory. Explain the challenges with memory-intensive workloads where migration overhead exceeds the NUMA locality benefit.
+
+3. File systems and storage stack:
+   a. Ext4 journaling: Explain the JBD2 (Journaling Block Device 2) layer — the three journaling modes (journal, ordered, writeback), the transaction lifecycle (running → committing → committed → checkpoint), and the journal recovery procedure. Explain delayed allocation and how it interacts with the journal.
+   b. Btrfs copy-on-write: Explain the B-tree structure (metadata trees, extent trees, checksum trees), the COW mechanism for both metadata and data, snapshots as cheap tree clones (sharing all blocks, diverging on write), and the balance/scrub/defrag maintenance operations. Explain the RAID implementation (RAID1/5/6 at the filesystem level, stripe tree for RAID5/6) and the known write hole problem in RAID5.
+   c. io_uring: Explain the submission queue (SQ) and completion queue (CQ) ring buffer design, the io_uring_enter syscall, SQPOLL mode for busy-polling without syscalls, and fixed file/buffer registration for zero-copy I/O. Explain the performance comparison with libaio and synchronous I/O for NVMe devices at queue depth 1 and queue depth 128.
+
+4. Compare: (a) 4KB vs huge pages for database workloads (TLB miss rate vs memory waste), (b) CFS vs EEVDF for latency-sensitive containers, (c) ext4 vs btrfs for container overlay filesystems (performance, snapshot cost, stability).
+
+Be precise and technical. Include pseudocode for all key algorithm steps.
+PROMPT_EOF
+
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-send_request "A1" "$PROMPT_A" "$TMPDIR"
-send_request "A2" "$PROMPT_A" "$TMPDIR"
-send_request "B1" "$PROMPT_B" "$TMPDIR"
+# Append a random nonce to each base prompt so re-runs don't hit stale cache
+# entries from previous runs. X2 reuses X1's exact prompt within each family.
+NONCE_A="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+NONCE_B="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+NONCE_C="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+NONCE_D="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+PROMPT_A_RUN="${PROMPT_A}
+
+[Session nonce: ${NONCE_A}]"
+PROMPT_B_RUN="${PROMPT_B}
+
+[Session nonce: ${NONCE_B}]"
+PROMPT_C_RUN="${PROMPT_C}
+
+[Session nonce: ${NONCE_C}]"
+PROMPT_D_RUN="${PROMPT_D}
+
+[Session nonce: ${NONCE_D}]"
+
+# ── Phase 1: Cold requests (concurrent) ─────────────────────────────
+# Send A1, B1, C1, D1 simultaneously so the router sees queue pressure
+# and is forced to distribute across workers.
+echo
+echo "==> Phase 1: Sending cold requests A1, B1, C1, D1 concurrently..."
+
+# Snapshot tokens once before the batch.
+for w in $WORKERS; do
+  get_prompt_tokens "$w" > "$TMPDIR/batch1.before.$w"
+done
+
+fire_request "A1" "$PROMPT_A_RUN" "$TMPDIR" &
+fire_request "B1" "$PROMPT_B_RUN" "$TMPDIR" &
+fire_request "C1" "$PROMPT_C_RUN" "$TMPDIR" &
+fire_request "D1" "$PROMPT_D_RUN" "$TMPDIR" &
+wait
+
+# Print latencies.
+for lbl in A1 B1 C1 D1; do
+  printf "    %s latency: %ss\n" "$lbl" "$(cat "$TMPDIR/$lbl.latency")"
+done
+
+# Detect which workers handled the batch by comparing token deltas.
+sleep 1
+echo
+echo "    Worker token deltas from cold batch:"
+for w in $WORKERS; do
+  before=$(cat "$TMPDIR/batch1.before.$w")
+  after=$(get_prompt_tokens "$w")
+  delta=$(echo "$after - $before" | bc 2>/dev/null || echo "0")
+  printf "      [%s] +%s tokens\n" "$w" "$delta"
+  # Save post-batch baseline for the warm phase.
+  echo "$after" > "$TMPDIR/batch1.after.$w"
+done
+
+# ── Phase 2: Warm requests (sequential) ─────────────────────────────
+# Send A2, B2, C2, D2 one at a time. The KV router should send each
+# back to the worker that cached the corresponding cold prompt.
+# We also use X2's detected pod as X1's pod — the router picks the same
+# worker for the same prompt, so the worker that serves X2 (cache hit)
+# is the one that served X1 (cold).
+echo
+echo "==> Phase 2: Sending warm requests sequentially..."
+send_request "A2" "$PROMPT_A_RUN" "$TMPDIR"
+send_request "B2" "$PROMPT_B_RUN" "$TMPDIR"
+send_request "C2" "$PROMPT_C_RUN" "$TMPDIR"
+send_request "D2" "$PROMPT_D_RUN" "$TMPDIR"
+
+# Attribute cold requests to the same pod as their warm counterpart.
+cp "$TMPDIR/A2.pod" "$TMPDIR/A1.pod"
+cp "$TMPDIR/B2.pod" "$TMPDIR/B1.pod"
+cp "$TMPDIR/C2.pod" "$TMPDIR/C1.pod"
+cp "$TMPDIR/D2.pod" "$TMPDIR/D1.pod"
 
 echo
 echo "==> Waiting for worker metrics to flush (up to 20s)..."
@@ -250,6 +443,11 @@ done
 A1_LAT=$(cat "$TMPDIR/A1.latency")
 A2_LAT=$(cat "$TMPDIR/A2.latency")
 B1_LAT=$(cat "$TMPDIR/B1.latency")
+B2_LAT=$(cat "$TMPDIR/B2.latency")
+C1_LAT=$(cat "$TMPDIR/C1.latency")
+C2_LAT=$(cat "$TMPDIR/C2.latency")
+D1_LAT=$(cat "$TMPDIR/D1.latency")
+D2_LAT=$(cat "$TMPDIR/D2.latency")
 
 # The real signal in agg mode lives in each worker's vLLM engine logs,
 # emitted every ~10s as a cumulative summary line:
@@ -273,10 +471,15 @@ echo
 echo "========================================================================"
 echo "  KV-aware routing test results"
 echo "========================================================================"
-printf "  %-4s  %-9s  %s\n" "req" "latency" "id"
-printf "  %-4s  %-9s  %s\n" "A1" "${A1_LAT}s" "$(jq -r '.id' < "$TMPDIR/A1.body")"
-printf "  %-4s  %-9s  %s\n" "A2" "${A2_LAT}s" "$(jq -r '.id' < "$TMPDIR/A2.body")"
-printf "  %-4s  %-9s  %s\n" "B1" "${B1_LAT}s" "$(jq -r '.id' < "$TMPDIR/B1.body")"
+printf "  %-4s  %-11s  %s\n" "req" "latency" "pod"
+printf "  %-4s  %-11s  %s\n" "A1" "${A1_LAT}s" "$(cat "$TMPDIR/A1.pod")"
+printf "  %-4s  %-11s  %s\n" "A2" "${A2_LAT}s" "$(cat "$TMPDIR/A2.pod")"
+printf "  %-4s  %-11s  %s\n" "B1" "${B1_LAT}s" "$(cat "$TMPDIR/B1.pod")"
+printf "  %-4s  %-11s  %s\n" "B2" "${B2_LAT}s" "$(cat "$TMPDIR/B2.pod")"
+printf "  %-4s  %-11s  %s\n" "C1" "${C1_LAT}s" "$(cat "$TMPDIR/C1.pod")"
+printf "  %-4s  %-11s  %s\n" "C2" "${C2_LAT}s" "$(cat "$TMPDIR/C2.pod")"
+printf "  %-4s  %-11s  %s\n" "D1" "${D1_LAT}s" "$(cat "$TMPDIR/D1.pod")"
+printf "  %-4s  %-11s  %s\n" "D2" "${D2_LAT}s" "$(cat "$TMPDIR/D2.pod")"
 
 echo
 echo "  Worker prefix cache hit rates since $SINCE:"
@@ -285,20 +488,4 @@ for w in $WORKERS; do
   printf "    [%s] %s\n" "$w" "${hit:-(no metrics flushed yet)}"
 done
 
-echo
-echo "  Interpretation:"
-echo "    * A2 latency << A1 latency → KV-aware routing + prefix cache reuse"
-echo "      is working: A2 was routed to the pod that already held A1's"
-echo "      blocks, so most of prefill was skipped."
-echo "    * A2 latency ~= A1 latency → either the router sent A2 to a"
-echo "      different pod (check that KV-aware routing is enabled for your"
-echo "      provider) or the cache was evicted between A1 and A2."
-echo "    * B1 should look cold (no prior prefix), similar to A1."
-echo "    * Exactly ONE worker showing an elevated 'Prefix cache hit rate'"
-echo "      is the expected shape — that's the pod the router landed both"
-echo "      A1 and A2 on. If multiple workers show high rates, the router"
-echo "      scattered the requests and the hit came from something else"
-echo "      (e.g. chat template prefix shared across all prompts)."
-echo "    * Metrics are cumulative since engine start, so absolute numbers"
-echo "      may include activity from before SINCE if you re-run quickly."
 echo "========================================================================"

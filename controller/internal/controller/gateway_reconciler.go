@@ -116,7 +116,7 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 		poolNamespace = resolveProviderInferencePoolName(gatewayCapabilities.InferencePoolNamespace, md.Name, md.Namespace)
 
 		// Use provider-managed InferencePool
-		if err := r.reconcileProviderManagedInferencePool(ctx, md, poolName, poolNamespace, gwConfig.GatewayNamespace); err != nil {
+		if err := r.reconcileProviderManagedInferencePool(ctx, md, poolName, poolNamespace, gwConfig.GetBBRNamespace()); err != nil {
 			logger.Info("Error reconciling provider-managed InferencePool", "error", err)
 			return err
 		}
@@ -185,10 +185,7 @@ func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context) (*
 		return nil, fmt.Errorf("no Gateway resources found in cluster")
 	case 1:
 		gw := &gateways.Items[0]
-		return &gateway.GatewayConfig{
-			GatewayName:      gw.Name,
-			GatewayNamespace: gw.Namespace,
-		}, nil
+		return gatewayConfigFromResource(gw), nil
 	default:
 		// Multiple gateways: look for ones with the inference-gateway label
 		var labeled []*gatewayv1.Gateway
@@ -205,11 +202,21 @@ func (r *ModelDeploymentReconciler) resolveGatewayConfig(ctx context.Context) (*
 			log.FromContext(ctx).Info("WARNING: multiple Gateways labeled with inference-gateway, using the first one. Consider using spec.gateway.gatewayRef for explicit selection.",
 				"count", len(labeled), "selected", labeled[0].Name)
 		}
-		return &gateway.GatewayConfig{
-			GatewayName:      labeled[0].Name,
-			GatewayNamespace: labeled[0].Namespace,
-		}, nil
+		return gatewayConfigFromResource(labeled[0]), nil
 	}
+}
+
+// gatewayConfigFromResource builds a GatewayConfig from a Gateway resource,
+// reading the optional airunway.ai/bbr-namespace annotation.
+func gatewayConfigFromResource(gw *gatewayv1.Gateway) *gateway.GatewayConfig {
+	cfg := &gateway.GatewayConfig{
+		GatewayName:      gw.Name,
+		GatewayNamespace: gw.Namespace,
+	}
+	if gw.Annotations != nil {
+		cfg.BBRNamespace = gw.Annotations[gateway.AnnotationBBRNamespace]
+	}
+	return cfg
 }
 
 // reconcileInferencePool creates or updates the InferencePool for a ModelDeployment.
@@ -333,6 +340,16 @@ func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx co
 		}
 
 		logger.V(1).Info("ReferenceGrant for provider-managed InferencePool reconciled", "name", rg.Name, "result", result)
+	}
+
+	// Create DestinationRule for the provider-managed EPP service.
+	// EPP serves TLS by default; Istio needs a DestinationRule to connect.
+	// Read the EPP service name from the InferencePool's EndpointPickerRef.
+	eppName := string(pool.Spec.EndpointPickerRef.Name)
+	if eppName != "" {
+		if err := r.reconcileEPPDestinationRule(ctx, md, eppName, poolNamespace); err != nil {
+			return fmt.Errorf("failed to create/update EPP DestinationRule for provider-managed EPP: %w", err)
+		}
 	}
 
 	return nil
@@ -557,7 +574,7 @@ kind: EndpointPickerConfig
 		return fmt.Errorf("failed to create/update EPP Service: %w", err)
 	}
 
-	if err := r.reconcileEPPDestinationRule(ctx, md, eppName); err != nil {
+	if err := r.reconcileEPPDestinationRule(ctx, md, eppName, md.Namespace); err != nil {
 		return fmt.Errorf("failed to create/update EPP DestinationRule: %w", err)
 	}
 
@@ -567,9 +584,10 @@ kind: EndpointPickerConfig
 
 // reconcileEPPDestinationRule creates or updates the Istio DestinationRule for the EPP service,
 // but only if Istio is detected (i.e. the DestinationRule CRD is registered in the cluster).
-// DestinationRule: tell Istio to use SIMPLE TLS (insecureSkipVerify)
-// to skip cert validation.
-func (r *ModelDeploymentReconciler) reconcileEPPDestinationRule(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, eppName string) error {
+// EPP serves TLS by default (--secure-serving=true) with a self-signed certificate.
+// kGateway handles this natively, but Istio's sidecar needs a DestinationRule with
+// mode: SIMPLE + insecureSkipVerify to connect to the EPP's TLS endpoint.
+func (r *ModelDeploymentReconciler) reconcileEPPDestinationRule(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, eppName, eppNamespace string) error {
 	gk := schema.GroupKind{Group: "networking.istio.io", Kind: "DestinationRule"}
 	if _, err := r.Client.RESTMapper().RESTMapping(gk); err != nil {
 		log.FromContext(ctx).V(1).Info("Istio not detected, skipping DestinationRule", "eppName", eppName)
@@ -583,11 +601,11 @@ func (r *ModelDeploymentReconciler) reconcileEPPDestinationRule(ctx context.Cont
 		Kind:    "DestinationRule",
 	})
 	dr.SetName(eppName)
-	dr.SetNamespace(md.Namespace)
+	dr.SetNamespace(eppNamespace)
 
 	_, err := ctrl.CreateOrUpdate(ctx, r.Client, dr, func() error {
 		if err := unstructured.SetNestedField(dr.Object, map[string]interface{}{
-			"host": fmt.Sprintf("%s.%s.svc.cluster.local", eppName, md.Namespace),
+			"host": fmt.Sprintf("%s.%s.svc.cluster.local", eppName, eppNamespace),
 			"trafficPolicy": map[string]interface{}{
 				"tls": map[string]interface{}{
 					"mode":               "SIMPLE",
@@ -1167,7 +1185,7 @@ func (r *ModelDeploymentReconciler) providerInferencePoolExistsOrCreateDefault(c
 	}
 
 	// Create or update InferencePool
-	if err := r.reconcileInferencePool(ctx, md, port, gwConfig.GatewayNamespace); err != nil {
+	if err := r.reconcileInferencePool(ctx, md, port, gwConfig.GetBBRNamespace()); err != nil {
 		r.setCondition(md, airunwayv1alpha1.ConditionTypeGatewayReady, metav1.ConditionFalse, "InferencePoolFailed", err.Error())
 		return false, fmt.Errorf("reconciling InferencePool: %w", err)
 	}
@@ -1318,6 +1336,10 @@ func (r *ModelDeploymentReconciler) cleanupGatewayAllowedRoutesForNamespace(ctx 
 // restartBBRIfPresent triggers a rolling restart of the body-based-router Deployment (if present
 // in the given namespace) by updating its restart annotation. This is necessary because BBR builds
 // its internal model registry on startup and does not dynamically watch InferencePools.
+//
+// The namespace is resolved by GatewayConfig.GetBBRNamespace(), which reads the
+// airunway.ai/bbr-namespace annotation from the Gateway resource, falling back to the
+// Gateway's own namespace.
 func (r *ModelDeploymentReconciler) restartBBRIfPresent(ctx context.Context, namespace string) error {
 	var bbr appsv1.Deployment
 	if err := r.Get(ctx, client.ObjectKey{Name: "body-based-router", Namespace: namespace}, &bbr); err != nil {

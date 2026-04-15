@@ -294,6 +294,44 @@ func TestBuildEngineArgs(t *testing.T) {
 			t.Errorf("expected args to contain '%s', got: %v", part, args)
 		}
 	}
+
+	// With enable prefix caching
+	md.Spec.Engine.TrustRemoteCode = false
+	md.Spec.Model.ServedName = ""
+	md.Spec.Engine.EnablePrefixCaching = true
+	args, err = tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sliceContainsStr(args, "--enable-prefix-caching") {
+		t.Errorf("expected args to contain '--enable-prefix-caching', got: %v", args)
+	}
+
+	// With enforce eager
+	md.Spec.Engine.EnablePrefixCaching = false
+	md.Spec.Engine.EnforceEager = true
+	args, err = tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !sliceContainsStr(args, "--enforce-eager") {
+		t.Errorf("expected args to contain '--enforce-eager', got: %v", args)
+	}
+
+	// Prefix caching and enforce eager not added for TRT-LLM
+	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeTRTLLM
+	md.Spec.Engine.EnablePrefixCaching = true
+	md.Spec.Engine.EnforceEager = true
+	args, err = tr.buildEngineArgs(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sliceContainsStr(args, "--enable-prefix-caching") {
+		t.Errorf("--enable-prefix-caching should not be added for trtllm, got: %v", args)
+	}
+	if sliceContainsStr(args, "--enforce-eager") {
+		t.Errorf("--enforce-eager should not be added for trtllm, got: %v", args)
+	}
 }
 
 func TestEngineCommand(t *testing.T) {

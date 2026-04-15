@@ -81,7 +81,7 @@ const createDeploymentSchema = z.object({
   hfTokenSecret: z.string().optional().default(''),
   contextLength: z.number().int().positive().optional(),
   enforceEager: z.boolean().optional().default(false),
-  enablePrefixCaching: z.boolean().optional().default(false),
+  enablePrefixCaching: z.boolean().optional().default(true),
   trustRemoteCode: z.boolean().optional().default(false),
   resources: z.object({
     gpu: z.number().int().min(0),

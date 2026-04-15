@@ -447,7 +447,7 @@ func (t *Transformer) buildEPP(md *airunwayv1alpha1.ModelDeployment, overrides *
 				// sidecar-frontend, not vLLM metrics). Without this the EPP
 				// sees all-zero metrics and cannot make informed routing
 				// decisions. 9090 matches the worker's "system" container port.
-				"command": []interface{}{"/epp", "--secure-serving=false", "--model-server-metrics-port=9090"},
+				"command": []interface{}{"/epp", "--model-server-metrics-port=9090"},
 			},
 		},
 		"eppConfig": map[string]interface{}{
@@ -829,6 +829,22 @@ func (t *Transformer) buildEngineArgs(md *airunwayv1alpha1.ModelDeployment) ([]s
 		switch md.ResolvedEngineType() {
 		case airunwayv1alpha1.EngineTypeVLLM, airunwayv1alpha1.EngineTypeSGLang:
 			args = append(args, "--trust-remote-code")
+		}
+	}
+
+	// Add prefix caching
+	if md.Spec.Engine.EnablePrefixCaching {
+		switch md.ResolvedEngineType() {
+		case airunwayv1alpha1.EngineTypeVLLM, airunwayv1alpha1.EngineTypeSGLang:
+			args = append(args, "--enable-prefix-caching")
+		}
+	}
+
+	// Add enforce eager
+	if md.Spec.Engine.EnforceEager {
+		switch md.ResolvedEngineType() {
+		case airunwayv1alpha1.EngineTypeVLLM, airunwayv1alpha1.EngineTypeSGLang:
+			args = append(args, "--enforce-eager")
 		}
 	}
 

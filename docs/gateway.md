@@ -59,12 +59,12 @@ When gateway integration is active, AI Runway automatically creates an **Inferen
 
 AI Runway works with any Gateway API implementation that supports the [Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension). You are responsible for installing and managing your own gateway. Some known implementations:
 
-| Implementation | `gatewayClassName` | Docs |
-|---|---|---|
-| [Envoy Gateway](https://gateway.envoyproxy.io/) | `eg` | [Inference Extension guide](https://gateway.envoyproxy.io/docs/tasks/ai-gateway/gateway-api-inference-extension/) |
-| [Istio](https://istio.io/) | `istio` | [Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/inference/) |
-| [kgateway](https://kgateway.dev/) | `kgateway` | [Inference Extension guide](https://kgateway.dev/docs/ai/gateway-api-inference-extension/) |
-| [GKE Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) | `gke-l7-rilb` | [GKE Inference guide](https://cloud.google.com/kubernetes-engine/docs/how-to/serve-llms-with-gateway-api) |
+| Implementation | `gatewayClassName` | Status | Docs |
+|---|---|---|---|
+| [Envoy Gateway](https://gateway.envoyproxy.io/) | `eg` | Not tested | [Inference Extension guide](https://gateway.envoyproxy.io/docs/tasks/ai-gateway/gateway-api-inference-extension/) |
+| [Istio](https://istio.io/) | `istio` | Tested | [Inference Extension guide](https://istio.io/latest/docs/tasks/traffic-management/inference/) |
+| [kgateway](https://kgateway.dev/) | `kgateway` | Tested (still requires the `X-Gateway-Model-Name` header) | [Inference Extension guide](https://kgateway.dev/docs/ai/gateway-api-inference-extension/) |
+| [GKE Gateway](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api) | `gke-l7-rilb` | Not tested | [GKE Inference guide](https://cloud.google.com/kubernetes-engine/docs/how-to/serve-llms-with-gateway-api) |
 
 > **Note:** The only difference between implementations is the `gatewayClassName` in your Gateway resource. All AIRunway-managed resources (InferencePool, HTTPRoute) are identical regardless of which gateway you use.
 
@@ -95,7 +95,7 @@ Follow the installation guide for your chosen implementation:
 
 ### Step 4: Create a Gateway Resource
 
-```yamlin e2e
+```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -257,7 +257,7 @@ When a provider declares gateway capabilities in its `InferenceProviderConfig`, 
 Providers declare gateway capabilities in their `InferenceProviderConfig`:
 
 ```yaml
-apiVersion: kubeairunway.ai/v1alpha1
+apiVersion: airunway.ai/v1alpha1
 kind: InferenceProviderConfig
 metadata:
   name: dynamo
