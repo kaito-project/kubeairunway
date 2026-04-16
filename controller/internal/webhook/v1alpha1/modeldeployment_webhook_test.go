@@ -25,6 +25,9 @@ import (
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var _ = Describe("ModelDeployment Webhook", func() {
@@ -40,7 +43,39 @@ var _ = Describe("ModelDeployment Webhook", func() {
 	BeforeEach(func() {
 		obj = &airunwayv1alpha1.ModelDeployment{}
 		oldObj = &airunwayv1alpha1.ModelDeployment{}
-		validator = ModelDeploymentCustomValidator{}
+
+		dynamo := &airunwayv1alpha1.InferenceProviderConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: "dynamo"},
+			Spec: airunwayv1alpha1.InferenceProviderConfigSpec{
+				Capabilities: &airunwayv1alpha1.ProviderCapabilities{
+					Engines: []airunwayv1alpha1.EngineCapability{
+						{Name: airunwayv1alpha1.EngineTypeVLLM, GPUSupport: true,
+							ServingModes: []airunwayv1alpha1.ServingMode{airunwayv1alpha1.ServingModeAggregated, airunwayv1alpha1.ServingModeDisaggregated}},
+						{Name: airunwayv1alpha1.EngineTypeTRTLLM, GPUSupport: true,
+							ServingModes: []airunwayv1alpha1.ServingMode{airunwayv1alpha1.ServingModeAggregated}},
+					},
+				},
+			},
+		}
+		kaito := &airunwayv1alpha1.InferenceProviderConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: "kaito"},
+			Spec: airunwayv1alpha1.InferenceProviderConfigSpec{
+				Capabilities: &airunwayv1alpha1.ProviderCapabilities{
+					Engines: []airunwayv1alpha1.EngineCapability{
+						{Name: airunwayv1alpha1.EngineTypeVLLM, GPUSupport: true,
+							ServingModes: []airunwayv1alpha1.ServingMode{airunwayv1alpha1.ServingModeAggregated}},
+						{Name: airunwayv1alpha1.EngineTypeLlamaCpp, GPUSupport: true, CPUSupport: true,
+							ServingModes: []airunwayv1alpha1.ServingMode{airunwayv1alpha1.ServingModeAggregated}},
+					},
+				},
+			},
+		}
+
+		s := runtime.NewScheme()
+		Expect(airunwayv1alpha1.AddToScheme(s)).To(Succeed())
+		fakeReader := fake.NewClientBuilder().WithScheme(s).WithObjects(dynamo, kaito).Build()
+
+		validator = ModelDeploymentCustomValidator{Reader: fakeReader}
 		Expect(validator).NotTo(BeNil(), "Expected validator to be initialized")
 		defaulter = ModelDeploymentCustomDefaulter{}
 		Expect(defaulter).NotTo(BeNil(), "Expected defaulter to be initialized")
@@ -1150,6 +1185,62 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			warnings, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(warnings).To(BeEmpty())
+		})
+	})
+
+	Context("When validating provider compatibility", func() {
+		It("Should reject trtllm + disaggregated on dynamo", func() {
+			obj.Spec.Model.ID = "Qwen/Qwen3-0.6B"
+			obj.Spec.Engine.Type = airunwayv1alpha1.EngineTypeTRTLLM
+			obj.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "dynamo"}
+			obj.Spec.Serving = &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated}
+			obj.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+				Prefill: &airunwayv1alpha1.ComponentScalingSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}, Replicas: 1},
+				Decode:  &airunwayv1alpha1.ComponentScalingSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}, Replicas: 1},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("does not support disaggregated mode for engine trtllm"))
+		})
+
+		It("Should reject engine not supported by provider", func() {
+			obj.Spec.Model.ID = "Qwen/Qwen3-0.6B"
+			obj.Spec.Engine.Type = airunwayv1alpha1.EngineTypeSGLang
+			obj.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "kaito"}
+			obj.Spec.Resources = &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("does not support engine sglang"))
+		})
+
+		It("Should accept vllm + disaggregated on dynamo", func() {
+			obj.Spec.Model.ID = "Qwen/Qwen3-0.6B"
+			obj.Spec.Engine.Type = airunwayv1alpha1.EngineTypeVLLM
+			obj.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "dynamo"}
+			obj.Spec.Serving = &airunwayv1alpha1.ServingSpec{Mode: airunwayv1alpha1.ServingModeDisaggregated}
+			obj.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+				Prefill: &airunwayv1alpha1.ComponentScalingSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}, Replicas: 1},
+				Decode:  &airunwayv1alpha1.ComponentScalingSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}, Replicas: 1},
+			}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Should skip check when no provider specified", func() {
+			obj.Spec.Model.ID = "Qwen/Qwen3-0.6B"
+			obj.Spec.Engine.Type = airunwayv1alpha1.EngineTypeVLLM
+			obj.Spec.Resources = &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Should skip check when provider not found in cluster", func() {
+			obj.Spec.Model.ID = "Qwen/Qwen3-0.6B"
+			obj.Spec.Engine.Type = airunwayv1alpha1.EngineTypeVLLM
+			obj.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "nonexistent"}
+			obj.Spec.Resources = &airunwayv1alpha1.ResourceSpec{GPU: &airunwayv1alpha1.GPUSpec{Count: 1}}
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
