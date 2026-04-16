@@ -21,10 +21,18 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+// newUnstructuredScheme returns a fresh runtime.Scheme. Using a dedicated scheme
+// avoids "double registration" panics when the Ginkgo suite_test.go registers
+// the typed InferenceProviderConfig into the global scheme in the same test binary.
+func newUnstructuredScheme() *runtime.Scheme {
+	return runtime.NewScheme()
+}
 
 func TestMigrateLegacyProviderConfigs_FlatToNested(t *testing.T) {
 	// Create a legacy InferenceProviderConfig with flat engine strings
@@ -44,7 +52,7 @@ func TestMigrateLegacyProviderConfigs_FlatToNested(t *testing.T) {
 		t.Fatalf("failed to set capabilities: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithObjects(legacy).Build()
+	c := fake.NewClientBuilder().WithScheme(newUnstructuredScheme()).WithObjects(legacy).Build()
 
 	err := MigrateLegacyProviderConfigs(context.Background(), c)
 	if err != nil {
@@ -123,7 +131,7 @@ func TestMigrateLegacyProviderConfigs_AlreadyMigrated(t *testing.T) {
 		t.Fatalf("failed to set capabilities: %v", err)
 	}
 
-	c := fake.NewClientBuilder().WithObjects(obj).Build()
+	c := fake.NewClientBuilder().WithScheme(newUnstructuredScheme()).WithObjects(obj).Build()
 
 	err := MigrateLegacyProviderConfigs(context.Background(), c)
 	if err != nil {
@@ -151,7 +159,7 @@ func TestMigrateLegacyProviderConfigs_AlreadyMigrated(t *testing.T) {
 }
 
 func TestMigrateLegacyProviderConfigs_NoObjects(t *testing.T) {
-	c := fake.NewClientBuilder().Build()
+	c := fake.NewClientBuilder().WithScheme(newUnstructuredScheme()).Build()
 
 	err := MigrateLegacyProviderConfigs(context.Background(), c)
 	if err != nil {
