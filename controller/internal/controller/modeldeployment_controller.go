@@ -312,6 +312,30 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 		}
 	}
 
+	// When provider is explicitly specified, validate that it supports the
+	// requested engine + serving mode combination. This catches incompatible
+	// configurations at reconcile time instead of letting them proceed to
+	// the provider controller unvalidated.
+	if spec.Provider != nil && spec.Provider.Name != "" {
+		for _, pc := range providerConfigs {
+			if pc.Name != spec.Provider.Name {
+				continue
+			}
+			caps := pc.Spec.Capabilities
+			if caps == nil {
+				break
+			}
+			engineCap := caps.GetEngineCapability(engineType)
+			if engineCap == nil {
+				return fmt.Errorf("provider %s does not support engine %s", spec.Provider.Name, engineType)
+			}
+			if !caps.SupportsServingMode(engineType, servingMode) {
+				return fmt.Errorf("provider %s does not support %s mode for engine %s", spec.Provider.Name, servingMode, engineType)
+			}
+			break
+		}
+	}
+
 	// Validate disaggregated mode configuration
 	if spec.Serving != nil && spec.Serving.Mode == airunwayv1alpha1.ServingModeDisaggregated {
 		// Cannot specify resources.gpu in disaggregated mode
