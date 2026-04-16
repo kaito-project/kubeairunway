@@ -778,7 +778,11 @@ func (t *Transformer) addSchedulingConfig(service map[string]interface{}, md *ai
 	}
 
 	if len(md.Spec.NodeSelector) > 0 {
-		extraPodSpec["nodeSelector"] = md.Spec.NodeSelector
+		ns := make(map[string]interface{}, len(md.Spec.NodeSelector))
+		for k, v := range md.Spec.NodeSelector {
+			ns[k] = v
+		}
+		extraPodSpec["nodeSelector"] = ns
 	}
 
 	if len(md.Spec.Tolerations) > 0 {

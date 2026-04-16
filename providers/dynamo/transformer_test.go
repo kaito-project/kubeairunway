@@ -587,9 +587,15 @@ func TestAddSchedulingConfig(t *testing.T) {
 	}
 	tr.addSchedulingConfig(service, md)
 	eps, _ := service["extraPodSpec"].(map[string]interface{})
-	ns, _ := eps["nodeSelector"].(map[string]string)
+	ns, _ := eps["nodeSelector"].(map[string]interface{})
 	if ns["gpu"] != "a100" {
 		t.Errorf("expected nodeSelector gpu=a100")
+	}
+
+	// Verify nodeSelector is a copy (safe for unstructured deep copy)
+	md.Spec.NodeSelector["gpu"] = "changed"
+	if ns["gpu"] != "a100" {
+		t.Errorf("nodeSelector should be a copy, not a reference to the original map")
 	}
 
 	// With tolerations
