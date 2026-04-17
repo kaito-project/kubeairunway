@@ -116,9 +116,17 @@ func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *ai
 		poolNamespace = resolveProviderInferencePoolName(gatewayCapabilities.InferencePoolNamespace, md.Name, md.Namespace)
 
 		// Use provider-managed InferencePool
-		if err := r.reconcileProviderManagedInferencePool(ctx, md, poolName, poolNamespace, gwConfig.GetBBRNamespace()); err != nil {
+		providerEPPName, err := r.reconcileProviderManagedInferencePool(ctx, md, poolName, poolNamespace, gwConfig.GetBBRNamespace())
+		if err != nil {
 			logger.Info("Error reconciling provider-managed InferencePool", "error", err)
 			return err
+		}
+
+		// Reconcile DestinationRule for provider-managed EPP (Istio TLS)
+		if providerEPPName != "" {
+			if err := r.reconcileEPPDestinationRule(ctx, md, providerEPPName, poolNamespace); err != nil {
+				return fmt.Errorf("reconciling EPP DestinationRule for provider-managed EPP: %w", err)
+			}
 		}
 	} else if err != nil {
 		return err
@@ -268,7 +276,7 @@ func (r *ModelDeploymentReconciler) reconcileInferencePool(ctx context.Context, 
 
 func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx context.Context,
 	md *airunwayv1alpha1.ModelDeployment, poolName, poolNamespace, bbrNamespace string,
-) error {
+) (string, error) {
 	logger := log.FromContext(ctx)
 	mdNamespace := md.Namespace
 
@@ -281,9 +289,9 @@ func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx co
 				"pool", poolKey)
 			// Thread error through return path to trigger requeue with exponential
 			// backoff in main reconcile loop.
-			return err
+			return "", err
 		}
-		return fmt.Errorf("failed to get provider-managed InferencePool %s: %w", poolKey, err)
+		return "", fmt.Errorf("failed to get provider-managed InferencePool %s: %w", poolKey, err)
 	}
 
 	logger.V(1).Info("Found provider-managed InferencePool", "pool", poolKey)
@@ -336,23 +344,15 @@ func (r *ModelDeploymentReconciler) reconcileProviderManagedInferencePool(ctx co
 			return ctrl.SetControllerReference(pool, rg, r.Scheme)
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create/update ReferenceGrant for provider-managed InferencePool: %w", err)
+			return "", fmt.Errorf("failed to create/update ReferenceGrant for provider-managed InferencePool: %w", err)
 		}
 
 		logger.V(1).Info("ReferenceGrant for provider-managed InferencePool reconciled", "name", rg.Name, "result", result)
 	}
 
-	// Create DestinationRule for the provider-managed EPP service.
-	// EPP serves TLS by default; Istio needs a DestinationRule to connect.
-	// Read the EPP service name from the InferencePool's EndpointPickerRef.
+	// Return the EPP service name from the InferencePool's EndpointPickerRef
 	eppName := string(pool.Spec.EndpointPickerRef.Name)
-	if eppName != "" {
-		if err := r.reconcileEPPDestinationRule(ctx, md, eppName, poolNamespace); err != nil {
-			return fmt.Errorf("failed to create/update EPP DestinationRule for provider-managed EPP: %w", err)
-		}
-	}
-
-	return nil
+	return eppName, nil
 }
 
 // resolveProviderInferencePoolName applies the provider's naming pattern to produce the

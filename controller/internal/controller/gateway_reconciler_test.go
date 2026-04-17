@@ -810,7 +810,7 @@ func TestGateway_ProviderManagedInferencePool_Found(t *testing.T) {
 
 	r := newTestReconciler(scheme, nil, md, pool)
 
-	err := r.reconcileProviderManagedInferencePool(context.Background(), md, "default-llama-70b-pool", "dynamo-system", "default")
+	_, err := r.reconcileProviderManagedInferencePool(context.Background(), md, "default-llama-70b-pool", "dynamo-system", "default")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -822,7 +822,7 @@ func TestGateway_ProviderManagedInferencePool_NotFound(t *testing.T) {
 	md := newModelDeployment("llama-70b", "default")
 	r := newTestReconciler(scheme, nil, md)
 
-	err := r.reconcileProviderManagedInferencePool(context.Background(), md, "default-llama-70b-pool", "dynamo-system", "default")
+	_, err := r.reconcileProviderManagedInferencePool(context.Background(), md, "default-llama-70b-pool", "dynamo-system", "default")
 	if err == nil {
 		t.Fatal("expected error when InferencePool does not exist")
 	}
