@@ -647,6 +647,45 @@ func TestTransformEmptyNodeSelector(t *testing.T) {
 	}
 }
 
+func TestTransformGPUAddsNvidiaLabel(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	matchLabels, found, _ := unstructured.NestedStringMap(ws.Object, "resource", "labelSelector", "matchLabels")
+	if !found {
+		t.Fatal("expected matchLabels")
+	}
+	if matchLabels["nvidia.com/gpu.present"] != "true" {
+		t.Error("expected nvidia.com/gpu.present=true when GPU count > 0")
+	}
+}
+
+func TestTransformNoGPUOmitsNvidiaLabel(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = nil
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ws := resources[0]
+	matchLabels, _, _ := unstructured.NestedStringMap(ws.Object, "resource", "labelSelector", "matchLabels")
+	if _, exists := matchLabels["nvidia.com/gpu.present"]; exists {
+		t.Error("did not expect nvidia.com/gpu.present when no GPU requested")
+	}
+}
+
 func TestTransformSGLangUnsupported(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")

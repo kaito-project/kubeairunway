@@ -262,20 +262,46 @@ func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, re
 		return err
 	}
 
-	// Update existing resource if resource or inference has changed
-	// KAITO Workspace has resource/inference at root level, not under spec
+	// Update existing resource if resource or inference has changed. Compare only the fields we manage.
+	// Comparing full maps would cause an infinite update loop.
 	existingResource, _, _ := unstructured.NestedMap(existing.Object, "resource")
 	newResource, _, _ := unstructured.NestedMap(resource.Object, "resource")
 	existingInference, _, _ := unstructured.NestedMap(existing.Object, "inference")
 	newInference, _, _ := unstructured.NestedMap(resource.Object, "inference")
 
-	if !equality.Semantic.DeepEqual(existingResource, newResource) || !equality.Semantic.DeepEqual(existingInference, newInference) {
+	if !managedFieldsSubset(newResource, existingResource) || !managedFieldsSubset(newInference, existingInference) {
 		logger.Info("Updating resource", "kind", resource.GetKind(), "name", resource.GetName())
 		resource.SetResourceVersion(existing.GetResourceVersion())
 		return r.Update(ctx, resource)
 	}
 
 	return nil
+}
+
+// managedFieldsSubset returns true if every key in desired exists in existing
+// with the same value (via DeepEqual). Extra keys in existing (e.g. operator
+// defaults like presetOptions, accessMode) are ignored. This prevents infinite
+// update loops when the upstream operator adds defaulted fields we don't manage.
+func managedFieldsSubset(desired, existing map[string]interface{}) bool {
+	for k, dv := range desired {
+		ev, ok := existing[k]
+		if !ok {
+			return false
+		}
+		// Recurse into nested maps
+		dMap, dIsMap := dv.(map[string]interface{})
+		eMap, eIsMap := ev.(map[string]interface{})
+		if dIsMap && eIsMap {
+			if !managedFieldsSubset(dMap, eMap) {
+				return false
+			}
+			continue
+		}
+		if !equality.Semantic.DeepEqual(dv, ev) {
+			return false
+		}
+	}
+	return true
 }
 
 // syncStatus fetches the upstream resource and syncs its status to the ModelDeployment

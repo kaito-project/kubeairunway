@@ -130,6 +130,11 @@ func (t *Transformer) buildResource(md *airunwayv1alpha1.ModelDeployment) map[st
 	matchLabels := map[string]interface{}{
 		"kubernetes.io/os": "linux",
 	}
+	// When GPUs are requested, ensure we only target nodes with NVIDIA GPUs
+	// so KAITO's webhook doesn't fail validating CPU nodes.
+	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
+		matchLabels["nvidia.com/gpu.present"] = "true"
+	}
 	// Merge nodeSelector into matchLabels
 	for k, v := range md.Spec.NodeSelector {
 		matchLabels[k] = v
