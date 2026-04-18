@@ -269,7 +269,7 @@ func TestGateway_DisabledSkipsCreation(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md)
 	ctx := context.Background()
 
-	err := r.reconcileGateway(ctx, md)
+	_, err := r.reconcileGateway(ctx, md)
 	if err != nil {
 		t.Fatalf("reconcileGateway failed: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestGateway_NotAvailableSkipsSilently(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md)
 	ctx := context.Background()
 
-	err := r.reconcileGateway(ctx, md)
+	_, err := r.reconcileGateway(ctx, md)
 	if err != nil {
 		t.Fatalf("expected no error when gateway not available, got: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestGateway_NilDetectorSkipsSilently(t *testing.T) {
 	r := newTestReconciler(scheme, nil, md)
 	ctx := context.Background()
 
-	err := r.reconcileGateway(ctx, md)
+	_, err := r.reconcileGateway(ctx, md)
 	if err != nil {
 		t.Fatalf("expected no error when detector is nil, got: %v", err)
 	}
@@ -464,7 +464,7 @@ func TestGateway_StatusUpdate(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
-	err := r.reconcileGateway(ctx, md)
+	_, err := r.reconcileGateway(ctx, md)
 	if err != nil {
 		t.Fatalf("reconcileGateway failed: %v", err)
 	}
@@ -516,7 +516,7 @@ func TestGateway_StatusEndpointFromGatewayAddress(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md, gw)
 	ctx := context.Background()
 
-	err := r.reconcileGateway(ctx, md)
+	_, err := r.reconcileGateway(ctx, md)
 	if err != nil {
 		t.Fatalf("reconcileGateway failed: %v", err)
 	}
@@ -539,7 +539,7 @@ func TestGateway_StatusModelNameOverride(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
-	err := r.reconcileGateway(ctx, md)
+	_, err := r.reconcileGateway(ctx, md)
 	if err != nil {
 		t.Fatalf("reconcileGateway failed: %v", err)
 	}
@@ -557,7 +557,7 @@ func TestGateway_StatusServedNameFallback(t *testing.T) {
 	r := newTestReconciler(scheme, detector, md, newTestGateway("my-gateway", "gateway-ns"))
 	ctx := context.Background()
 
-	err := r.reconcileGateway(ctx, md)
+	_, err := r.reconcileGateway(ctx, md)
 	if err != nil {
 		t.Fatalf("reconcileGateway failed: %v", err)
 	}
@@ -637,6 +637,49 @@ func TestGateway_KaitoLlamaCppServedNameFallsBackToModelID(t *testing.T) {
 	name := r.resolveModelName(ctx, md)
 	if name != "meta-llama/Llama-3-8B" {
 		t.Errorf("expected fallback to spec.model.id %q, got %q", "meta-llama/Llama-3-8B", name)
+	}
+}
+
+func TestGateway_KaitoLlamaCppFallbackRequestsRetry(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	md.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "kaito"}
+	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
+	md.Status.Endpoint = &airunwayv1alpha1.EndpointStatus{
+		Service: "nonexistent-svc",
+		Port:    8080,
+	}
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md)
+	ctx := context.Background()
+
+	resolution := r.resolveModelNameResolution(ctx, md)
+	if resolution.name != "meta-llama/Llama-3-8B" {
+		t.Fatalf("expected fallback to spec.model.id %q, got %q", "meta-llama/Llama-3-8B", resolution.name)
+	}
+	if !resolution.retry {
+		t.Fatal("expected failed Kaito llama.cpp discovery to request a retry")
+	}
+}
+
+func TestGateway_ModelNameOverrideSkipsRetry(t *testing.T) {
+	scheme := newTestScheme()
+	md := newModelDeployment("test-model", "default")
+	md.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "kaito"}
+	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
+	md.Spec.Gateway = &airunwayv1alpha1.GatewaySpec{
+		ModelName: "stable-name",
+	}
+	detector := fakeDetector(true, "my-gateway", "gateway-ns")
+	r := newTestReconciler(scheme, detector, md)
+	ctx := context.Background()
+
+	resolution := r.resolveModelNameResolution(ctx, md)
+	if resolution.name != "stable-name" {
+		t.Fatalf("expected explicit override %q, got %q", "stable-name", resolution.name)
+	}
+	if resolution.retry {
+		t.Fatal("expected explicit model name override to skip retry")
 	}
 }
 
