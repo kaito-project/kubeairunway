@@ -336,17 +336,62 @@ func (r *DynamoProviderReconciler) createOrUpdateResource(ctx context.Context, r
 		return err
 	}
 
-	// Update existing resource if spec has changed
+	// Update existing resource if spec has changed.
+	// The Dynamo CRD API server adds zero-value defaults (e.g. name: "",
+	// resources: {}) that the provider never sets. Comparing raw specs would
+	// trigger an infinite update loop. Strip server-added zero-values
+	// from the existing spec before comparing.
 	existingSpec, _, _ := unstructured.NestedMap(existing.Object, "spec")
 	newSpec, _, _ := unstructured.NestedMap(resource.Object, "spec")
 
-	if !equality.Semantic.DeepEqual(existingSpec, newSpec) {
+	if !equality.Semantic.DeepEqual(stripEmptyDefaults(existingSpec), stripEmptyDefaults(newSpec)) {
 		logger.Info("Updating resource", "kind", resource.GetKind(), "name", resource.GetName())
 		resource.SetResourceVersion(existing.GetResourceVersion())
 		return r.Update(ctx, resource)
 	}
 
 	return nil
+}
+
+// stripEmptyDefaults recursively removes zero-value fields (empty strings,
+// empty maps) that the Kubernetes API server adds as defaults. This prevents
+// diffs when comparing the provider's desired spec against the
+// server-persisted spec.
+func stripEmptyDefaults(obj map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{}, len(obj))
+	for k, v := range obj {
+		switch val := v.(type) {
+		case string:
+			if val != "" {
+				result[k] = val
+			}
+		case map[string]interface{}:
+			stripped := stripEmptyDefaults(val)
+			if len(stripped) > 0 {
+				result[k] = stripped
+			}
+		case []interface{}:
+			result[k] = stripEmptyDefaultsSlice(val)
+		default:
+			result[k] = v
+		}
+	}
+	return result
+}
+
+func stripEmptyDefaultsSlice(arr []interface{}) []interface{} {
+	result := make([]interface{}, len(arr))
+	for i, v := range arr {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			result[i] = stripEmptyDefaults(val)
+		case []interface{}:
+			result[i] = stripEmptyDefaultsSlice(val)
+		default:
+			result[i] = v
+		}
+	}
+	return result
 }
 
 // syncStatus fetches the upstream resource and syncs its status to the ModelDeployment

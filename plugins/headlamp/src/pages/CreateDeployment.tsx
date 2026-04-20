@@ -232,7 +232,7 @@ export function CreateDeployment() {
         engine,
         mode: 'aggregated',
         provider: selectedRuntime,
-        routerMode: 'none',
+        routerMode: 'default',
         replicas,
         hfTokenSecret: hfSecretConfigured ? 'hf-token-secret' : undefined,
         enforceEager,

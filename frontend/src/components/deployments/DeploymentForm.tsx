@@ -87,7 +87,7 @@ interface DeploymentFormProps {
 
 // Subset of Engine type for traditional GPU inference engines (excludes llamacpp which is KAITO-only)
 type TraditionalEngine = 'vllm' | 'sglang' | 'trtllm'
-type RouterMode = 'none' | 'kv' | 'round-robin'
+type RouterMode = 'default' | 'kv' | 'round-robin'
 type DeploymentMode = 'aggregated' | 'disaggregated'
 type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
 type KaitoComputeType = 'cpu' | 'gpu'
@@ -320,11 +320,11 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     engine: getDefaultEngineForRuntime(defaultRuntime),
     mode: 'aggregated',
     provider: defaultRuntime,
-    routerMode: 'none',
+    routerMode: 'default',
     replicas: 1,
     hfTokenSecret: import.meta.env.VITE_DEFAULT_HF_SECRET || '',
     enforceEager: true,
-    enablePrefixCaching: false,
+    enablePrefixCaching: true,
     trustRemoteCode: false,
     // Disaggregated mode defaults
     prefillReplicas: 1,
@@ -500,7 +500,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         // Reset engine if current one isn't supported by new runtime
         engine: nextEngine,
         // Reset router mode if switching away from Dynamo
-        routerMode: runtime === 'dynamo' ? prev.routerMode : 'none',
+        routerMode: runtime === 'dynamo' ? prev.routerMode : 'default',
         // Reset to aggregated mode if switching to KAITO (disaggregated not supported)
         mode: runtime === 'kaito' ? 'aggregated' : prev.mode,
         providerOverrides: newProviderOverrides,
@@ -1519,8 +1519,8 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                     className="flex gap-4"
                   >
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="none" id="router-none" />
-                      <Label htmlFor="router-none" className="cursor-pointer">None</Label>
+                      <RadioGroupItem value="default" id="router-default" />
+                      <Label htmlFor="router-default" className="cursor-pointer">Default</Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="kv" id="router-kv" />

@@ -70,6 +70,14 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	if spec.Documentation != ProviderDocumentation {
 		t.Errorf("expected documentation %s, got %s", ProviderDocumentation, spec.Documentation)
 	}
+
+	if spec.Capabilities.Gateway.InferencePoolNamePattern != "{name}-pool" {
+		t.Errorf("expected inference pool name pattern to be '{name}-pool', got %s", spec.Capabilities.Gateway.InferencePoolNamePattern)
+	}
+
+	if spec.Capabilities.Gateway.InferencePoolNamespace != "{namespace}" {
+		t.Errorf("expected inference pool namespace to be '{namespace}', got %s", spec.Capabilities.Gateway.InferencePoolNamespace)
+	}
 }
 
 func TestNewProviderConfigManager(t *testing.T) {

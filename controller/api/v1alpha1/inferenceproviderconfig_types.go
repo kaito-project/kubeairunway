@@ -38,6 +38,25 @@ type ProviderCapabilities struct {
 	// gpuSupport indicates if the provider supports GPU inference
 	// +optional
 	GPUSupport bool `json:"gpuSupport,omitempty"`
+
+	// gateway defines the provider's gateway-related capabilities.
+	// +optional
+	Gateway *GatewayCapabilities `json:"gateway,omitempty"`
+}
+
+// GatewayCapabilities defines gateway-related capabilities for a specific provider.
+type GatewayCapabilities struct {
+	// inferencePoolNamePattern is the naming pattern for provider-created pools.
+	// Supports {name} and {namespace} placeholders.
+	// +optional
+	InferencePoolNamePattern string `json:"inferencePoolNamePattern,omitempty"`
+
+	// inferencePoolNamespace is the namespace where the provider creates its InferencePool.
+	// Supports {name} and {namespace} placeholders (resolved from the ModelDeployment).
+	// When the resolved namespace differs from the ModelDeployment namespace, the
+	// controller creates a ReferenceGrant for cross-namespace HTTPRoute routing.
+	// +optional
+	InferencePoolNamespace string `json:"inferencePoolNamespace,omitempty"`
 }
 
 // HelmRepo defines a Helm repository needed for installation

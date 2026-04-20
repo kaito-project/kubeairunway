@@ -25,6 +25,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,6 +54,10 @@ type ModelDeploymentReconciler struct {
 
 	// GatewayDetector checks for Gateway API CRD availability and resolves gateway config
 	GatewayDetector *gateway.Detector
+
+	// ProviderResolver looks up gateway capabilities from InferenceProviderConfig CRs.
+	// When nil, the reconciler treats all providers as having no gateway capabilities.
+	ProviderResolver gateway.ProviderCapabilityResolver
 }
 
 // +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
@@ -62,6 +67,7 @@ type ModelDeploymentReconciler struct {
 // +kubebuilder:rbac:groups=inference.networking.k8s.io,resources=inferencepools,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=httproutes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=referencegrants,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts;configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
@@ -206,6 +212,9 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				if isNoMatchError(err) && r.GatewayDetector != nil {
 					logger.Info("Gateway CRDs may have been removed, refreshing detection cache")
 					r.GatewayDetector.Refresh()
+				} else if apierrors.IsNotFound(err) {
+					// Return an error to trigger exponential backoff retries.
+					return ctrl.Result{}, err
 				}
 				// Non-fatal: don't block overall reconciliation
 			}
