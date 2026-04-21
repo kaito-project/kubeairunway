@@ -98,7 +98,9 @@ func TestGetGatewayCapabilities_ProviderWithNoGateway(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "kaito"},
 		Spec: airunwayv1alpha1.InferenceProviderConfigSpec{
 			Capabilities: &airunwayv1alpha1.ProviderCapabilities{
-				GPUSupport: true,
+				Engines: []airunwayv1alpha1.EngineCapability{
+					{Name: airunwayv1alpha1.EngineTypeVLLM, GPUSupport: true},
+				},
 			},
 		},
 	}
