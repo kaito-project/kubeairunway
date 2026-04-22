@@ -36,7 +36,7 @@ const (
 	RayServiceKind = "RayService"
 
 	// DefaultImage is the default Ray image for vLLM workloads
-	DefaultImage = "rayproject/ray-ml:2.44.0-py311-gpu"
+	DefaultImage = "rayproject/ray-llm:2.55.0-py311-cu128"
 
 	// DefaultHeadCPU is the default CPU limit for the head node
 	DefaultHeadCPU = "4"
