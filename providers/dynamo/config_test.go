@@ -43,32 +43,37 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	if len(spec.SelectionRules) != 4 {
 		t.Fatalf("expected 4 selection rules, got %d", len(spec.SelectionRules))
 	}
+}
 
-	if spec.Installation == nil {
-		t.Fatal("installation should not be nil")
+func TestGetInstallationInfo(t *testing.T) {
+	info := GetInstallationInfo()
+	if info == nil {
+		t.Fatal("expected non-nil installation info")
 	}
-	if len(spec.Installation.HelmCharts) != 1 {
-		t.Fatalf("expected 1 helm chart, got %d", len(spec.Installation.HelmCharts))
+	if info.Description == "" {
+		t.Error("expected non-empty description")
 	}
-	if spec.Installation.HelmCharts[0].Chart != DynamoPlatformChartURL {
-		t.Errorf("expected platform chart URL %q, got %q", DynamoPlatformChartURL, spec.Installation.HelmCharts[0].Chart)
+	if info.DefaultNamespace != "dynamo-system" {
+		t.Errorf("expected defaultNamespace 'dynamo-system', got %s", info.DefaultNamespace)
 	}
-	groveInstall, ok := spec.Installation.HelmCharts[0].Values["global.grove.install"]
+	if len(info.HelmCharts) != 1 {
+		t.Fatalf("expected 1 helm chart, got %d", len(info.HelmCharts))
+	}
+	if info.HelmCharts[0].Chart != DynamoPlatformChartURL {
+		t.Errorf("expected platform chart URL %q, got %q", DynamoPlatformChartURL, info.HelmCharts[0].Chart)
+	}
+	groveInstall, ok := info.HelmCharts[0].Values["global.grove.install"]
 	if !ok {
 		t.Fatal("expected dynamo platform chart to enable Grove by default")
 	}
 	if string(groveInstall.Raw) != "true" {
 		t.Fatalf("expected global.grove.install=true, got %s", string(groveInstall.Raw))
 	}
-	if len(spec.Installation.Steps) != 1 {
-		t.Fatalf("expected 1 installation step, got %d", len(spec.Installation.Steps))
+	if len(info.Steps) != 1 {
+		t.Fatalf("expected 1 installation step, got %d", len(info.Steps))
 	}
-	if spec.Installation.Steps[0].Command != "helm upgrade --install dynamo-platform "+DynamoPlatformChartURL+" --namespace dynamo-system --create-namespace --set-json global.grove.install=true" {
-		t.Fatalf("unexpected installation command: %s", spec.Installation.Steps[0].Command)
-	}
-
-	if spec.Documentation != ProviderDocumentation {
-		t.Errorf("expected documentation %s, got %s", ProviderDocumentation, spec.Documentation)
+	if info.Steps[0].Command != "helm upgrade --install dynamo-platform "+DynamoPlatformChartURL+" --namespace dynamo-system --create-namespace --set-json global.grove.install=true" {
+		t.Fatalf("unexpected installation command: %s", info.Steps[0].Command)
 	}
 
 	if spec.Capabilities.Gateway.InferencePoolNamePattern != "{name}-pool" {

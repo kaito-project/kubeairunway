@@ -65,20 +65,24 @@ describe('Installation Provider Routes', () => {
     });
 
     test('includes helm values in generated commands when present', async () => {
+      const baseInstallation = JSON.parse(mockInferenceProviderConfig.metadata.annotations['airunway.ai/installation']);
       const configWithValues = {
         ...mockInferenceProviderConfig,
-        spec: {
-          ...mockInferenceProviderConfig.spec,
-          installation: {
-            ...mockInferenceProviderConfig.spec.installation,
-            helmCharts: [
-              {
-                ...mockInferenceProviderConfig.spec.installation.helmCharts[0],
-                values: {
-                  'global.grove.install': true,
+        metadata: {
+          ...mockInferenceProviderConfig.metadata,
+          annotations: {
+            ...mockInferenceProviderConfig.metadata.annotations,
+            'airunway.ai/installation': JSON.stringify({
+              ...baseInstallation,
+              helmCharts: [
+                {
+                  ...baseInstallation.helmCharts[0],
+                  values: {
+                    'global.grove.install': true,
+                  },
                 },
-              },
-            ],
+              ],
+            }),
           },
         },
       };

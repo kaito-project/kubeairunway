@@ -18,6 +18,7 @@ package dynamo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -101,52 +102,51 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 		},
 		SelectionRules: []airunwayv1alpha1.SelectionRule{
 			{
-				// Select Dynamo for trtllm engine (only provider supporting it)
 				Condition: "spec.engine.type == 'trtllm'",
 				Priority:  100,
 			},
 			{
-				// Select Dynamo for sglang engine (only provider supporting it)
 				Condition: "spec.engine.type == 'sglang'",
 				Priority:  100,
 			},
 			{
-				// Select Dynamo for disaggregated mode (best support)
 				Condition: "has(spec.serving) && spec.serving.mode == 'disaggregated'",
 				Priority:  90,
 			},
 			{
-				// Default selection for GPU workloads with vLLM
 				Condition: "has(spec.resources.gpu) && spec.resources.gpu.count > 0 && spec.engine.type == 'vllm'",
 				Priority:  50,
 			},
 		},
-		Installation: &airunwayv1alpha1.InstallationInfo{
-			Description:      "NVIDIA Dynamo for high-performance GPU inference",
-			DefaultNamespace: "dynamo-system",
-			HelmRepos: []airunwayv1alpha1.HelmRepo{
-				{Name: "nvidia-ai-dynamo", URL: "https://helm.ngc.nvidia.com/nvidia/ai-dynamo"},
-			},
-			HelmCharts: []airunwayv1alpha1.HelmChart{
-				{
-					Name:            "dynamo-platform",
-					Chart:           DynamoPlatformChartURL,
-					Namespace:       "dynamo-system",
-					CreateNamespace: true,
-					Values: map[string]apiextensionsv1.JSON{
-						"global.grove.install": {Raw: []byte("true")},
-					},
-				},
-			},
-			Steps: []airunwayv1alpha1.InstallationStep{
-				{
-					Title:       "Install Dynamo Platform",
-					Command:     "helm upgrade --install dynamo-platform " + DynamoPlatformChartURL + " --namespace dynamo-system --create-namespace --set-json global.grove.install=true",
-					Description: "Install the Dynamo platform operator v1.1.0-dev.1 with bundled Grove enabled by default. This chart includes the required CRDs.",
+	}
+}
+
+// GetInstallationInfo returns the installation metadata for Dynamo
+func GetInstallationInfo() *airunwayv1alpha1.InstallationInfo {
+	return &airunwayv1alpha1.InstallationInfo{
+		Description:      "NVIDIA Dynamo for high-performance GPU inference",
+		DefaultNamespace: "dynamo-system",
+		HelmRepos: []airunwayv1alpha1.HelmRepo{
+			{Name: "nvidia-ai-dynamo", URL: "https://helm.ngc.nvidia.com/nvidia/ai-dynamo"},
+		},
+		HelmCharts: []airunwayv1alpha1.HelmChart{
+			{
+				Name:            "dynamo-platform",
+				Chart:           DynamoPlatformChartURL,
+				Namespace:       "dynamo-system",
+				CreateNamespace: true,
+				Values: map[string]apiextensionsv1.JSON{
+					"global.grove.install": {Raw: []byte("true")},
 				},
 			},
 		},
-		Documentation: ProviderDocumentation,
+		Steps: []airunwayv1alpha1.InstallationStep{
+			{
+				Title:       "Install Dynamo Platform",
+				Command:     "helm upgrade --install dynamo-platform " + DynamoPlatformChartURL + " --namespace dynamo-system --create-namespace --set-json global.grove.install=true",
+				Description: "Install the Dynamo platform operator v1.1.0-dev.1 with bundled Grove enabled by default. This chart includes the required CRDs.",
+			},
+		},
 	}
 }
 
@@ -154,19 +154,23 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
+	annotations, err := buildAnnotations()
+	if err != nil {
+		return fmt.Errorf("failed to build annotations: %w", err)
+	}
+
 	config := &airunwayv1alpha1.InferenceProviderConfig{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: ProviderConfigName,
+			Name:        ProviderConfigName,
+			Annotations: annotations,
 		},
 		Spec: GetProviderConfigSpec(),
 	}
 
-	// Check if config already exists
 	existing := &airunwayv1alpha1.InferenceProviderConfig{}
-	err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, existing)
+	err = m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, existing)
 
 	if errors.IsNotFound(err) {
-		// Create new config
 		logger.Info("Creating InferenceProviderConfig", "name", ProviderConfigName)
 		if err := m.client.Create(ctx, config); err != nil {
 			return fmt.Errorf("failed to create InferenceProviderConfig: %w", err)
@@ -174,8 +178,13 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	} else if err != nil {
 		return fmt.Errorf("failed to get InferenceProviderConfig: %w", err)
 	} else {
-		// Update existing config spec if changed
 		existing.Spec = config.Spec
+		if existing.Annotations == nil {
+			existing.Annotations = make(map[string]string)
+		}
+		for k, v := range annotations {
+			existing.Annotations[k] = v
+		}
 		logger.Info("Updating InferenceProviderConfig", "name", ProviderConfigName)
 		if err := m.client.Update(ctx, existing); err != nil {
 			return fmt.Errorf("failed to update InferenceProviderConfig: %w", err)
@@ -273,4 +282,15 @@ func (m *ProviderConfigManager) StartHeartbeat(ctx context.Context) {
 // Unregister marks the provider as not ready
 func (m *ProviderConfigManager) Unregister(ctx context.Context) error {
 	return m.UpdateStatus(ctx, false)
+}
+
+func buildAnnotations() (map[string]string, error) {
+	installJSON, err := json.Marshal(GetInstallationInfo())
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal installation info: %w", err)
+	}
+	return map[string]string{
+		airunwayv1alpha1.AnnotationInstallation:  string(installJSON),
+		airunwayv1alpha1.AnnotationDocumentation: ProviderDocumentation,
+	}, nil
 }

@@ -5,13 +5,31 @@ import { helmService } from '../services/helm';
 import logger from '../lib/logger';
 
 /**
+ * Parse the installation annotation (JSON) from an InferenceProviderConfig CRD object.
+ */
+function parseInstallationAnnotation(config: any): any {
+  const raw = config.metadata?.annotations?.['airunway.ai/installation'];
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    logger.warn({
+      provider: config.metadata?.name,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }, 'Failed to parse installation annotation');
+    return {};
+  }
+}
+
+/**
  * Extract provider details from an InferenceProviderConfig CRD object.
+ * Installation and documentation metadata are read from metadata.annotations,
+ * not from spec (which only contains controller-reconciled fields).
  */
 function extractProviderDetails(config: any) {
   const name = config.metadata?.name || 'unknown';
-  const spec = config.spec || {};
-  const installation = spec.installation || {};
-  const capabilities = spec.capabilities || {};
+  const installation = parseInstallationAnnotation(config);
+  const capabilities = config.spec?.capabilities || {};
 
   return {
     id: name,

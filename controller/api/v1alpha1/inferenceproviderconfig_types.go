@@ -21,6 +21,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// AnnotationInstallation is the annotation key for provider installation metadata (JSON-encoded InstallationInfo).
+	AnnotationInstallation = "airunway.ai/installation"
+
+	// AnnotationDocumentation is the annotation key for the provider documentation URL.
+	AnnotationDocumentation = "airunway.ai/documentation"
+)
+
 // ProviderCapabilities defines what a provider supports
 type ProviderCapabilities struct {
 	// engines is the list of supported inference engines
@@ -164,14 +172,6 @@ type InferenceProviderConfigSpec struct {
 	// Conditions use CEL (Common Expression Language)
 	// +optional
 	SelectionRules []SelectionRule `json:"selectionRules,omitempty"`
-
-	// installation defines how to install the provider's upstream components
-	// +optional
-	Installation *InstallationInfo `json:"installation,omitempty"`
-
-	// documentation is a URL to the provider documentation
-	// +optional
-	Documentation string `json:"documentation,omitempty"`
 }
 
 // InferenceProviderConfigStatus defines the observed state of InferenceProviderConfig.
