@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -58,6 +60,23 @@ type ModelDeploymentReconciler struct {
 	// ProviderResolver looks up gateway capabilities from InferenceProviderConfig CRs.
 	// When nil, the reconciler treats all providers as having no gateway capabilities.
 	ProviderResolver gateway.ProviderCapabilityResolver
+}
+
+// celEnvOnce lazily initializes a shared CEL environment for evaluating selection rules.
+// The environment is safe to share across goroutines since it only declares the "spec" variable.
+var (
+	celEnvOnce sync.Once
+	celEnvInst *cel.Env
+	celEnvErr  error
+)
+
+func getCELEnv() (*cel.Env, error) {
+	celEnvOnce.Do(func() {
+		celEnvInst, celEnvErr = cel.NewEnv(
+			cel.Variable("spec", cel.DynType),
+		)
+	})
+	return celEnvInst, celEnvErr
 }
 
 // +kubebuilder:rbac:groups=airunway.ai,resources=modeldeployments,verbs=get;list;watch;create;update;patch;delete
@@ -131,9 +150,27 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		md.Status.Phase = airunwayv1alpha1.DeploymentPhasePending
 	}
 
-	// Step 1: Select engine if needed (before validation, since validation needs engine type)
+	// Step 1: List all InferenceProviderConfigs once for use across validation and selection.
+	// This is loaded regardless of EnableProviderSelector because validateSpec needs
+	// provider capabilities to determine whether an engine supports CPU-only inference.
+	var providerConfigs []airunwayv1alpha1.InferenceProviderConfig
+	{
+		var providerConfigList airunwayv1alpha1.InferenceProviderConfigList
+		if err := r.List(ctx, &providerConfigList); err != nil {
+			// If InferenceProviderConfig CRD is not installed, proceed with an empty list.
+			// This allows the controller to run without any providers registered.
+			if !isNoMatchError(err) {
+				logger.Error(err, "Failed to list provider configs")
+				return ctrl.Result{}, err
+			}
+		} else {
+			providerConfigs = providerConfigList.Items
+		}
+	}
+
+	// Step 2: Select engine if needed (before validation, since validation needs engine type)
 	if r.EnableProviderSelector {
-		if err := r.selectEngine(ctx, &md); err != nil {
+		if err := r.selectEngine(ctx, &md, providerConfigs); err != nil {
 			logger.Error(err, "Engine selection failed", "name", md.Name)
 			r.setCondition(&md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
 			md.Status.Message = fmt.Sprintf("Engine selection failed: %s", err.Error())
@@ -141,15 +178,16 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	// Step 2: Inject resolved engine into in-memory spec for CEL evaluation.
-	// This is NOT persisted — only status is patched. It ensures provider selection
-	// CEL rules (e.g., "spec.engine.type == 'vllm'") see the resolved engine type.
-	if md.Spec.Engine.Type == "" && md.Status.Engine != nil {
-		md.Spec.Engine.Type = md.Status.Engine.Type
+	// Step 2: Resolve the engine type for downstream use (CEL evaluation, validation).
+	// Use a local variable instead of mutating md.Spec to avoid any risk of
+	// corrupting the shared informer cache's backing data.
+	resolvedEngineType := md.ResolvedEngineType()
+	if md.Spec.Engine.Type == "" && resolvedEngineType != "" {
+		md.Spec.Engine.Type = resolvedEngineType
 	}
 
 	// Step 4: Validate the spec (uses resolved engine type)
-	if err := r.validateSpec(ctx, &md); err != nil {
+	if err := r.validateSpec(ctx, &md, providerConfigs); err != nil {
 		logger.Error(err, "Validation failed", "name", md.Name)
 		r.setCondition(&md, airunwayv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
 		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
@@ -160,7 +198,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Step 5: Run provider selection if needed
 	if r.EnableProviderSelector {
-		if err := r.selectProvider(ctx, &md); err != nil {
+		if err := r.selectProvider(ctx, &md, providerConfigs); err != nil {
 			logger.Error(err, "Provider selection failed", "name", md.Name)
 			r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionFalse, "SelectionFailed", err.Error())
 			md.Status.Message = fmt.Sprintf("Provider selection failed: %s", err.Error())
@@ -239,7 +277,7 @@ func isNoMatchError(err error) bool {
 }
 
 // validateSpec performs validation on the ModelDeployment spec
-func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, providerConfigs []airunwayv1alpha1.InferenceProviderConfig) error {
 	spec := &md.Spec
 
 	// Validate model.id is required for huggingface source
@@ -255,22 +293,46 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 		return fmt.Errorf("engine.type must be specified or auto-selected from provider capabilities")
 	}
 
-	// Validate GPU requirements for certain engines
+	// Validate GPU requirements based on provider capabilities
 	gpuCount := int32(0)
 	if spec.Resources != nil && spec.Resources.GPU != nil {
 		gpuCount = spec.Resources.GPU.Count
 	}
 
-	switch engineType {
-	case airunwayv1alpha1.EngineTypeVLLM, airunwayv1alpha1.EngineTypeSGLang, airunwayv1alpha1.EngineTypeTRTLLM:
-		// These engines require GPU (unless in disaggregated mode with component-level GPUs)
-		servingMode := airunwayv1alpha1.ServingModeAggregated
-		if spec.Serving != nil && spec.Serving.Mode != "" {
-			servingMode = spec.Serving.Mode
-		}
+	servingMode := airunwayv1alpha1.ServingModeAggregated
+	if spec.Serving != nil && spec.Serving.Mode != "" {
+		servingMode = spec.Serving.Mode
+	}
 
-		if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
+	if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
+		// Check if any registered provider offers CPU support for this engine
+		engineHasCPUSupport := engineSupportsCPU(providerConfigs, engineType)
+		if !engineHasCPUSupport {
 			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", engineType)
+		}
+	}
+
+	// When provider is explicitly specified, validate that it supports the
+	// requested engine + serving mode combination. This catches incompatible
+	// configurations at reconcile time instead of letting them proceed to
+	// the provider controller unvalidated.
+	if spec.Provider != nil && spec.Provider.Name != "" {
+		for _, pc := range providerConfigs {
+			if pc.Name != spec.Provider.Name {
+				continue
+			}
+			caps := pc.Spec.Capabilities
+			if caps == nil {
+				break
+			}
+			engineCap := caps.GetEngineCapability(engineType)
+			if engineCap == nil {
+				return fmt.Errorf("provider %s does not support engine %s", spec.Provider.Name, engineType)
+			}
+			if !caps.SupportsServingMode(engineType, servingMode) {
+				return fmt.Errorf("provider %s does not support %s mode for engine %s", spec.Provider.Name, servingMode, engineType)
+			}
+			break
 		}
 	}
 
@@ -300,8 +362,23 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 	return nil
 }
 
+// engineSupportsCPU checks if any provider in the given list declares CPU support for the engine type.
+// This uses declared capabilities regardless of provider readiness, because validation determines
+// whether a spec is intrinsically valid — not whether a provider is currently available to serve it.
+func engineSupportsCPU(providerConfigs []airunwayv1alpha1.InferenceProviderConfig, engineType airunwayv1alpha1.EngineType) bool {
+	for _, pc := range providerConfigs {
+		if pc.Spec.Capabilities == nil {
+			continue
+		}
+		if pc.Spec.Capabilities.SupportsCPU(engineType) {
+			return true
+		}
+	}
+	return false
+}
+
 // selectEngine auto-selects the engine type from provider capabilities if not specified
-func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, providerConfigs []airunwayv1alpha1.InferenceProviderConfig) error {
 	logger := log.FromContext(ctx)
 
 	// If engine type is explicitly specified, just record it in status
@@ -319,24 +396,11 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 		return nil
 	}
 
-	// List all InferenceProviderConfigs
-	var providerConfigs airunwayv1alpha1.InferenceProviderConfigList
-	if err := r.List(ctx, &providerConfigs); err != nil {
-		return fmt.Errorf("failed to list provider configs: %w", err)
-	}
-
-	if len(providerConfigs.Items) == 0 {
+	if len(providerConfigs) == 0 {
 		return fmt.Errorf("no providers registered (InferenceProviderConfig resources not found)")
 	}
 
-	// Collect supported engines from ready providers, filtering by compatibility
-	// GPU-requiring engines cannot run on CPU-only deployments
-	gpuRequiringEngines := map[airunwayv1alpha1.EngineType]bool{
-		airunwayv1alpha1.EngineTypeVLLM:   true,
-		airunwayv1alpha1.EngineTypeSGLang: true,
-		airunwayv1alpha1.EngineTypeTRTLLM: true,
-	}
-
+	// Collect supported engines from ready providers, filtering by per-engine compatibility
 	// Determine deployment characteristics
 	hasGPU := false
 	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
@@ -353,40 +417,29 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 
 	availableEngines := make(map[airunwayv1alpha1.EngineType]string) // engine -> provider name
 
-	for _, pc := range providerConfigs.Items {
+	for _, pc := range providerConfigs {
 		if !pc.Status.Ready || pc.Spec.Capabilities == nil {
 			continue
 		}
 
 		caps := pc.Spec.Capabilities
 
-		// Filter by GPU/CPU compatibility
-		if hasGPU && !caps.GPUSupport {
-			continue
-		}
-		if !hasGPU && !caps.CPUSupport {
-			continue
-		}
-
-		// Filter by serving mode compatibility
-		servingModeSupported := false
-		for _, sm := range caps.ServingModes {
-			if sm == servingMode {
-				servingModeSupported = true
-				break
-			}
-		}
-		if !servingModeSupported {
-			continue
-		}
-
-		for _, engine := range caps.Engines {
-			// Skip GPU-requiring engines for CPU-only deployments
-			if !hasGPU && gpuRequiringEngines[engine] {
+		for _, engineCap := range caps.Engines {
+			// Filter by GPU/CPU compatibility at the engine level
+			if hasGPU && !engineCap.GPUSupport {
 				continue
 			}
-			if _, exists := availableEngines[engine]; !exists {
-				availableEngines[engine] = pc.Name
+			if !hasGPU && !engineCap.CPUSupport {
+				continue
+			}
+
+			// Filter by serving mode compatibility at the engine level
+			if !caps.SupportsServingMode(engineCap.Name, servingMode) {
+				continue
+			}
+
+			if _, exists := availableEngines[engineCap.Name]; !exists {
+				availableEngines[engineCap.Name] = pc.Name
 			}
 		}
 	}
@@ -414,8 +467,14 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 		}
 	}
 
-	// Fallback: pick any available engine (shouldn't happen if preference list is complete)
-	for engine, providerName := range availableEngines {
+	// Fallback: pick any available engine deterministically (shouldn't happen if preference list is complete)
+	sortedEngines := make([]airunwayv1alpha1.EngineType, 0, len(availableEngines))
+	for engine := range availableEngines {
+		sortedEngines = append(sortedEngines, engine)
+	}
+	sort.Slice(sortedEngines, func(i, j int) bool { return sortedEngines[i] < sortedEngines[j] })
+	for _, engine := range sortedEngines {
+		providerName := availableEngines[engine]
 		md.Status.Engine = &airunwayv1alpha1.EngineStatus{
 			Type:           engine,
 			SelectedReason: fmt.Sprintf("auto-selected from provider %s capabilities", providerName),
@@ -428,7 +487,7 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 }
 
 // selectProvider runs the provider selection algorithm
-func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
+func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, providerConfigs []airunwayv1alpha1.InferenceProviderConfig) error {
 	logger := log.FromContext(ctx)
 
 	// Skip if provider is already selected (either in spec or status)
@@ -439,19 +498,13 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *airu
 		return nil // Provider already selected
 	}
 
-	// List all InferenceProviderConfigs
-	var providerConfigs airunwayv1alpha1.InferenceProviderConfigList
-	if err := r.List(ctx, &providerConfigs); err != nil {
-		return fmt.Errorf("failed to list provider configs: %w", err)
-	}
-
-	if len(providerConfigs.Items) == 0 {
+	if len(providerConfigs) == 0 {
 		return fmt.Errorf("no providers registered (InferenceProviderConfig resources not found)")
 	}
 
 	// Filter to ready providers
 	var readyProviders []airunwayv1alpha1.InferenceProviderConfig
-	for _, pc := range providerConfigs.Items {
+	for _, pc := range providerConfigs {
 		if pc.Status.Ready {
 			readyProviders = append(readyProviders, pc)
 		}
@@ -515,39 +568,26 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *airunwayv1alpha1.M
 			continue
 		}
 
-		// Check engine support
-		engineSupported := false
-		for _, e := range caps.Engines {
-			if e == engineType {
-				engineSupported = true
-				break
-			}
-		}
-		if !engineSupported {
+		// Check engine support and get per-engine capabilities
+		engineCap := caps.GetEngineCapability(engineType)
+		if engineCap == nil {
 			continue
 		}
 
-		// Check GPU/CPU support
-		if hasGPU && !caps.GPUSupport {
+		// Check GPU/CPU support for this specific engine
+		if hasGPU && !engineCap.GPUSupport {
 			continue
 		}
-		if !hasGPU && !caps.CPUSupport {
+		if !hasGPU && !engineCap.CPUSupport {
 			continue
 		}
 
-		// Check serving mode support
+		// Check serving mode support for this specific engine
 		servingMode := airunwayv1alpha1.ServingModeAggregated
 		if spec.Serving != nil && spec.Serving.Mode != "" {
 			servingMode = spec.Serving.Mode
 		}
-		servingModeSupported := false
-		for _, sm := range caps.ServingModes {
-			if sm == servingMode {
-				servingModeSupported = true
-				break
-			}
-		}
-		if !servingModeSupported {
+		if !caps.SupportsServingMode(engineType, servingMode) {
 			continue
 		}
 
@@ -709,9 +749,7 @@ func specToMap(spec *airunwayv1alpha1.ModelDeploymentSpec) (map[string]any, erro
 
 // evaluateCEL evaluates a CEL expression against the spec map
 func evaluateCEL(expression string, specMap map[string]any) (bool, error) {
-	env, err := cel.NewEnv(
-		cel.Variable("spec", cel.DynType),
-	)
+	env, err := getCELEnv()
 	if err != nil {
 		return false, fmt.Errorf("failed to create CEL environment: %w", err)
 	}

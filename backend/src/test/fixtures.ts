@@ -154,8 +154,10 @@ export const mockInferenceProviderConfig = {
   metadata: { name: 'kaito' },
   spec: {
     capabilities: {
-      engines: ['vllm', 'llamacpp'],
-      servingModes: ['aggregated'],
+      engines: [
+        { name: 'vllm', servingModes: ['aggregated'], gpuSupport: true, cpuSupport: false },
+        { name: 'llamacpp', servingModes: ['aggregated'], gpuSupport: true, cpuSupport: true },
+      ],
     },
     installation: {
       description: 'KAITO - Kubernetes AI Toolchain Operator',

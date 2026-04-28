@@ -13,33 +13,29 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	if spec.Capabilities == nil {
 		t.Fatal("expected non-nil capabilities")
 	}
-	if !spec.Capabilities.GPUSupport {
-		t.Error("expected GPU support")
-	}
-	if spec.Capabilities.CPUSupport {
-		t.Error("expected no CPU support")
-	}
 
 	// Engines
 	engines := spec.Capabilities.Engines
 	if len(engines) == 0 {
 		t.Fatal("expected at least one engine")
 	}
-	hasVLLM := false
-	for _, e := range engines {
-		if e == airunwayv1alpha1.EngineTypeVLLM {
-			hasVLLM = true
-		}
+
+	// Verify per-engine capabilities
+	vllmCap := spec.Capabilities.GetEngineCapability(airunwayv1alpha1.EngineTypeVLLM)
+	if vllmCap == nil {
+		t.Fatal("expected vllm engine capability")
 	}
-	if !hasVLLM {
-		t.Error("expected vllm engine support")
+	if !vllmCap.GPUSupport {
+		t.Error("expected vllm GPU support to be true")
+	}
+	if vllmCap.CPUSupport {
+		t.Error("expected vllm CPU support to be false")
 	}
 
-	// Serving modes
-	modes := spec.Capabilities.ServingModes
+	// Serving modes (per-engine)
 	hasAggregated := false
 	hasDisaggregated := false
-	for _, m := range modes {
+	for _, m := range vllmCap.ServingModes {
 		if m == airunwayv1alpha1.ServingModeAggregated {
 			hasAggregated = true
 		}

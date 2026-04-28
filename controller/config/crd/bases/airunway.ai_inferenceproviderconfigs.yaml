@@ -56,50 +56,46 @@ spec:
               capabilities:
                 description: capabilities defines what this provider supports
                 properties:
-                  cpuSupport:
-                    description: cpuSupport indicates if the provider supports CPU-only
-                      inference
-                    type: boolean
                   engines:
                     description: engines is the list of supported inference engines
+                      with per-engine capabilities
                     items:
-                      description: EngineType defines the inference engine type
-                      enum:
-                      - vllm
-                      - sglang
-                      - trtllm
-                      - llamacpp
-                      type: string
+                      description: EngineCapability defines per-engine capability
+                        metadata
+                      properties:
+                        cpuSupport:
+                          description: cpuSupport indicates if this engine supports
+                            CPU-only inference
+                          type: boolean
+                        gpuSupport:
+                          description: gpuSupport indicates if this engine supports
+                            GPU inference
+                          type: boolean
+                        name:
+                          description: name is the inference engine type
+                          enum:
+                          - vllm
+                          - sglang
+                          - trtllm
+                          - llamacpp
+                          type: string
+                        servingModes:
+                          description: servingModes is the list of serving modes this
+                            engine supports
+                          items:
+                            description: ServingMode defines the serving mode
+                            enum:
+                            - aggregated
+                            - disaggregated
+                            type: string
+                          type: array
+                      required:
+                      - name
+                      type: object
                     type: array
-                  gateway:
-                    description: gateway defines the provider's gateway-related capabilities.
-                    properties:
-                      inferencePoolNamePattern:
-                        description: |-
-                          inferencePoolNamePattern is the naming pattern for provider-created pools.
-                          Supports {name} and {namespace} placeholders.
-                        type: string
-                      inferencePoolNamespace:
-                        description: |-
-                          inferencePoolNamespace is the namespace where the provider creates its InferencePool.
-                          Supports {name} and {namespace} placeholders (resolved from the ModelDeployment).
-                          When the resolved namespace differs from the ModelDeployment namespace, the
-                          controller creates a ReferenceGrant for cross-namespace HTTPRoute routing.
-                        type: string
-                    type: object
-                  gpuSupport:
-                    description: gpuSupport indicates if the provider supports GPU
-                      inference
-                    type: boolean
-                  servingModes:
-                    description: servingModes is the list of supported serving modes
-                    items:
-                      description: ServingMode defines the serving mode
-                      enum:
-                      - aggregated
-                      - disaggregated
-                      type: string
-                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
                 type: object
               documentation:
                 description: documentation is a URL to the provider documentation

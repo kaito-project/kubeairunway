@@ -76,17 +76,31 @@ func NewProviderConfigManager(c client.Client, discoveryClients ...discovery.Dis
 func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 	return airunwayv1alpha1.InferenceProviderConfigSpec{
 		Capabilities: &airunwayv1alpha1.ProviderCapabilities{
-			Engines: []airunwayv1alpha1.EngineType{
-				airunwayv1alpha1.EngineTypeVLLM,
-				airunwayv1alpha1.EngineTypeSGLang,
-				airunwayv1alpha1.EngineTypeTRTLLM,
+			Engines: []airunwayv1alpha1.EngineCapability{
+				{
+					Name: airunwayv1alpha1.EngineTypeVLLM,
+					ServingModes: []airunwayv1alpha1.ServingMode{
+						airunwayv1alpha1.ServingModeAggregated,
+						airunwayv1alpha1.ServingModeDisaggregated,
+					},
+					GPUSupport: true,
+				},
+				{
+					Name: airunwayv1alpha1.EngineTypeSGLang,
+					ServingModes: []airunwayv1alpha1.ServingMode{
+						airunwayv1alpha1.ServingModeAggregated,
+						airunwayv1alpha1.ServingModeDisaggregated,
+					},
+					GPUSupport: true,
+				},
+				{
+					Name: airunwayv1alpha1.EngineTypeTRTLLM,
+					ServingModes: []airunwayv1alpha1.ServingMode{
+						airunwayv1alpha1.ServingModeAggregated,
+					},
+					GPUSupport: true,
+				},
 			},
-			ServingModes: []airunwayv1alpha1.ServingMode{
-				airunwayv1alpha1.ServingModeAggregated,
-				airunwayv1alpha1.ServingModeDisaggregated,
-			},
-			CPUSupport: false,
-			GPUSupport: true,
 			Gateway: &airunwayv1alpha1.GatewayCapabilities{
 				// The Dynamo operator creates the InferencePool as
 				// "{DynamoGraphDeployment.metadata.name}-pool" in the same

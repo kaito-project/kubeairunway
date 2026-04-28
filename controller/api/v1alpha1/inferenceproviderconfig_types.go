@@ -21,23 +21,32 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ProviderCapabilities defines what a provider supports
-type ProviderCapabilities struct {
-	// engines is the list of supported inference engines
-	// +optional
-	Engines []EngineType `json:"engines,omitempty"`
+// EngineCapability defines per-engine capability metadata
+type EngineCapability struct {
+	// name is the inference engine type
+	// +kubebuilder:validation:Required
+	Name EngineType `json:"name"`
 
-	// servingModes is the list of supported serving modes
+	// servingModes is the list of serving modes this engine supports
 	// +optional
 	ServingModes []ServingMode `json:"servingModes,omitempty"`
 
-	// cpuSupport indicates if the provider supports CPU-only inference
-	// +optional
-	CPUSupport bool `json:"cpuSupport,omitempty"`
-
-	// gpuSupport indicates if the provider supports GPU inference
+	// gpuSupport indicates if this engine supports GPU inference
 	// +optional
 	GPUSupport bool `json:"gpuSupport,omitempty"`
+
+	// cpuSupport indicates if this engine supports CPU-only inference
+	// +optional
+	CPUSupport bool `json:"cpuSupport,omitempty"`
+}
+
+// ProviderCapabilities defines what a provider supports
+type ProviderCapabilities struct {
+	// engines is the list of supported inference engines with per-engine capabilities
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Engines []EngineCapability `json:"engines,omitempty"`
 
 	// gateway defines the provider's gateway-related capabilities.
 	// +optional
@@ -57,6 +66,68 @@ type GatewayCapabilities struct {
 	// controller creates a ReferenceGrant for cross-namespace HTTPRoute routing.
 	// +optional
 	InferencePoolNamespace string `json:"inferencePoolNamespace,omitempty"`
+}
+
+// HasEngine returns true if the provider supports the given engine type
+func (c *ProviderCapabilities) HasEngine(engine EngineType) bool {
+	return c.GetEngineCapability(engine) != nil
+}
+
+// GetEngineCapability returns the capability for the given engine type, or nil if not found
+func (c *ProviderCapabilities) GetEngineCapability(engine EngineType) *EngineCapability {
+	if c == nil {
+		return nil
+	}
+	for i := range c.Engines {
+		if c.Engines[i].Name == engine {
+			return &c.Engines[i]
+		}
+	}
+	return nil
+}
+
+// SupportsServingMode returns true if the given engine supports the specified serving mode
+func (c *ProviderCapabilities) SupportsServingMode(engine EngineType, mode ServingMode) bool {
+	ec := c.GetEngineCapability(engine)
+	if ec == nil {
+		return false
+	}
+	for _, sm := range ec.ServingModes {
+		if sm == mode {
+			return true
+		}
+	}
+	return false
+}
+
+// SupportsGPU returns true if the given engine supports GPU inference
+func (c *ProviderCapabilities) SupportsGPU(engine EngineType) bool {
+	ec := c.GetEngineCapability(engine)
+	if ec == nil {
+		return false
+	}
+	return ec.GPUSupport
+}
+
+// SupportsCPU returns true if the given engine supports CPU-only inference
+func (c *ProviderCapabilities) SupportsCPU(engine EngineType) bool {
+	ec := c.GetEngineCapability(engine)
+	if ec == nil {
+		return false
+	}
+	return ec.CPUSupport
+}
+
+// EngineNames returns a list of all engine types supported by this provider
+func (c *ProviderCapabilities) EngineNames() []EngineType {
+	if c == nil {
+		return nil
+	}
+	names := make([]EngineType, len(c.Engines))
+	for i, e := range c.Engines {
+		names[i] = e.Name
+	}
+	return names
 }
 
 // HelmRepo defines a Helm repository needed for installation

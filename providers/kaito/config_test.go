@@ -25,20 +25,38 @@ func TestGetProviderConfigSpec(t *testing.T) {
 		t.Fatalf("expected %d engines, got %d", len(expectedEngines), len(spec.Capabilities.Engines))
 	}
 	for i, e := range expectedEngines {
-		if spec.Capabilities.Engines[i] != e {
-			t.Errorf("engine[%d]: expected %s, got %s", i, e, spec.Capabilities.Engines[i])
+		if spec.Capabilities.Engines[i].Name != e {
+			t.Errorf("engine[%d]: expected %s, got %s", i, e, spec.Capabilities.Engines[i].Name)
 		}
 	}
 
-	if len(spec.Capabilities.ServingModes) != 1 || spec.Capabilities.ServingModes[0] != airunwayv1alpha1.ServingModeAggregated {
-		t.Errorf("expected only aggregated serving mode")
+	// Verify per-engine capabilities
+	vllmCap := spec.Capabilities.GetEngineCapability(airunwayv1alpha1.EngineTypeVLLM)
+	if vllmCap == nil {
+		t.Fatal("expected vllm engine capability")
+	}
+	if !vllmCap.GPUSupport {
+		t.Error("expected vllm GPU support to be true")
+	}
+	if vllmCap.CPUSupport {
+		t.Error("expected vllm CPU support to be false")
+	}
+	if len(vllmCap.ServingModes) != 1 || vllmCap.ServingModes[0] != airunwayv1alpha1.ServingModeAggregated {
+		t.Errorf("expected vllm to support only aggregated serving mode")
 	}
 
-	if !spec.Capabilities.CPUSupport {
-		t.Error("expected CPU support to be true")
+	llamaCap := spec.Capabilities.GetEngineCapability(airunwayv1alpha1.EngineTypeLlamaCpp)
+	if llamaCap == nil {
+		t.Fatal("expected llamacpp engine capability")
 	}
-	if !spec.Capabilities.GPUSupport {
-		t.Error("expected GPU support to be true")
+	if !llamaCap.GPUSupport {
+		t.Error("expected llamacpp GPU support to be true")
+	}
+	if !llamaCap.CPUSupport {
+		t.Error("expected llamacpp CPU support to be true")
+	}
+	if len(llamaCap.ServingModes) != 1 || llamaCap.ServingModes[0] != airunwayv1alpha1.ServingModeAggregated {
+		t.Errorf("expected llamacpp to support only aggregated serving mode")
 	}
 
 	if len(spec.SelectionRules) != 2 {
