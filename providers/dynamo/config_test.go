@@ -8,6 +8,8 @@ import (
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -79,6 +81,14 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	if installCommand != "helm upgrade --install dynamo-platform "+DynamoPlatformChartURL+" --namespace dynamo-system --create-namespace --set-json global.grove.install=true" {
 		t.Fatalf("unexpected installation command: %s", installCommand)
 	}
+
+	if spec.Capabilities.Gateway.InferencePoolNamePattern != "{name}-pool" {
+		t.Errorf("expected inference pool name pattern to be '{name}-pool', got %s", spec.Capabilities.Gateway.InferencePoolNamePattern)
+	}
+
+	if spec.Capabilities.Gateway.InferencePoolNamespace != "{namespace}" {
+		t.Errorf("expected inference pool namespace to be '{namespace}', got %s", spec.Capabilities.Gateway.InferencePoolNamespace)
+	}
 }
 
 func TestNewProviderConfigManager(t *testing.T) {
@@ -124,6 +134,36 @@ func TestRegisterExisting(t *testing.T) {
 	err := mgr.Register(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCheckBackendCRDInstalledUsesDiscoveryFreshResults(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = airunwayv1alpha1.AddToScheme(scheme)
+
+	discoveryClient := &fakediscovery.FakeDiscovery{
+		Fake: &k8stesting.Fake{},
+	}
+	discoveryClient.Resources = []*metav1.APIResourceList{
+		{
+			GroupVersion: DynamoAPIGroup + "/" + DynamoAPIVersion,
+			APIResources: []metav1.APIResource{
+				{Name: dynamoGraphDeploymentResource},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	mgr := NewProviderConfigManager(c, discoveryClient)
+
+	if !mgr.checkBackendCRDInstalled() {
+		t.Fatal("expected backend CRD to be detected")
+	}
+
+	discoveryClient.Resources = []*metav1.APIResourceList{}
+
+	if mgr.checkBackendCRDInstalled() {
+		t.Fatal("expected backend CRD removal to be detected on the next check")
 	}
 }
 

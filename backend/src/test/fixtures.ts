@@ -161,13 +161,13 @@ export const mockInferenceProviderConfig = {
       description: 'KAITO - Kubernetes AI Toolchain Operator',
       defaultNamespace: 'kaito-workspace',
       helmRepos: [{ name: 'kaito', url: 'https://kaito-project.github.io/kaito/charts/kaito' }],
-      helmCharts: [{ name: 'workspace', chart: 'kaito/workspace', version: '0.9.0', namespace: 'kaito-workspace', createNamespace: true }],
+      helmCharts: [{ name: 'workspace', chart: 'kaito/workspace', version: '0.10.0', namespace: 'kaito-workspace', createNamespace: true }],
       steps: [{ title: 'Install KAITO', command: 'helm install kaito-workspace kaito/workspace', description: 'Install KAITO operator' }],
     },
   },
   status: {
     ready: true,
-    version: '0.9.0',
+    version: '0.10.0',
   },
 };
 

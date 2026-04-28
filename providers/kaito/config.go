@@ -92,7 +92,7 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 				{
 					Name:            "kaito-workspace",
 					Chart:           "kaito/workspace",
-					Version:         "0.9.0",
+					Version:         "0.10.0",
 					Namespace:       "kaito-workspace",
 					CreateNamespace: true,
 				},
@@ -110,8 +110,8 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 				},
 				{
 					Title:       "Install KAITO Workspace Operator",
-					Command:     "helm upgrade --install kaito-workspace kaito/workspace --version 0.9.0 -n kaito-workspace --create-namespace --set featureGates.disableNodeAutoProvisioning=true --set nvidiaDevicePlugin.enabled=false --set localCSIDriver.useLocalCSIDriver=false --set gpu-feature-discovery.gfd.enabled=false --set gpu-feature-discovery.nfd.master.deploy=false --set gpu-feature-discovery.nfd.worker.deploy=false --set image.repository=docker.io/sozercan/kaito-workspace --set image.tag=v0.9.0-fix --wait",
-					Description: "Install the KAITO workspace operator v0.9.0 with Node Auto-Provisioning disabled (BYO nodes mode), sub-chart dependencies disabled, and patched image to fix webhook panic on non-built-in models (kaito-project/kaito#1824).",
+					Command:     "helm upgrade --install kaito-workspace kaito/workspace --version 0.10.0 -n kaito-workspace --create-namespace --set featureGates.disableNodeAutoProvisioning=true --set nvidiaDevicePlugin.enabled=false --set localCSIDriver.useLocalCSIDriver=false --set gpu-feature-discovery.gfd.enabled=false --set gpu-feature-discovery.nfd.master.deploy=false --set gpu-feature-discovery.nfd.worker.deploy=false --wait",
+					Description: "Install the KAITO workspace operator v0.10.0 with Node Auto-Provisioning disabled (BYO nodes mode), and sub-chart dependencies disabled.",
 				},
 			},
 		},

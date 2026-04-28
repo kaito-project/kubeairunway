@@ -205,7 +205,7 @@ describe('HelmService - Command Building Logic', () => {
       name: 'kaito-workspace',
       chart: 'kaito/workspace',
       namespace: 'kaito-workspace',
-      version: '0.9.0',
+      version: '0.10.0',
       values: {
         featureGates: {
           enableInferenceSetController: true,
