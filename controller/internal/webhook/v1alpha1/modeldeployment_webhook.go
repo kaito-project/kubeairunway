@@ -18,17 +18,30 @@ package v1alpha1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+)
+
+const (
+	// MaxGPUCount is the maximum GPU count allowed per component
+	MaxGPUCount = 64
+	// MaxReplicas is the maximum replica count allowed per component
+	MaxReplicas = 32
+	// MaxCPU is the maximum CPU request allowed (in cores)
+	MaxCPU = "512"
+	// MaxMemory is the maximum memory request allowed
+	MaxMemory = "4Ti"
 )
 
 // nolint:unused
@@ -230,6 +243,40 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *airunwayv1alpha1.Mode
 	if spec.Resources != nil && spec.Resources.GPU != nil {
 		gpuCount = spec.Resources.GPU.Count
 	}
+
+	// Resource ceilings
+	if gpuCount > MaxGPUCount {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("resources", "gpu", "count"),
+			gpuCount,
+			fmt.Sprintf("GPU count exceeds maximum allowed (%d)", MaxGPUCount),
+		))
+	}
+	if spec.Resources != nil {
+		allErrs = append(allErrs, validateResourceQuantity(spec.Resources.CPU, MaxCPU, specPath.Child("resources", "cpu"))...)
+		allErrs = append(allErrs, validateResourceQuantity(spec.Resources.Memory, MaxMemory, specPath.Child("resources", "memory"))...)
+	}
+	if spec.Scaling != nil {
+		if spec.Scaling.Prefill != nil {
+			if spec.Scaling.Prefill.Replicas > MaxReplicas {
+				allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "prefill", "replicas"), spec.Scaling.Prefill.Replicas, fmt.Sprintf("exceeds maximum replicas (%d)", MaxReplicas)))
+			}
+			if spec.Scaling.Prefill.GPU != nil && spec.Scaling.Prefill.GPU.Count > MaxGPUCount {
+				allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "prefill", "gpu", "count"), spec.Scaling.Prefill.GPU.Count, fmt.Sprintf("exceeds maximum GPU count (%d)", MaxGPUCount)))
+			}
+		}
+		if spec.Scaling.Decode != nil {
+			if spec.Scaling.Decode.Replicas > MaxReplicas {
+				allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "decode", "replicas"), spec.Scaling.Decode.Replicas, fmt.Sprintf("exceeds maximum replicas (%d)", MaxReplicas)))
+			}
+			if spec.Scaling.Decode.GPU != nil && spec.Scaling.Decode.GPU.Count > MaxGPUCount {
+				allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "decode", "gpu", "count"), spec.Scaling.Decode.GPU.Count, fmt.Sprintf("exceeds maximum GPU count (%d)", MaxGPUCount)))
+			}
+		}
+	}
+
+	// Validate provider overrides don't contain dangerous fields
+	allErrs = append(allErrs, v.validateOverrides(spec, specPath)...)
 
 	servingMode := airunwayv1alpha1.ServingModeAggregated
 	if spec.Serving != nil && spec.Serving.Mode != "" {
@@ -690,5 +737,80 @@ func (v *ModelDeploymentCustomValidator) validateStorage(obj *airunwayv1alpha1.M
 		))
 	}
 
+	return allErrs
+}
+
+// blockedOverrideKeys are fields that cannot be set via spec.provider.overrides
+// because they could escalate privileges or bypass security controls.
+var blockedOverrideKeys = []string{
+	"securityContext",
+	"serviceAccountName",
+	"serviceAccount",
+	"hostNetwork",
+	"hostPID",
+	"hostIPC",
+	"automountServiceAccountToken",
+	"nodeName",
+	"priorityClassName",
+	"runtimeClassName",
+}
+
+// validateOverrides checks that provider overrides don't contain dangerous fields
+func (v *ModelDeploymentCustomValidator) validateOverrides(spec *airunwayv1alpha1.ModelDeploymentSpec, specPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+
+	if spec.Provider == nil || spec.Provider.Overrides == nil || spec.Provider.Overrides.Raw == nil {
+		return allErrs
+	}
+
+	var overrideMap map[string]interface{}
+	if err := json.Unmarshal(spec.Provider.Overrides.Raw, &overrideMap); err != nil {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("provider", "overrides"),
+			string(spec.Provider.Overrides.Raw),
+			"overrides must be valid JSON",
+		))
+		return allErrs
+	}
+
+	allErrs = append(allErrs, checkBlockedKeys(overrideMap, specPath.Child("provider", "overrides"), "")...)
+
+	return allErrs
+}
+
+// checkBlockedKeys recursively checks for blocked keys in a nested map
+func checkBlockedKeys(m map[string]interface{}, fldPath *field.Path, prefix string) field.ErrorList {
+	var allErrs field.ErrorList
+	for key, val := range m {
+		for _, blocked := range blockedOverrideKeys {
+			if key == blocked {
+				allErrs = append(allErrs, field.Forbidden(
+					fldPath.Child(key),
+					fmt.Sprintf("overriding %q is not allowed for security reasons", key),
+				))
+			}
+		}
+		if nested, ok := val.(map[string]interface{}); ok {
+			allErrs = append(allErrs, checkBlockedKeys(nested, fldPath.Child(key), prefix+key+".")...)
+		}
+	}
+	return allErrs
+}
+
+// validateResourceQuantity validates that a resource string doesn't exceed a maximum
+func validateResourceQuantity(value string, max string, fldPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+	if value == "" {
+		return allErrs
+	}
+	qty, err := resource.ParseQuantity(value)
+	if err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath, value, "invalid resource quantity"))
+		return allErrs
+	}
+	maxQty := resource.MustParse(max)
+	if qty.Cmp(maxQty) > 0 {
+		allErrs = append(allErrs, field.Invalid(fldPath, value, fmt.Sprintf("exceeds maximum allowed (%s)", max)))
+	}
 	return allErrs
 }
