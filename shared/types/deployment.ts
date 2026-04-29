@@ -68,6 +68,7 @@ export interface DeploymentConfig {
   kaitoResourceType?: KaitoResourceType;
   providerOverrides?: Record<string, unknown>;
   storage?: StorageSpec;
+  gatewayEnabled?: boolean;
 }
 
 export interface ModelSpec {
@@ -137,6 +138,12 @@ export interface SecretSpec {
   custom?: string[];
 }
 
+export interface GatewaySpec {
+  enabled?: boolean;
+  modelName?: string;
+  httpRouteRef?: string;
+}
+
 export interface ModelDeploymentSpec {
   model: ModelSpec;
   provider?: ProviderSpec;
@@ -148,6 +155,7 @@ export interface ModelDeploymentSpec {
   env?: Record<string, string>;
   podTemplate?: PodTemplateSpec;
   secrets?: SecretSpec;
+  gateway?: GatewaySpec;
 }
 
 export interface ReplicaStatus {
@@ -545,6 +553,12 @@ export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeployment
   if (config.storage?.volumes && config.storage.volumes.length > 0) {
     spec.model.storage = {
       volumes: config.storage.volumes,
+    };
+  }
+
+  if (config.gatewayEnabled !== undefined) {
+    spec.gateway = {
+      enabled: config.gatewayEnabled,
     };
   }
 

@@ -208,6 +208,54 @@ describe('Deployment Routes', () => {
       expect(data.resources[0].manifest.spec.resources).toBeUndefined();
       expect(data.resources[0].manifest.spec.engine.type).toBe('llamacpp');
     });
+
+    test('omits spec.gateway when gatewayEnabled is not set', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validDeploymentBody),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.gateway).toBeUndefined();
+    });
+
+    test('emits spec.gateway.enabled=true when gatewayEnabled is true', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validDeploymentBody, gatewayEnabled: true }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.gateway).toEqual({ enabled: true });
+    });
+
+    test('emits spec.gateway.enabled=false when gatewayEnabled is false', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validDeploymentBody, gatewayEnabled: false }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.gateway).toEqual({ enabled: false });
+    });
   });
 
   describe('POST /api/deployments - storage validation', () => {

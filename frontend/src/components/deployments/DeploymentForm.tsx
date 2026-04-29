@@ -11,6 +11,7 @@ import { useConfetti } from '@/components/ui/confetti'
 import { useCreateDeployment, type DeploymentConfig } from '@/hooks/useDeployments'
 import { useHuggingFaceStatus, useGgufFiles } from '@/hooks/useHuggingFace'
 import { usePremadeModels } from '@/hooks/useAikit'
+import { useGatewayStatus } from '@/hooks/useGateway'
 import { useToast } from '@/hooks/useToast'
 import { generateDeploymentName, cn } from '@/lib/utils'
 import { type Model, type DetailedClusterCapacity, type AutoscalerDetectionResult, type RuntimeStatus, type PremadeModel, type AIConfiguratorResult, aikitApi, type Engine, type KaitoResourceType } from '@/lib/api'
@@ -197,6 +198,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   const createDeployment = useCreateDeployment()
   const { data: hfStatus } = useHuggingFaceStatus()
   const { data: premadeModels } = usePremadeModels()
+  const { data: gatewayInfo } = useGatewayStatus()
   const formRef = useRef<HTMLFormElement>(null)
   const { trigger: triggerConfetti, ConfettiComponent } = useConfetti(2500)
 
@@ -349,6 +351,15 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hfStatus?.configured])
+
+  // Default gatewayEnabled to true once we know a gateway is available,
+  // so the manifest preview reflects the on-by-default UI state.
+  useEffect(() => {
+    if (gatewayInfo?.available && config.gatewayEnabled === undefined) {
+      setConfig(prev => ({ ...prev, gatewayEnabled: true }))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gatewayInfo?.available])
 
   // Set initial GPU value from recommendation when component mounts
   useEffect(() => {
@@ -1045,15 +1056,33 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             <summary className="text-sm font-medium cursor-pointer text-muted-foreground hover:text-foreground">
               Advanced Settings
             </summary>
-            <div className="mt-3 space-y-2">
-              <Label htmlFor="namespace">Namespace</Label>
-              <Input
-                id="namespace"
-                value={config.namespace}
-                onChange={(e) => updateConfig('namespace', e.target.value)}
-                placeholder={RUNTIME_INFO[selectedRuntime].defaultNamespace}
-                required
-              />
+            <div className="mt-3 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="namespace">Namespace</Label>
+                <Input
+                  id="namespace"
+                  value={config.namespace}
+                  onChange={(e) => updateConfig('namespace', e.target.value)}
+                  placeholder={RUNTIME_INFO[selectedRuntime].defaultNamespace}
+                  required
+                />
+              </div>
+
+              {gatewayInfo?.available && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="gateway-enabled">Gateway routing</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Route requests to this model through the cluster gateway. Defaults to enabled when a gateway is detected.
+                    </p>
+                  </div>
+                  <Switch
+                    id="gateway-enabled"
+                    checked={config.gatewayEnabled ?? true}
+                    onCheckedChange={(checked) => updateConfig('gatewayEnabled', checked)}
+                  />
+                </div>
+              )}
             </div>
           </details>
         </div>

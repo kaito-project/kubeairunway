@@ -226,6 +226,13 @@ export const handlers = [
     })
   }),
 
+  // Gateway resource status (used by useGatewayStatus to drive UI gating)
+  http.get(`${API_BASE}/gateway/status`, () => {
+    return HttpResponse.json({
+      available: false,
+    })
+  }),
+
   // HuggingFace OAuth API
   http.get(`${API_BASE}/oauth/huggingface/config`, () => {
     return HttpResponse.json({

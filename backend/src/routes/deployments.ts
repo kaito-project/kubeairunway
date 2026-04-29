@@ -100,6 +100,7 @@ const createDeploymentSchema = z.object({
   imageRef: z.string().optional(),
   computeType: z.enum(['cpu', 'gpu']).optional(),
   maxModelLen: z.number().int().positive().optional(),
+  gatewayEnabled: z.boolean().optional(),
   storage: storageSchema,
 }).superRefine((data, ctx) => {
   const volumes = data.storage?.volumes;
