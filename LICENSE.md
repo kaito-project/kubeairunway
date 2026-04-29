@@ -185,7 +185,7 @@
       comment syntax for the file format. Please also get an in-depth
       understanding of the text before using it.
 
-   Copyright 2026 [owner]
+   Copyright 2026 Microsoft Corporation
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
