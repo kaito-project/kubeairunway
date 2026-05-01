@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsPage } from './SettingsPage'
@@ -243,6 +243,35 @@ describe('SettingsPage', () => {
     expect(within(installationPanel as HTMLElement).getByText('Operator Running')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^uninstall$/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /install kuberay/i })).toBeInTheDocument()
+  })
+
+  it('keeps a runtime in a starting state after install command succeeds but operator is not ready yet', async () => {
+    mutateAsync.mockResolvedValueOnce({
+      success: true,
+      message: 'Kuberay installed successfully',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=runtimes']}>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByText('Kuberay'))
+    fireEvent.click(screen.getByRole('button', { name: /install kuberay/i }))
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith({
+        title: 'Installation Started',
+        description: 'Kuberay installed successfully. Waiting for the runtime service to become ready.',
+      })
+    })
+
+    const installationPanel = screen.getByText('Kuberay Installation').closest('.rounded-2xl')
+    expect(within(installationPanel as HTMLElement).getByText('Starting')).toBeInTheDocument()
+    expect(within(installationPanel as HTMLElement).getByText('Install command completed. Waiting for the runtime service to become ready...')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /install kuberay/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /checking runtime/i })).toBeDisabled()
   })
 
   it('uses success badge styling for readable integration connection states', () => {

@@ -79,6 +79,7 @@ export function SettingsPage() {
   // Runtime installation state
   const [selectedRuntime, setSelectedRuntime] = useState<RuntimeId | null>(null)
   const [isInstalling, setIsInstalling] = useState(false)
+  const [pendingInstallRuntime, setPendingInstallRuntime] = useState<RuntimeId | null>(null)
   const [isUninstalling, setIsUninstalling] = useState(false)
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
 
@@ -123,7 +124,8 @@ export function SettingsPage() {
     try {
       const result = await installProvider.mutateAsync(providerId)
       if (result.success) {
-        toast({ title: 'Installation Complete', description: result.message })
+        setPendingInstallRuntime(providerId)
+        toast({ title: 'Installation Started', description: `${result.message}. Waiting for the runtime service to become ready.` })
         refetchInstallation()
         refetchRuntimesStatus()
       } else {
@@ -142,6 +144,7 @@ export function SettingsPage() {
     try {
       const result = await uninstallProvider.mutateAsync(providerId)
       if (result.success) {
+        setPendingInstallRuntime((current) => current === providerId ? null : current)
         toast({ title: 'Uninstall Complete', description: result.message })
         refetchInstallation()
         refetchRuntimesStatus()
@@ -161,6 +164,24 @@ export function SettingsPage() {
   }
 
   const isInstalled = installationStatus?.installed ?? false
+  const isWaitingForInstall = pendingInstallRuntime === effectiveRuntime && !isInstalled
+
+  useEffect(() => {
+    if (pendingInstallRuntime === effectiveRuntime && isInstalled) {
+      setPendingInstallRuntime(null)
+    }
+  }, [effectiveRuntime, isInstalled, pendingInstallRuntime])
+
+  useEffect(() => {
+    if (!isWaitingForInstall) return
+
+    const intervalId = window.setInterval(() => {
+      refetchInstallation()
+      refetchRuntimesStatus()
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [isWaitingForInstall, refetchInstallation, refetchRuntimesStatus])
 
   if (settingsLoading || clusterLoading || runtimesLoading) {
     return (
@@ -442,6 +463,11 @@ export function SettingsPage() {
                           <CheckCircle className="h-4 w-4" />
                           Installed
                         </Badge>
+                      ) : pendingInstallRuntime === runtime.id ? (
+                        <span className="text-cyan-400 text-sm flex items-center gap-1">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Starting
+                        </span>
                       ) : (
                         <span className="text-muted-foreground text-sm flex items-center gap-1">
                           <XCircle className="h-4 w-4 text-red-500" />
@@ -504,6 +530,11 @@ export function SettingsPage() {
                     <CheckCircle className="h-4 w-4" />
                     Installed
                   </Badge>
+                ) : isWaitingForInstall ? (
+                  <span className="text-cyan-400 text-sm flex items-center gap-1">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Starting
+                  </span>
                 ) : (
                   <span className="text-muted-foreground text-sm flex items-center gap-1">
                     <XCircle className="h-4 w-4 text-red-500" />
@@ -512,7 +543,9 @@ export function SettingsPage() {
                 )}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {installationStatus?.message || 'Checking installation status...'}
+                {isWaitingForInstall
+                  ? 'Install command completed. Waiting for the runtime service to become ready...'
+                  : installationStatus?.message || 'Checking installation status...'}
               </p>
             </div>
             <div className="space-y-4">
@@ -545,13 +578,18 @@ export function SettingsPage() {
                     {!isInstalled && (
                       <Button
                         onClick={() => handleInstall(effectiveRuntime)}
-                        disabled={isInstalling || !helmAvailable || !clusterStatus?.connected}
+                        disabled={isInstalling || isWaitingForInstall || !helmAvailable || !clusterStatus?.connected}
                         className="flex items-center gap-2"
                       >
                         {isInstalling ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin" />
                             Installing...
+                          </>
+                        ) : isWaitingForInstall ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Checking runtime...
                           </>
                         ) : (
                           <>
