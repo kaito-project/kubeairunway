@@ -104,7 +104,7 @@ const INSTALLER_PERMISSION_GUIDANCE = 'Automatic installation requires elevated 
 
 function isInstallerPermissionError(output?: string): boolean {
   if (!output) return false;
-  return /\bforbidden\b|cannot (?:create|update|patch|delete|get|list|watch)|is forbidden|attempting to grant RBAC permissions not currently held|requires.*(?:permission|privilege)|\b(?:bind|escalate)\b/i.test(output);
+  return /\bforbidden\b|cannot (?:create|update|patch|delete|get|list|watch)|is forbidden|attempting to grant RBAC permissions not currently held|requires.*(?:permission|privilege)/i.test(output);
 }
 
 function installationFailureStatus(output?: string): 403 | 500 {

@@ -496,6 +496,33 @@ describe('Installation Provider Routes', () => {
       expect(data.error.message).toContain('optional dashboard installer permissions manifest');
     });
 
+
+    test('does not show installer RBAC guidance for unrelated errors mentioning bind', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig),
+        mockServiceMethod(helmService, 'checkHelmAvailable', async () => ({ available: true, version: '3.14.0' })),
+        mockServiceMethod(helmService, 'installProvider', async () => ({
+          success: false,
+          results: [{
+            step: 'install-bind-test',
+            result: {
+              success: false,
+              stdout: '',
+              stderr: 'release bind-test failed: timed out waiting for condition',
+              exitCode: 1,
+            },
+          }],
+        })),
+      );
+
+      const res = await app.request('/api/installation/providers/kaito/install', { method: 'POST' });
+      expect(res.status).toBe(500);
+
+      const data = await res.json();
+      expect(data.error.message).toContain('release bind-test failed');
+      expect(data.error.message).not.toContain('Automatic installation requires elevated installer permissions');
+    });
+
   });
 
   // ==========================================================================
