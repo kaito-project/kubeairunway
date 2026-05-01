@@ -1526,38 +1526,59 @@ class KubernetesService {
    * lists InferencePool resources, and finds gateway endpoint from Gateway resources.
    */
   async getGatewayStatus(): Promise<GatewayInfo> {
-    // Check if InferencePool CRD exists
+    // Check if InferencePool CRD exists - without it, gateway integration is not supported.
     const inferencePoolCrdExists = await this.checkCRDExists('inferencepools.inference.networking.k8s.io');
     if (!inferencePoolCrdExists) {
       return { available: false };
     }
 
-    // Try to find a Gateway endpoint
-    let endpoint: string | undefined;
+    // The Gateway API CRD must exist before we can list Gateway resources.
     const gatewayCrdExists = await this.checkCRDExists('gateways.gateway.networking.k8s.io');
-    if (gatewayCrdExists) {
-      try {
-        const response = await withRetry(
-          () => this.customObjectsApi.listClusterCustomObject(
-            'gateway.networking.k8s.io',
-            'v1',
-            'gateways'
-          ),
-          { operationName: 'listGateways', maxRetries: 1 }
-        );
-        const items = (response.body as { items?: Array<{ status?: { addresses?: Array<{ value?: string }> } }> }).items || [];
-        for (const gw of items) {
-          const addr = gw.status?.addresses?.[0]?.value;
-          if (addr) {
-            endpoint = addr;
-            break;
-          }
-        }
-      } catch (error: any) {
-        logger.debug({ error: error?.message }, 'Could not list Gateway resources');
-      }
+    if (!gatewayCrdExists) {
+      return { available: false };
     }
 
+    // "Available" means a routable Gateway exists - mirror the controller's
+    // resolveGatewayConfig selection so the UI matches what the controller will
+    // actually pick when reconciling a ModelDeployment with gateway.enabled=true.
+    type GatewayItem = {
+      metadata?: { name?: string; namespace?: string; labels?: Record<string, string> };
+      status?: { addresses?: Array<{ value?: string }> };
+    };
+    let items: GatewayItem[] = [];
+    try {
+      const response = await withRetry(
+        () => this.customObjectsApi.listClusterCustomObject(
+          'gateway.networking.k8s.io',
+          'v1',
+          'gateways'
+        ),
+        { operationName: 'listGateways', maxRetries: 1 }
+      );
+      items = (response.body as { items?: GatewayItem[] }).items || [];
+    } catch (error: any) {
+      logger.debug({ error: error?.message }, 'Could not list Gateway resources');
+      return { available: false };
+    }
+
+    if (items.length === 0) {
+      return { available: false };
+    }
+
+    const INFERENCE_GATEWAY_LABEL = 'airunway.ai/inference-gateway';
+    let selected: GatewayItem | undefined;
+    if (items.length === 1) {
+      selected = items[0];
+    } else {
+      // Multiple Gateways: require the controller's inference-gateway label to disambiguate.
+      const labeled = items.filter((gw) => gw.metadata?.labels?.[INFERENCE_GATEWAY_LABEL] === 'true');
+      if (labeled.length === 0) {
+        return { available: false };
+      }
+      selected = labeled[0];
+    }
+
+    const endpoint = selected?.status?.addresses?.[0]?.value;
     return { available: true, endpoint };
   }
 
