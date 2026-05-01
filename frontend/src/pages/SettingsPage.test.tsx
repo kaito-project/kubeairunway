@@ -27,6 +27,17 @@ let mockHfStatus: {
   configured: false,
 }
 
+let mockGatewayStatus = {
+  gatewayApiInstalled: false,
+  inferenceExtInstalled: false,
+  gatewayAvailable: false,
+  installCommands: [] as string[],
+  message: '',
+  pinnedVersion: 'v1.3.1',
+  gatewayApiVersion: undefined as string | undefined,
+  inferenceExtVersion: undefined as string | undefined,
+}
+
 vi.mock('@/hooks/useSettings', () => ({
   useSettings: () => ({ isLoading: false }),
 }))
@@ -112,13 +123,7 @@ vi.mock('@/hooks/useGpuOperator', () => ({
 
 vi.mock('@/hooks/useGateway', () => ({
   useGatewayCRDStatus: () => ({
-    data: {
-      gatewayApiInstalled: false,
-      inferenceExtInstalled: false,
-      gatewayAvailable: false,
-      installCommands: [],
-      message: '',
-    },
+    data: mockGatewayStatus,
     isLoading: false,
     refetch,
   }),
@@ -170,6 +175,16 @@ describe('SettingsPage', () => {
     mockHfStatus = {
       configured: false,
     }
+    mockGatewayStatus = {
+      gatewayApiInstalled: false,
+      inferenceExtInstalled: false,
+      gatewayAvailable: false,
+      installCommands: [],
+      message: '',
+      pinnedVersion: 'v1.3.1',
+      gatewayApiVersion: undefined,
+      inferenceExtVersion: undefined,
+    }
   })
 
   it('renders runtime cards without inline accent border styles', () => {
@@ -212,6 +227,29 @@ describe('SettingsPage', () => {
 
     expect(screen.getByText('GPUs Enabled')).toHaveClass('bg-green-500/15', 'text-green-600', 'dark:text-green-400')
     expect(screen.getByText('Connected')).toHaveClass('bg-green-500/15', 'text-green-600', 'dark:text-green-400')
+  })
+
+  it('shows the installed Inference Extension version instead of the pinned install version', () => {
+    mockGatewayStatus = {
+      gatewayApiInstalled: true,
+      inferenceExtInstalled: true,
+      gatewayAvailable: false,
+      installCommands: [],
+      message: 'Gateway API and Inference Extension CRDs are installed. No active gateway detected.',
+      pinnedVersion: 'v1.3.1',
+      gatewayApiVersion: undefined,
+      inferenceExtVersion: 'v1.5.0',
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=integrations']}>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+
+    const inferenceExtensionLabel = screen.getByText('Inference Extension').closest('div')
+    expect(inferenceExtensionLabel).toHaveTextContent('(v1.5.0)')
+    expect(inferenceExtensionLabel).not.toHaveTextContent('v1.3.1')
   })
 
   it('uses the Hugging Face emoji on the connect button', () => {

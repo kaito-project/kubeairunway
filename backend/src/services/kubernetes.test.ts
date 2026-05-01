@@ -1,6 +1,57 @@
 import { describe, test, expect } from 'bun:test';
-import { toPodStatus, type ClusterGpuCapacity, type NodeGpuInfo, type GPUAvailability, type GPUOperatorStatus } from './kubernetes';
+import { extractCRDVersionFromAnnotations, toPodStatus, type ClusterGpuCapacity, type NodeGpuInfo, type GPUAvailability, type GPUOperatorStatus } from './kubernetes';
 import { toDeploymentStatus, type ClusterStatus, type PodStatus, type DeploymentStatus, type PodPhase, type ModelDeployment } from '@airunway/shared';
+
+
+describe('KubernetesService - CRD Version Annotation Extraction', () => {
+  test('extracts and trims the Inference Extension bundle version from a raw CRD object', () => {
+    const crd = {
+      metadata: {
+        annotations: {
+          'inference.networking.k8s.io/bundle-version': ' v1.5.0 ',
+        },
+      },
+    };
+
+    expect(extractCRDVersionFromAnnotations(crd, [
+      'inference.networking.k8s.io/bundle-version',
+      'app.kubernetes.io/version',
+    ])).toBe('v1.5.0');
+  });
+
+  test('extracts the Gateway API version from a Kubernetes response wrapper', () => {
+    const response = {
+      body: {
+        metadata: {
+          annotations: {
+            'gateway.networking.k8s.io/bundle-version': 'v1.2.1',
+          },
+        },
+      },
+    };
+
+    expect(extractCRDVersionFromAnnotations(response, [
+      'gateway.networking.k8s.io/bundle-version',
+      'app.kubernetes.io/version',
+    ])).toBe('v1.2.1');
+  });
+
+  test('returns undefined when version annotations are missing', () => {
+    const crd = {
+      metadata: {
+        annotations: {
+          'example.com/other': 'v0.1.0',
+        },
+      },
+    };
+
+    expect(extractCRDVersionFromAnnotations(crd, [
+      'inference.networking.k8s.io/bundle-version',
+      'app.kubernetes.io/version',
+    ])).toBeUndefined();
+  });
+});
+
 
 describe('KubernetesService - Type Definitions', () => {
   describe('ClusterGpuCapacity', () => {

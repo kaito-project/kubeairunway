@@ -205,6 +205,8 @@ export const handlers = [
     return HttpResponse.json({
       gatewayApiInstalled: true,
       inferenceExtInstalled: true,
+      gatewayApiVersion: 'v1.2.1',
+      inferenceExtVersion: 'v1.5.0',
       pinnedVersion: 'v1.3.1',
       gatewayAvailable: false,
       message: 'Gateway API and Inference Extension CRDs are installed. No active gateway detected.',

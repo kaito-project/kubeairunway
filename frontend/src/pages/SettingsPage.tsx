@@ -849,8 +849,8 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between rounded-lg bg-muted p-3">
                       <div className="flex items-center gap-1">
                         <span>Inference Extension</span>
-                        {gatewayCRDStatus?.pinnedVersion && (
-                          <span className="text-xs text-muted-foreground">({gatewayCRDStatus.pinnedVersion})</span>
+                        {gatewayCRDStatus?.inferenceExtInstalled && gatewayCRDStatus?.inferenceExtVersion && (
+                          <span className="text-xs text-muted-foreground">({gatewayCRDStatus.inferenceExtVersion})</span>
                         )}
                       </div>
                       {gatewayCRDStatus?.inferenceExtInstalled ? (

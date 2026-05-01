@@ -227,6 +227,8 @@ describe('Gateway Installation Routes', () => {
         mockServiceMethod(kubernetesService, 'checkGatewayCRDStatus', async () => ({
           gatewayApiInstalled: true,
           inferenceExtInstalled: true,
+          gatewayApiVersion: 'v1.2.1',
+          inferenceExtVersion: 'v1.5.0',
           pinnedVersion: 'v1.3.1',
           gatewayAvailable: true,
           gatewayEndpoint: '10.0.0.50',
@@ -244,6 +246,8 @@ describe('Gateway Installation Routes', () => {
       const data = await res.json();
       expect(data.gatewayApiInstalled).toBe(true);
       expect(data.inferenceExtInstalled).toBe(true);
+      expect(data.gatewayApiVersion).toBe('v1.2.1');
+      expect(data.inferenceExtVersion).toBe('v1.5.0');
       expect(data.pinnedVersion).toBe('v1.3.1');
       expect(data.gatewayAvailable).toBe(true);
       expect(data.gatewayEndpoint).toBe('10.0.0.50');
