@@ -13,7 +13,6 @@ interface ProviderHelmChartDetails {
   values?: Record<string, unknown>;
   preInstallMissingCrds?: boolean;
   skipCrds?: boolean;
-  forceConflicts?: boolean;
 }
 
 /**
@@ -94,7 +93,6 @@ function normalizeInstallCharts(providerId: string, charts: ProviderHelmChartDet
           ...chart,
           preInstallMissingCrds: true,
           skipCrds: true,
-          forceConflicts: providerId === 'dynamo' ? true : undefined,
         }
       : chart
   ));

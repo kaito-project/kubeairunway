@@ -454,7 +454,7 @@ kubectl create secret generic hf-token-secret \
 export NAMESPACE=dynamo-system
 export RELEASE_VERSION=1.0.2
 
-# Dynamo v1.0-dev.1 bundles its CRDs in the platform chart
+# The Dynamo platform chart bundles its CRDs
 helm upgrade --install dynamo-platform \
   https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-${RELEASE_VERSION}.tgz \
   --namespace ${NAMESPACE} \

@@ -394,12 +394,15 @@ describe('HelmService - getInstallCommands Logic', () => {
 
     const commands = getInstallCommands([], charts);
     expect(commands).toHaveLength(1);
-    expect(commands[0]).toContain('KAITO_WORKSPACE_CHART_DIR=$(mktemp -d)');
+    expect(commands[0]).toContain('(KAITO_WORKSPACE_CHART_DIR=$(mktemp -d)');
+    expect(commands[0]).toContain("trap 'rm -rf -- \"$KAITO_WORKSPACE_CHART_DIR\"' EXIT");
     expect(commands[0]).toContain('helm pull kaito/workspace --untar --untardir "$KAITO_WORKSPACE_CHART_DIR" --version 0.9.0');
     expect(commands[0]).toContain('kubectl create --dry-run=client -f "$crd" -o name');
     expect(commands[0]).toContain('kubectl get "$crd_name" --ignore-not-found -o name');
     expect(commands[0]).toContain('kubectl apply --server-side --force-conflicts -f "$crd"');
+    expect(commands[0]).toContain('*.yml');
     expect(commands[0]).toContain('helm install kaito-workspace "$KAITO_WORKSPACE_CHART_PATH"');
+    expect(commands[0]).not.toContain('helm install kaito-workspace "$KAITO_WORKSPACE_CHART_PATH" --namespace kaito-workspace --create-namespace --version');
     expect(commands[0]).toContain('--skip-crds');
   });
 });
@@ -515,6 +518,7 @@ describe('HelmService - Managed Chart CRDs', () => {
 
       if (args[0] === 'upgrade') {
         expect(args).toContain('--skip-crds');
+        expect(args).not.toContain('--version');
         expect(args[2]).toContain('/workspace');
         return { success: true, stdout: 'installed', stderr: '', exitCode: 0 };
       }

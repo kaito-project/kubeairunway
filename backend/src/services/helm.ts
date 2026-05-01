@@ -27,7 +27,6 @@ export interface HelmChart {
   fetchUrl?: string;
   preCrdUrls?: string[];
   preInstallMissingCrds?: boolean;
-  forceConflicts?: boolean;
 }
 
 interface ChartCrdDocument {
@@ -409,9 +408,6 @@ class HelmService {
     if (chart.skipCrds) {
       cmd += ' --skip-crds';
     }
-    if (chart.forceConflicts) {
-      cmd += ' --force-conflicts';
-    }
     return cmd;
   }
 
@@ -431,13 +427,13 @@ class HelmService {
     const chartPathRef = `$${chartPathVar}`;
 
     return [
-      `${chartDirVar}=$(mktemp -d)`,
+      `(${chartDirVar}=$(mktemp -d)`,
+      `trap 'rm -rf -- "${chartDirRef}"' EXIT`,
       this.buildPullChartCommand(chart, `"${chartDirRef}"`),
       `${chartPathVar}=$(find "${chartDirRef}" -mindepth 1 -maxdepth 1 -type d -print -quit)`,
       `test -n "${chartPathRef}"`,
       `find "${chartPathRef}" -type f -path "*/crds/*.yaml" -print -o -type f -path "*/crds/*.yml" -print | sort | while IFS= read -r crd; do missing=0; for crd_name in $(kubectl create --dry-run=client -f "$crd" -o name); do if [ -z "$(kubectl get "$crd_name" --ignore-not-found -o name)" ]; then missing=1; fi; done; if [ "$missing" = "1" ]; then kubectl apply --server-side --force-conflicts -f "$crd"; fi; done`,
-      this.buildInstallCommand(chart, `"${chartPathRef}"`, false),
-      `rm -rf "${chartDirRef}"`,
+      `${this.buildInstallCommand(chart, `"${chartPathRef}"`, false)})`,
     ].join(' && ');
   }
 
@@ -645,15 +641,11 @@ class HelmService {
       args.push('--skip-crds');
     }
 
-    if (chart.forceConflicts) {
-      args.push('--force-conflicts');
-    }
-
     // Don't use --wait - return immediately after submitting the install
     // The caller should poll for installation status updates
     // Timeout still applies to the install command itself
     
-    logger.info({ chart: chart.name, namespace: chart.namespace, version: chart.version, values: chart.values, skipCrds: chart.skipCrds, forceConflicts: chart.forceConflicts }, `Installing helm chart: ${chart.name}`);
+    logger.info({ chart: chart.name, namespace: chart.namespace, version: chart.version, values: chart.values, skipCrds: chart.skipCrds }, `Installing helm chart: ${chart.name}`);
 
     return this.execute(args, onStream);
   }
@@ -869,6 +861,7 @@ class HelmService {
           ...chart,
           chart: pulledChart.chartPath,
           fetchUrl: undefined,
+          version: undefined,
           skipCrds: true,
         };
       }

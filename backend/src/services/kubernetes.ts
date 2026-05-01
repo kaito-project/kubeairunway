@@ -632,23 +632,26 @@ class KubernetesService {
         );
 
         const items = (response.body as any)?.items || [];
-        for (const item of items) {
-          const name = item.metadata?.name || 'unknown';
-          const status = item.status || {};
-          const displayName = name.charAt(0).toUpperCase() + name.slice(1);
-          const runtimeStatus = await this.checkProviderInstallationStatus(name, status, displayName);
+        const runtimeEntries = await Promise.all(
+          items.map(async (item: any): Promise<RuntimeStatus> => {
+            const name = item.metadata?.name || 'unknown';
+            const status = item.status || {};
+            const displayName = name.charAt(0).toUpperCase() + name.slice(1);
+            const runtimeStatus = await this.checkProviderInstallationStatus(name, status, displayName);
 
-          runtimes.push({
-            id: name,
-            name: displayName,
-            installed: runtimeStatus.installed,
-            healthy: runtimeStatus.operatorRunning ?? false,
-            crdFound: runtimeStatus.crdFound ?? runtimeStatus.installed,
-            operatorRunning: runtimeStatus.operatorRunning ?? false,
-            version: status.version,
-            message: runtimeStatus.message,
-          });
-        }
+            return {
+              id: name,
+              name: displayName,
+              installed: runtimeStatus.installed,
+              healthy: runtimeStatus.operatorRunning ?? false,
+              crdFound: runtimeStatus.crdFound ?? runtimeStatus.installed,
+              operatorRunning: runtimeStatus.operatorRunning ?? false,
+              version: status.version,
+              message: runtimeStatus.message,
+            };
+          })
+        );
+        runtimes.push(...runtimeEntries);
       } catch (error: any) {
         const statusCode = error?.statusCode || error?.response?.statusCode;
         if (statusCode !== 404) {
@@ -851,14 +854,16 @@ class KubernetesService {
   private async checkOperatorBackedInstallationStatus(providerId: keyof typeof RUNTIME_INSTALLATION_PROBES): Promise<InstallationStatus> {
     const probe = RUNTIME_INSTALLATION_PROBES[providerId];
     const crdDisplayName = probe.crdDisplayName || `${probe.providerName} CRD`;
-    const crdFound = await this.checkCRDExists(probe.crdName);
-    const operatorProbe = await this.findReadyOperatorPod(
-      probe.operatorNamespace,
-      probe.operatorPodSelectors,
-      probe.fallbackPodSelectors,
-      `check${probe.providerName.replace(/[^a-zA-Z0-9]/g, '')}OperatorPods`,
-      probe.crossNamespaceFallbackPodSelectors
-    );
+    const [crdFound, operatorProbe] = await Promise.all([
+      this.checkCRDExists(probe.crdName),
+      this.findReadyOperatorPod(
+        probe.operatorNamespace,
+        probe.operatorPodSelectors,
+        probe.fallbackPodSelectors,
+        `check${probe.providerName.replace(/[^a-zA-Z0-9]/g, '')}OperatorPods`,
+        probe.crossNamespaceFallbackPodSelectors
+      ),
+    ]);
     const operatorRunning = operatorProbe.ready;
     const installed = crdFound && operatorRunning;
 

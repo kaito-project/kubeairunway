@@ -441,7 +441,7 @@ describe('Installation Provider Routes', () => {
       expect(installCharts[0].chart).toBe('https://helm.ngc.nvidia.com/nvidia/ai-dynamo/charts/dynamo-platform-1.0.1.tgz');
       expect(installCharts[0].preInstallMissingCrds).toBe(true);
       expect(installCharts[0].skipCrds).toBe(true);
-      expect(installCharts[0].forceConflicts).toBe(true);
+      expect(installCharts[0]).not.toHaveProperty('forceConflicts');
       expect(installCharts[0].values?.['global.grove.install']).toBe(true);
     });
 

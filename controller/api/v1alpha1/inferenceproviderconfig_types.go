@@ -100,7 +100,10 @@ type HelmChart struct {
 	// +optional
 	CreateNamespace bool `json:"createNamespace,omitempty"`
 
-	// values is an arbitrary Helm values object that will be passed via --set-json
+	// values is a JSON object of Helm --set-json overrides.
+	// Each top-level key is the Helm values path to pass as the --set-json key,
+	// and each top-level value is the JSON payload for that path. This is not
+	// treated as a single arbitrary Helm values document.
 	// +optional
 	Values *runtime.RawExtension `json:"values,omitempty"`
 }
