@@ -620,7 +620,9 @@ class KubernetesService {
             id: name,
             name: displayName,
             installed: runtimeStatus.installed,
-            healthy: runtimeStatus.operatorRunning,
+            healthy: runtimeStatus.operatorRunning ?? false,
+            crdFound: runtimeStatus.crdFound ?? runtimeStatus.installed,
+            operatorRunning: runtimeStatus.operatorRunning ?? false,
             version: status.version,
             message: runtimeStatus.message,
           });
@@ -833,7 +835,7 @@ class KubernetesService {
       probe.operatorPodSelector,
       `check${probe.providerName.replace(/[^a-zA-Z0-9]/g, '')}OperatorPods`
     );
-    const installed = crdFound;
+    const installed = crdFound && operatorRunning;
 
     let message: string;
     if (crdFound && operatorRunning) {

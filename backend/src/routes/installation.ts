@@ -4,6 +4,18 @@ import { kubernetesService } from '../services/kubernetes';
 import { helmService } from '../services/helm';
 import logger from '../lib/logger';
 
+interface ProviderHelmChartDetails {
+  name: string;
+  chart: string;
+  namespace: string;
+  version?: string;
+  createNamespace?: boolean;
+  values?: Record<string, unknown>;
+  preInstallMissingCrds?: boolean;
+  skipCrds?: boolean;
+  forceConflicts?: boolean;
+}
+
 /**
  * Parse the installation annotation (JSON) from an InferenceProviderConfig CRD object.
  */
@@ -43,13 +55,13 @@ function extractProviderDetails(config: any) {
       name: r.name,
       url: r.url,
     })),
-    helmCharts: (installation.helmCharts || []).map((c: any) => ({
+    helmCharts: (installation.helmCharts || []).map((c: any): ProviderHelmChartDetails => ({
       name: c.name,
       chart: c.chart,
       version: c.version,
       namespace: c.namespace,
       createNamespace: c.createNamespace,
-      values: c.values && typeof c.values === 'object' ? c.values : undefined,
+      values: c.values && typeof c.values === 'object' && !Array.isArray(c.values) ? c.values as Record<string, unknown> : undefined,
     })),
     installationSteps: (installation.steps || []).map((s: any) => ({
       title: s.title,
@@ -59,14 +71,14 @@ function extractProviderDetails(config: any) {
   };
 }
 
-function shouldPreInstallMissingCrds(providerId: string, chart: ReturnType<typeof extractProviderDetails>['helmCharts'][number]) {
+function shouldPreInstallMissingCrds(providerId: string, chart: ProviderHelmChartDetails) {
   return (
     (providerId === 'kaito' && chart.chart === 'kaito/workspace')
     || (providerId === 'dynamo' && chart.name === 'dynamo-platform')
   );
 }
 
-function normalizeInstallCharts(providerId: string, charts: ReturnType<typeof extractProviderDetails>['helmCharts']) {
+function normalizeInstallCharts(providerId: string, charts: ProviderHelmChartDetails[]): ProviderHelmChartDetails[] {
   return charts.map((chart) => (
     shouldPreInstallMissingCrds(providerId, chart)
       ? {

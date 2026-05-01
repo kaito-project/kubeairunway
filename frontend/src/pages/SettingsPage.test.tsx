@@ -48,9 +48,18 @@ vi.mock('@/hooks/useRuntimes', () => ({
           installed: false,
           healthy: false,
         },
+        {
+          id: 'kuberay',
+          name: 'Kuberay',
+          installed: false,
+          healthy: false,
+          crdFound: true,
+          operatorRunning: false,
+        },
       ],
     },
     isLoading: false,
+    refetch,
   }),
 }))
 
@@ -82,14 +91,23 @@ vi.mock('@/hooks/useInstallation', () => ({
           operatorRunning: false,
           installationSteps: [],
         }
-      : {
-          installed: true,
-          providerName: 'Installed Runtime',
-          message: 'Installed Runtime is ready.',
-          crdFound: true,
-          operatorRunning: true,
-          installationSteps: [],
-        },
+      : providerId === 'kuberay'
+        ? {
+            installed: false,
+            providerName: 'Kuberay',
+            message: 'KubeRay CRD found but no ready KubeRay operator pods were detected in ray-system',
+            crdFound: true,
+            operatorRunning: false,
+            installationSteps: [],
+          }
+        : {
+            installed: true,
+            providerName: 'Installed Runtime',
+            message: 'Installed Runtime is ready.',
+            crdFound: true,
+            operatorRunning: true,
+            installationSteps: [],
+          },
     isLoading: false,
     refetch,
   }),
@@ -207,6 +225,24 @@ describe('SettingsPage', () => {
     const installationStatus = within(installationPanel as HTMLElement).getByText('Not Installed').closest('span')
     expect(installationStatus).toHaveClass('text-muted-foreground')
     expect(installationStatus?.querySelector('svg')).toHaveClass('text-red-500')
+  })
+
+
+  it('does not show uninstall for a runtime that has only its CRD installed', () => {
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=runtimes']}>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByText('Kuberay'))
+
+    const installationPanel = screen.getByText('Kuberay Installation').closest('.rounded-2xl')
+    expect(within(installationPanel as HTMLElement).getByText('Not Installed')).toBeInTheDocument()
+    expect(within(installationPanel as HTMLElement).getByText('CRD Installed')).toBeInTheDocument()
+    expect(within(installationPanel as HTMLElement).getByText('Operator Running')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^uninstall$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /install kuberay/i })).toBeInTheDocument()
   })
 
   it('uses success badge styling for readable integration connection states', () => {

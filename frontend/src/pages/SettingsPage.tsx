@@ -55,7 +55,7 @@ type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { isLoading: settingsLoading } = useSettings()
-  const { data: runtimesStatus, isLoading: runtimesLoading } = useRuntimesStatus()
+  const { data: runtimesStatus, isLoading: runtimesLoading, refetch: refetchRuntimesStatus } = useRuntimesStatus()
   const { data: clusterStatus, isLoading: clusterLoading } = useClusterStatus()
   const { data: helmStatus, isLoading: helmLoading } = useHelmStatus()
   const { data: autoscaler, isLoading: autoscalerLoading } = useAutoscalerDetection()
@@ -125,6 +125,7 @@ export function SettingsPage() {
       if (result.success) {
         toast({ title: 'Installation Complete', description: result.message })
         refetchInstallation()
+        refetchRuntimesStatus()
       } else {
         toast({ title: 'Installation Failed', description: result.message, variant: 'destructive' })
       }
@@ -143,6 +144,7 @@ export function SettingsPage() {
       if (result.success) {
         toast({ title: 'Uninstall Complete', description: result.message })
         refetchInstallation()
+        refetchRuntimesStatus()
       } else {
         toast({ title: 'Uninstall Failed', description: result.message, variant: 'destructive' })
       }
@@ -461,7 +463,7 @@ export function SettingsPage() {
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">CRD</span>
-                        {runtime.installed ? (
+                        {runtime.crdFound ?? runtime.installed ? (
                           <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
@@ -469,7 +471,7 @@ export function SettingsPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Operator</span>
-                        {runtime.healthy ? (
+                        {runtime.operatorRunning ?? runtime.healthy ? (
                           <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
@@ -583,7 +585,10 @@ export function SettingsPage() {
 
                     <Button
                       variant="outline"
-                      onClick={() => refetchInstallation()}
+                      onClick={() => {
+                        refetchInstallation()
+                        refetchRuntimesStatus()
+                      }}
                       disabled={installationLoading}
                     >
                       <RefreshCw className={cn('h-4 w-4', installationLoading && 'animate-spin')} />

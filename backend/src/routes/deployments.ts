@@ -74,7 +74,7 @@ const createDeploymentSchema = z.object({
   engine: z.enum(['vllm', 'sglang', 'trtllm', 'llamacpp']),
   namespace: namespaceSchema.optional(),
   mode: z.enum(['aggregated', 'disaggregated']).optional().default('aggregated'),
-  provider: z.string().optional(),
+  provider: z.enum(['dynamo', 'kuberay', 'kaito', 'llmd']).optional(),
   servedModelName: z.string().optional(),
   routerMode: z.enum(['default', 'kv', 'round-robin']).optional().default('default'),
   replicas: z.number().int().min(0).optional().default(1),
@@ -326,7 +326,7 @@ const deployments = new Hono()
   .get('/', zValidator('query', listDeploymentsQuerySchema), async (c) => {
     try {
       const { namespace, limit, offset } = c.req.valid('query');
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       let deploymentsList: DeploymentStatus[] = await kubernetesService.listDeployments(namespace, userToken);
 
@@ -392,7 +392,7 @@ const deployments = new Hono()
     }
 
     // Create deployment with detailed error handling
-    const userToken = c.get('token') as string | undefined;
+    const userToken = (c as any).get('token') as string | undefined;
     try {
       await kubernetesService.createDeployment(config, userToken);
     } catch (error) {
@@ -475,7 +475,7 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
 
@@ -494,7 +494,7 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       // Get the main CR manifest
       const manifest = await kubernetesService.getDeploymentManifest(name, resolvedNamespace, userToken);
@@ -539,7 +539,7 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       try {
         await kubernetesService.deleteDeployment(name, resolvedNamespace, userToken);
@@ -571,7 +571,7 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       // Verify user has access to the parent ModelDeployment
       const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
@@ -591,7 +591,7 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       // Verify user has access to the parent ModelDeployment
       const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
@@ -611,7 +611,7 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       try {
         // Get deployment to find pending pods
@@ -667,7 +667,7 @@ const deployments = new Hono()
       const { name } = c.req.valid('param');
       const { namespace, podName, container, tailLines, timestamps } = c.req.valid('query');
       const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
-      const userToken = c.get('token') as string | undefined;
+      const userToken = (c as any).get('token') as string | undefined;
 
       try {
         // Verify user has access to the parent ModelDeployment

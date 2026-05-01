@@ -141,7 +141,7 @@ describe('Installation Provider Routes', () => {
         mockServiceMethod(kubernetesService, 'checkKaitoInstallationStatus', async () => {
           kaitoStatusChecks += 1;
           return {
-            installed: true,
+            installed: false,
             crdFound: true,
             operatorRunning: false,
             message: 'KAITO workspace CRD found but no ready KAITO operator pods were detected in kaito-workspace',
@@ -156,7 +156,7 @@ describe('Installation Provider Routes', () => {
       expect(data.providerId).toBe('kaito');
       expect(data.providerName).toBe('Kaito');
       expect(kaitoStatusChecks).toBe(1);
-      expect(data.installed).toBe(true);
+      expect(data.installed).toBe(false);
       expect(data.crdFound).toBe(true);
       expect(data.operatorRunning).toBe(false);
       expect(data.version).toBe('0.10.0');
