@@ -1,7 +1,7 @@
 import * as k8s from '@kubernetes/client-node';
 import { configService } from './config';
 import type { DeploymentStatus, PodStatus, ClusterStatus, PodPhase, DeploymentConfig, RuntimeStatus, ModelDeployment, GatewayInfo, GatewayModelInfo, GatewayCRDStatus } from '@airunway/shared';
-import { toModelDeploymentManifest, toDeploymentStatus } from '@airunway/shared';
+import { toModelDeploymentManifest, toDeploymentStatus, INFERENCE_GATEWAY_LABEL } from '@airunway/shared';
 import { withRetry } from '../lib/retry';
 import { loadKubeConfig } from '../lib/kubeconfig';
 import logger from '../lib/logger';
@@ -1810,42 +1810,75 @@ class KubernetesService {
   }
 
   /**
-   * Get gateway status: checks if Gateway API InferencePool CRD exists,
-   * lists InferencePool resources, and finds gateway endpoint from Gateway resources.
+   * Get gateway status by checking the required InferencePool, HTTPRoute, and
+   * Gateway CRDs, listing Gateway resources, and selecting the Gateway the
+   * controller auto-detection would select.
+   *
+   * `available` is true only when the CRDs exist and a Gateway can be selected
+   * (a single Gateway, or a Gateway labeled `INFERENCE_GATEWAY_LABEL=true` when
+   * multiple Gateways exist). `endpoint` is the selected Gateway's first status
+   * address value, when the Gateway has published one.
    */
   async getGatewayStatus(): Promise<GatewayInfo> {
-    // Check if InferencePool CRD exists
+    // Check if InferencePool CRD exists - without it, gateway integration is not supported.
     const inferencePoolCrdExists = await this.checkCRDExists('inferencepools.inference.networking.k8s.io');
     if (!inferencePoolCrdExists) {
       return { available: false };
     }
 
-    // Try to find a Gateway endpoint
-    let endpoint: string | undefined;
-    const gatewayCrdExists = await this.checkCRDExists('gateways.gateway.networking.k8s.io');
-    if (gatewayCrdExists) {
-      try {
-        const response = await withRetry(
-          () => this.customObjectsApi.listClusterCustomObject(
-            'gateway.networking.k8s.io',
-            'v1',
-            'gateways'
-          ),
-          { operationName: 'listGateways', maxRetries: 1 }
-        );
-        const items = (response.body as { items?: Array<{ status?: { addresses?: Array<{ value?: string }> } }> }).items || [];
-        for (const gw of items) {
-          const addr = gw.status?.addresses?.[0]?.value;
-          if (addr) {
-            endpoint = addr;
-            break;
-          }
-        }
-      } catch (error: any) {
-        logger.debug({ error: error?.message }, 'Could not list Gateway resources');
-      }
+    // The controller creates HTTPRoutes, so the HTTPRoute CRD must be present.
+    const httpRouteCrdExists = await this.checkCRDExists('httproutes.gateway.networking.k8s.io');
+    if (!httpRouteCrdExists) {
+      return { available: false };
     }
 
+    // The Gateway CRD must exist before the backend can list Gateway resources.
+    const gatewayCrdExists = await this.checkCRDExists('gateways.gateway.networking.k8s.io');
+    if (!gatewayCrdExists) {
+      return { available: false };
+    }
+
+    // "Available" means the controller auto-detection can select a Gateway -
+    // mirror that path so the UI matches what it will actually pick when
+    // reconciling a ModelDeployment with gateway.enabled=true and no explicit
+    // gateway override.
+    type GatewayItem = {
+      metadata?: { name?: string; namespace?: string; labels?: Record<string, string> };
+      status?: { addresses?: Array<{ value?: string }> };
+    };
+    let items: GatewayItem[] = [];
+    try {
+      const response = await withRetry(
+        () => this.customObjectsApi.listClusterCustomObject(
+          'gateway.networking.k8s.io',
+          'v1',
+          'gateways'
+        ),
+        { operationName: 'listGateways', maxRetries: 1 }
+      );
+      items = (response.body as { items?: GatewayItem[] }).items || [];
+    } catch (error: any) {
+      logger.debug({ error: error?.message }, 'Could not list Gateway resources');
+      return { available: false };
+    }
+
+    if (items.length === 0) {
+      return { available: false };
+    }
+
+    let selected: GatewayItem | undefined;
+    if (items.length === 1) {
+      selected = items[0];
+    } else {
+      // Multiple Gateways: require the controller's inference-gateway label to disambiguate.
+      const labeled = items.filter((gw) => gw.metadata?.labels?.[INFERENCE_GATEWAY_LABEL] === 'true');
+      if (labeled.length === 0) {
+        return { available: false };
+      }
+      selected = labeled[0];
+    }
+
+    const endpoint = selected?.status?.addresses?.[0]?.value;
     return { available: true, endpoint };
   }
 
