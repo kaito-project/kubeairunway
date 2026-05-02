@@ -8,9 +8,9 @@ import { mockServiceMethod } from '../test/helpers';
  *
  * Regression: previously returned available=true whenever the InferencePool CRD
  * existed, regardless of whether any Gateway resource was actually present.
- * It must now mirror the controller's resolveGatewayConfig selection so the
+ * It must now mirror the controller's auto-detection selection so the
  * Settings page only reports "Available" when the controller would actually
- * be able to attach an HTTPRoute.
+ * be able to attach an HTTPRoute without an explicit gateway override.
  */
 describe('kubernetesService.getGatewayStatus', () => {
   const restores: Array<() => void> = [];
@@ -35,10 +35,15 @@ describe('kubernetesService.getGatewayStatus', () => {
     });
   }
 
-  function mockCRDs({ inferencePool, gatewayApi }: { inferencePool: boolean; gatewayApi: boolean }) {
+  function mockCRDs({
+    inferencePool = true,
+    httpRoute = true,
+    gatewayApi = true,
+  }: Partial<{ inferencePool: boolean; httpRoute: boolean; gatewayApi: boolean }> = {}) {
     restores.push(
       mockServiceMethod(kubernetesService, 'checkCRDExists', async (crdName: string) => {
         if (crdName === 'inferencepools.inference.networking.k8s.io') return inferencePool;
+        if (crdName === 'httproutes.gateway.networking.k8s.io') return httpRoute;
         if (crdName === 'gateways.gateway.networking.k8s.io') return gatewayApi;
         return false;
       }),
@@ -51,15 +56,23 @@ describe('kubernetesService.getGatewayStatus', () => {
   });
 
   test('returns unavailable when InferencePool CRD is missing', async () => {
-    mockCRDs({ inferencePool: false, gatewayApi: true });
+    mockCRDs({ inferencePool: false });
     mockListGateways([{ metadata: { name: 'gw' } }]);
 
     const result = await kubernetesService.getGatewayStatus();
     expect(result).toEqual({ available: false });
   });
 
-  test('returns unavailable when Gateway API CRD is missing', async () => {
-    mockCRDs({ inferencePool: true, gatewayApi: false });
+  test('returns unavailable when HTTPRoute CRD is missing', async () => {
+    mockCRDs({ httpRoute: false });
+    mockListGateways([{ metadata: { name: 'gw' } }]);
+
+    const result = await kubernetesService.getGatewayStatus();
+    expect(result).toEqual({ available: false });
+  });
+
+  test('returns unavailable when Gateway CRD is missing', async () => {
+    mockCRDs({ gatewayApi: false });
     mockListGateways([]);
 
     const result = await kubernetesService.getGatewayStatus();
@@ -67,7 +80,7 @@ describe('kubernetesService.getGatewayStatus', () => {
   });
 
   test('returns unavailable when CRDs are installed but no Gateway resource exists (issue #235)', async () => {
-    mockCRDs({ inferencePool: true, gatewayApi: true });
+    mockCRDs();
     mockListGateways([]);
 
     const result = await kubernetesService.getGatewayStatus();
@@ -76,7 +89,7 @@ describe('kubernetesService.getGatewayStatus', () => {
   });
 
   test('returns available with no endpoint when a Gateway exists but has no addresses yet', async () => {
-    mockCRDs({ inferencePool: true, gatewayApi: true });
+    mockCRDs();
     mockListGateways([{ metadata: { name: 'gw', namespace: 'default' } }]);
 
     const result = await kubernetesService.getGatewayStatus();
@@ -85,7 +98,7 @@ describe('kubernetesService.getGatewayStatus', () => {
   });
 
   test('returns available with endpoint when a Gateway exists with status.addresses', async () => {
-    mockCRDs({ inferencePool: true, gatewayApi: true });
+    mockCRDs();
     mockListGateways([
       {
         metadata: { name: 'gw', namespace: 'default' },
@@ -98,7 +111,7 @@ describe('kubernetesService.getGatewayStatus', () => {
   });
 
   test('multiple Gateways without inference-gateway label → unavailable (matches controller)', async () => {
-    mockCRDs({ inferencePool: true, gatewayApi: true });
+    mockCRDs();
     mockListGateways([
       { metadata: { name: 'gw-a', namespace: 'default' } },
       { metadata: { name: 'gw-b', namespace: 'default' } },
@@ -109,7 +122,7 @@ describe('kubernetesService.getGatewayStatus', () => {
   });
 
   test('multiple Gateways → picks the one with the inference-gateway label', async () => {
-    mockCRDs({ inferencePool: true, gatewayApi: true });
+    mockCRDs();
     mockListGateways([
       { metadata: { name: 'gw-a', namespace: 'default' } },
       {
@@ -127,7 +140,7 @@ describe('kubernetesService.getGatewayStatus', () => {
   });
 
   test('returns unavailable when listing Gateway resources errors', async () => {
-    mockCRDs({ inferencePool: true, gatewayApi: true });
+    mockCRDs();
     mockListGateways(new Error('forbidden'));
 
     const result = await kubernetesService.getGatewayStatus();

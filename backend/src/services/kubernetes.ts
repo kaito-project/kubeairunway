@@ -1522,8 +1522,9 @@ class KubernetesService {
   }
 
   /**
-   * Get gateway status by checking the required InferencePool and Gateway CRDs,
-   * listing Gateway resources, and selecting the Gateway the controller would use.
+   * Get gateway status by checking the required InferencePool, HTTPRoute, and
+   * Gateway CRDs, listing Gateway resources, and selecting the Gateway the
+   * controller auto-detection would select.
    *
    * `available` is true only when the CRDs exist and a Gateway can be selected
    * (a single Gateway, or a Gateway labeled `INFERENCE_GATEWAY_LABEL=true` when
@@ -1537,15 +1538,22 @@ class KubernetesService {
       return { available: false };
     }
 
-    // The Gateway API CRD must exist before we can list Gateway resources.
+    // The controller creates HTTPRoutes, so the HTTPRoute CRD must be present.
+    const httpRouteCrdExists = await this.checkCRDExists('httproutes.gateway.networking.k8s.io');
+    if (!httpRouteCrdExists) {
+      return { available: false };
+    }
+
+    // The Gateway CRD must exist before the backend can list Gateway resources.
     const gatewayCrdExists = await this.checkCRDExists('gateways.gateway.networking.k8s.io');
     if (!gatewayCrdExists) {
       return { available: false };
     }
 
-    // "Available" means the controller can select a Gateway - mirror the
-    // controller's resolveGatewayConfig selection so the UI matches what it will
-    // actually pick when reconciling a ModelDeployment with gateway.enabled=true.
+    // "Available" means the controller auto-detection can select a Gateway -
+    // mirror that path so the UI matches what it will actually pick when
+    // reconciling a ModelDeployment with gateway.enabled=true and no explicit
+    // gateway override.
     type GatewayItem = {
       metadata?: { name?: string; namespace?: string; labels?: Record<string, string> };
       status?: { addresses?: Array<{ value?: string }> };
