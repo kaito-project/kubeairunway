@@ -223,3 +223,152 @@ func TestResourceCeilings_GPUCountValid(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateOverrides_BlocksKeysInsideArray covers the array-recursion bug:
+// previously checkBlockedKeys only walked nested objects, so blocked keys
+// nested inside list-valued overrides (e.g. containers[].securityContext)
+// could bypass validation.
+func TestValidateOverrides_BlocksKeysInsideArray(t *testing.T) {
+	v := &ModelDeploymentCustomValidator{}
+	overrides := map[string]interface{}{
+		"containers": []interface{}{
+			map[string]interface{}{
+				"name": "main",
+				"securityContext": map[string]interface{}{
+					"privileged": true,
+				},
+			},
+		},
+	}
+	raw, _ := json.Marshal(overrides)
+	spec := &airunwayv1alpha1.ModelDeploymentSpec{
+		Provider: &airunwayv1alpha1.ProviderSpec{
+			Overrides: &runtime.RawExtension{Raw: raw},
+		},
+	}
+	errs := v.validateOverrides(spec, field.NewPath("spec"))
+	if len(errs) == 0 {
+		t.Fatal("expected error for securityContext nested inside an array")
+	}
+}
+
+// TestValidateOverrides_BlocksKeysInsideNestedArray covers arrays inside arrays
+// (e.g. spec.template.spec.containers[].volumeMounts) so deeply nested blocked
+// keys can't slip through either.
+func TestValidateOverrides_BlocksKeysInsideNestedArray(t *testing.T) {
+	v := &ModelDeploymentCustomValidator{}
+	overrides := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"template": map[string]interface{}{
+				"spec": map[string]interface{}{
+					"containers": []interface{}{
+						map[string]interface{}{
+							"name":        "main",
+							"hostNetwork": true,
+						},
+					},
+				},
+			},
+		},
+	}
+	raw, _ := json.Marshal(overrides)
+	spec := &airunwayv1alpha1.ModelDeploymentSpec{
+		Provider: &airunwayv1alpha1.ProviderSpec{
+			Overrides: &runtime.RawExtension{Raw: raw},
+		},
+	}
+	errs := v.validateOverrides(spec, field.NewPath("spec"))
+	if len(errs) == 0 {
+		t.Fatal("expected error for hostNetwork nested inside spec.template.spec.containers[]")
+	}
+}
+
+func TestResourceCeilings_AggregatedReplicas(t *testing.T) {
+	v := &ModelDeploymentCustomValidator{}
+	md := &airunwayv1alpha1.ModelDeployment{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model:   airunwayv1alpha1.ModelSpec{ID: "test/model"},
+			Scaling: &airunwayv1alpha1.ScalingSpec{Replicas: MaxReplicas + 1},
+		},
+	}
+	errs := v.validateSpec(md)
+	found := false
+	for _, e := range errs {
+		if e.Field == "spec.scaling.replicas" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected aggregated-mode replicas ceiling error")
+	}
+}
+
+func TestResourceCeilings_PrefillMemory(t *testing.T) {
+	v := &ModelDeploymentCustomValidator{}
+	md := &airunwayv1alpha1.ModelDeployment{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{ID: "test/model"},
+			Scaling: &airunwayv1alpha1.ScalingSpec{
+				Prefill: &airunwayv1alpha1.ComponentScalingSpec{Memory: "8Ti"},
+			},
+		},
+	}
+	errs := v.validateSpec(md)
+	found := false
+	for _, e := range errs {
+		if e.Field == "spec.scaling.prefill.memory" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected prefill memory ceiling error")
+	}
+}
+
+func TestResourceCeilings_DecodeMemory(t *testing.T) {
+	v := &ModelDeploymentCustomValidator{}
+	md := &airunwayv1alpha1.ModelDeployment{
+		Spec: airunwayv1alpha1.ModelDeploymentSpec{
+			Model: airunwayv1alpha1.ModelSpec{ID: "test/model"},
+			Scaling: &airunwayv1alpha1.ScalingSpec{
+				Decode: &airunwayv1alpha1.ComponentScalingSpec{Memory: "8Ti"},
+			},
+		},
+	}
+	errs := v.validateSpec(md)
+	found := false
+	for _, e := range errs {
+		if e.Field == "spec.scaling.decode.memory" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected decode memory ceiling error")
+	}
+}
+
+// TestValidateOverrides_InvalidJSONRedactsRawPayload ensures admission errors
+// don't echo the user's full raw payload back: it can be large and may contain
+// content the user didn't intend to surface in admission errors/logs.
+func TestValidateOverrides_InvalidJSONRedactsRawPayload(t *testing.T) {
+	v := &ModelDeploymentCustomValidator{}
+	rawPayload := []byte(`{secret-token: "supersecret-should-not-leak"`)
+	spec := &airunwayv1alpha1.ModelDeploymentSpec{
+		Provider: &airunwayv1alpha1.ProviderSpec{
+			Overrides: &runtime.RawExtension{Raw: rawPayload},
+		},
+	}
+	errs := v.validateOverrides(spec, field.NewPath("spec"))
+	if len(errs) == 0 {
+		t.Fatal("expected error for invalid JSON")
+	}
+	for _, e := range errs {
+		bv, ok := e.BadValue.(string)
+		if !ok {
+			continue
+		}
+		if bv != "" && bv == string(rawPayload) {
+			t.Fatalf("admission error echoed raw payload back instead of redacting: %q", bv)
+		}
+	}
+}

@@ -118,8 +118,10 @@ const oauth = new Hono()
       });
     }
   })
-  // Get stored PKCE verifier by state and exchange for token in one step
-  // The verifier is never exposed to the client — it stays server-side
+  // Deprecated: previously returned the stored PKCE verifier so the client could
+  // call POST /huggingface/token itself. That exposed the verifier to the
+  // browser. Use POST /huggingface/token-with-state instead — the verifier
+  // never leaves the server. This handler now always returns 410 Gone.
   .get('/huggingface/verifier/:state', (c) => {
     // This endpoint is deprecated — use POST /huggingface/token-with-state instead
     throw new HTTPException(410, {

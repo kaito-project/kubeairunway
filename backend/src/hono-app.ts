@@ -47,6 +47,22 @@ logger.info(
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
 
+// Parse CORS_ORIGIN into a value the cors middleware can use:
+//   - "*"               → pass through as a string (wildcard)
+//   - "a,b,c"           → array of trimmed, non-empty origins
+// Splitting "*" into ["*"] matches request origins literally, which never
+// equals a real origin and effectively disables CORS — so handle it explicitly.
+function parseCorsOrigin(raw: string): string | string[] {
+  const trimmed = raw.trim();
+  if (trimmed === '*') return '*';
+  const list = trimmed
+    .split(',')
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+  // Fall back to '*' if every entry was empty (e.g. CORS_ORIGIN=",,").
+  return list.length > 0 ? list : '*';
+}
+
 const app = new Hono<AppEnv>();
 
 // Global middleware
@@ -54,7 +70,7 @@ app.use('*', compress());
 app.use(
   '*',
   cors({
-    origin: CORS_ORIGIN.split(',').map(o => o.trim()),
+    origin: parseCorsOrigin(CORS_ORIGIN),
   })
 );
 

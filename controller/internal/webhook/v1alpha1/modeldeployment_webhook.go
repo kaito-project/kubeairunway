@@ -257,6 +257,9 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *airunwayv1alpha1.Mode
 		allErrs = append(allErrs, validateResourceQuantity(spec.Resources.Memory, MaxMemory, specPath.Child("resources", "memory"))...)
 	}
 	if spec.Scaling != nil {
+		if spec.Scaling.Replicas > MaxReplicas {
+			allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "replicas"), spec.Scaling.Replicas, fmt.Sprintf("exceeds maximum replicas (%d)", MaxReplicas)))
+		}
 		if spec.Scaling.Prefill != nil {
 			if spec.Scaling.Prefill.Replicas > MaxReplicas {
 				allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "prefill", "replicas"), spec.Scaling.Prefill.Replicas, fmt.Sprintf("exceeds maximum replicas (%d)", MaxReplicas)))
@@ -264,6 +267,7 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *airunwayv1alpha1.Mode
 			if spec.Scaling.Prefill.GPU != nil && spec.Scaling.Prefill.GPU.Count > MaxGPUCount {
 				allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "prefill", "gpu", "count"), spec.Scaling.Prefill.GPU.Count, fmt.Sprintf("exceeds maximum GPU count (%d)", MaxGPUCount)))
 			}
+			allErrs = append(allErrs, validateResourceQuantity(spec.Scaling.Prefill.Memory, MaxMemory, specPath.Child("scaling", "prefill", "memory"))...)
 		}
 		if spec.Scaling.Decode != nil {
 			if spec.Scaling.Decode.Replicas > MaxReplicas {
@@ -272,6 +276,7 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *airunwayv1alpha1.Mode
 			if spec.Scaling.Decode.GPU != nil && spec.Scaling.Decode.GPU.Count > MaxGPUCount {
 				allErrs = append(allErrs, field.Invalid(specPath.Child("scaling", "decode", "gpu", "count"), spec.Scaling.Decode.GPU.Count, fmt.Sprintf("exceeds maximum GPU count (%d)", MaxGPUCount)))
 			}
+			allErrs = append(allErrs, validateResourceQuantity(spec.Scaling.Decode.Memory, MaxMemory, specPath.Child("scaling", "decode", "memory"))...)
 		}
 	}
 
@@ -765,21 +770,25 @@ func (v *ModelDeploymentCustomValidator) validateOverrides(spec *airunwayv1alpha
 
 	var overrideMap map[string]interface{}
 	if err := json.Unmarshal(spec.Provider.Overrides.Raw, &overrideMap); err != nil {
+		// Don't echo the raw payload back: it can be large and may contain
+		// data the user didn't expect to see in admission errors/logs.
 		allErrs = append(allErrs, field.Invalid(
 			specPath.Child("provider", "overrides"),
-			string(spec.Provider.Overrides.Raw),
+			fmt.Sprintf("<redacted %d bytes>", len(spec.Provider.Overrides.Raw)),
 			"overrides must be valid JSON",
 		))
 		return allErrs
 	}
 
-	allErrs = append(allErrs, checkBlockedKeys(overrideMap, specPath.Child("provider", "overrides"), "")...)
+	allErrs = append(allErrs, checkBlockedKeys(overrideMap, specPath.Child("provider", "overrides"))...)
 
 	return allErrs
 }
 
-// checkBlockedKeys recursively checks for blocked keys in a nested map
-func checkBlockedKeys(m map[string]interface{}, fldPath *field.Path, prefix string) field.ErrorList {
+// checkBlockedKeys recursively walks an unmarshalled JSON value and reports
+// any blocked keys found in nested objects, including those nested inside
+// arrays (e.g. {"containers": [{"securityContext": ...}]}).
+func checkBlockedKeys(m map[string]interface{}, fldPath *field.Path) field.ErrorList {
 	var allErrs field.ErrorList
 	for key, val := range m {
 		for _, blocked := range blockedOverrideKeys {
@@ -790,11 +799,26 @@ func checkBlockedKeys(m map[string]interface{}, fldPath *field.Path, prefix stri
 				))
 			}
 		}
-		if nested, ok := val.(map[string]interface{}); ok {
-			allErrs = append(allErrs, checkBlockedKeys(nested, fldPath.Child(key), prefix+key+".")...)
-		}
+		allErrs = append(allErrs, checkBlockedKeysInValue(val, fldPath.Child(key))...)
 	}
 	return allErrs
+}
+
+// checkBlockedKeysInValue inspects an arbitrary JSON value and recurses into
+// nested objects and arrays so blocked keys can't bypass validation by being
+// nested inside list-valued overrides.
+func checkBlockedKeysInValue(val interface{}, fldPath *field.Path) field.ErrorList {
+	switch v := val.(type) {
+	case map[string]interface{}:
+		return checkBlockedKeys(v, fldPath)
+	case []interface{}:
+		var allErrs field.ErrorList
+		for i, item := range v {
+			allErrs = append(allErrs, checkBlockedKeysInValue(item, fldPath.Index(i))...)
+		}
+		return allErrs
+	}
+	return nil
 }
 
 // validateResourceQuantity validates that a resource string doesn't exceed a maximum
