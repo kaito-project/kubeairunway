@@ -139,6 +139,23 @@ function getK8sErrorMessage(error: any): string {
   return error?.body?.message || error?.response?.body?.message || error?.message || String(error);
 }
 
+function getProviderDisplayName(providerId: string): string {
+  switch (providerId) {
+    case 'vllm':
+      return 'Direct vLLM';
+    case 'dynamo':
+      return 'Dynamo';
+    case 'kuberay':
+      return 'KubeRay';
+    case 'kaito':
+      return 'KAITO';
+    case 'llmd':
+      return 'llm-d';
+    default:
+      return providerId.charAt(0).toUpperCase() + providerId.slice(1);
+  }
+}
+
 const RUNTIME_INSTALLATION_PROBES: Record<string, RuntimeInstallationProbe> = {
   kaito: {
     providerName: 'KAITO',
@@ -695,7 +712,7 @@ class KubernetesService {
           items.map(async (item: any): Promise<RuntimeStatus> => {
             const name = item.metadata?.name || 'unknown';
             const status = item.status || {};
-            const displayName = name.charAt(0).toUpperCase() + name.slice(1);
+            const displayName = getProviderDisplayName(name);
             const runtimeStatus = await this.checkProviderInstallationStatus(name, status, displayName);
 
             return {
@@ -897,7 +914,7 @@ class KubernetesService {
         return this.checkKubeRayInstallationStatus();
       default: {
         const installed = status?.ready === true;
-        const displayName = providerName || providerId.charAt(0).toUpperCase() + providerId.slice(1);
+        const displayName = providerName || getProviderDisplayName(providerId);
         return {
           installed,
           crdFound: installed,

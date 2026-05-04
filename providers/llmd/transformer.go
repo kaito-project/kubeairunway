@@ -180,13 +180,13 @@ func (t *Transformer) buildDeployment(md *airunwayv1alpha1.ModelDeployment, name
 	// Pod selector labels (must be a stable subset)
 	selectorLabels := map[string]interface{}{
 		"airunway.ai/deployment": md.Name,
-		"app":                        name,
+		"app":                    name,
 	}
 
 	// Pod template labels (must include selector labels)
 	podLabels := map[string]interface{}{
 		"airunway.ai/deployment": md.Name,
-		"app":                        name,
+		"app":                    name,
 	}
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil {
 		for k, v := range md.Spec.PodTemplate.Metadata.Labels {
@@ -280,7 +280,7 @@ func (t *Transformer) buildService(md *airunwayv1alpha1.ModelDeployment, name, s
 		"type": "ClusterIP",
 		"selector": map[string]interface{}{
 			"airunway.ai/deployment": md.Name,
-			"app":                        selectorApp,
+			"app":                    selectorApp,
 		},
 		"ports": []interface{}{
 			map[string]interface{}{
@@ -387,6 +387,10 @@ func (t *Transformer) buildVLLMArgs(md *airunwayv1alpha1.ModelDeployment, kvTran
 		} else {
 			args = append(args, fmt.Sprintf("--%s", key))
 		}
+	}
+
+	if len(md.Spec.Engine.ExtraArgs) > 0 {
+		args = append(args, md.Spec.Engine.ExtraArgs...)
 	}
 
 	return args, nil
@@ -501,8 +505,8 @@ func (t *Transformer) buildLabels(md *airunwayv1alpha1.ModelDeployment) map[stri
 
 // getImage returns the container image to use.
 func (t *Transformer) getImage(md *airunwayv1alpha1.ModelDeployment) string {
-	if md.Spec.Image != "" {
-		return md.Spec.Image
+	if image := md.Spec.ImageOverride(); image != "" {
+		return image
 	}
 	return DefaultVLLMImage
 }

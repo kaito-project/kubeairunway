@@ -46,6 +46,45 @@ import (
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
+const labelDeployment = "airunway.ai/deployment"
+
+func gatewayOwnedResourceLabels(md *airunwayv1alpha1.ModelDeployment) map[string]string {
+	return map[string]string{
+		labelDeployment:                         md.Name,
+		airunwayv1alpha1.LabelModelDeployment: md.Name,
+		airunwayv1alpha1.LabelManagedBy:       "airunway",
+	}
+}
+
+func eppAppLabels(eppName, modelDeploymentName string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":       eppName,
+		"app.kubernetes.io/instance":   modelDeploymentName,
+		"app.kubernetes.io/managed-by": "airunway",
+	}
+}
+
+func mergeLabels(labelMaps ...map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for _, labels := range labelMaps {
+		for key, value := range labels {
+			merged[key] = value
+		}
+	}
+	return merged
+}
+
+func ensureObjectLabels(obj client.Object, desired map[string]string) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string, len(desired))
+	}
+	for key, value := range desired {
+		labels[key] = value
+	}
+	obj.SetLabels(labels)
+}
+
 // reconcileGateway creates or updates InferencePool and HTTPRoute resources
 // for a ModelDeployment that has gateway integration enabled.
 func (r *ModelDeploymentReconciler) reconcileGateway(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {

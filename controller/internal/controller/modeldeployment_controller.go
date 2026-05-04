@@ -131,6 +131,18 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		md.Status.Phase = airunwayv1alpha1.DeploymentPhasePending
 	}
 
+	// Defensively reject conflicting image overrides before selection logic.
+	// The validating webhook normally prevents this, but objects can bypass
+	// admission in tests, during upgrades, or when webhooks are disabled.
+	if err := md.Spec.ValidateImageFields(); err != nil {
+		logger.Error(err, "Image field validation failed", "name", md.Name)
+		r.setImageFieldConflictStatus(&md, err)
+		r.setCondition(&md, airunwayv1alpha1.ConditionTypeValidated, metav1.ConditionFalse, "ValidationFailed", err.Error())
+		md.Status.Phase = airunwayv1alpha1.DeploymentPhaseFailed
+		md.Status.Message = fmt.Sprintf("Validation failed: %s", err.Error())
+		return ctrl.Result{}, r.Status().Patch(ctx, &md, client.MergeFrom(base))
+	}
+
 	// Step 1: Select engine if needed (before validation, since validation needs engine type)
 	if r.EnableProviderSelector {
 		if err := r.selectEngine(ctx, &md); err != nil {
@@ -241,6 +253,11 @@ func isNoMatchError(err error) bool {
 // validateSpec performs validation on the ModelDeployment spec
 func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) error {
 	spec := &md.Spec
+
+	if err := spec.ValidateImageFields(); err != nil {
+		r.setImageFieldConflictStatus(md, err)
+		return err
+	}
 
 	// Validate model.id is required for huggingface source
 	if spec.Model.Source == airunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
@@ -585,6 +602,15 @@ func (r *ModelDeploymentReconciler) runSelectionAlgorithm(md *airunwayv1alpha1.M
 	}
 
 	return best.name, best.reason, nil
+}
+
+func (r *ModelDeploymentReconciler) setImageFieldConflictStatus(md *airunwayv1alpha1.ModelDeployment, err error) {
+	message := err.Error()
+	r.setCondition(md, airunwayv1alpha1.ConditionTypeImageResolved, metav1.ConditionFalse, "ConflictingImageFields", message)
+	md.Status.Image = &airunwayv1alpha1.ImageStatus{
+		Requested: md.Spec.ImageOverride(),
+		Message:   message,
+	}
 }
 
 // setCondition updates a condition on the ModelDeployment

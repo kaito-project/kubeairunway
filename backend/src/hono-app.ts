@@ -30,6 +30,7 @@ import {
   aiconfigurator,
   costs,
   gateway,
+  vllmRecipes,
 } from './routes';
 
 // Load static files at startup
@@ -134,6 +135,7 @@ app.route('/api/aikit', aikit);
 app.route('/api/aiconfigurator', aiconfigurator);
 app.route('/api/costs', costs);
 app.route('/api/gateway', gateway);
+app.route('/api/vllm/recipes', vllmRecipes);
 
 // Static file serving middleware - uses Bun.file() for zero-copy serving
 app.use('*', async (c, next) => {

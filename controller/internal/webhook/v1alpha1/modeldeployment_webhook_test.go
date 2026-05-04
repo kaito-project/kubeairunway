@@ -216,6 +216,41 @@ var _ = Describe("ModelDeployment Webhook", func() {
 			Expect(warnings).To(BeEmpty())
 		})
 
+		It("Should reject conflicting spec.image and spec.engine.image on create", func() {
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Image = "legacy:v1"
+			obj.Spec.Engine.Image = "engine:v2"
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.image"))
+			Expect(err.Error()).To(ContainSubstring("spec.engine.image"))
+		})
+
+		It("Should reject conflicting spec.image and spec.engine.image on update", func() {
+			oldObj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			oldObj.Spec.Engine.Image = "engine:v1"
+
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Image = "legacy:v1"
+			obj.Spec.Engine.Image = "engine:v2"
+
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.image"))
+			Expect(err.Error()).To(ContainSubstring("spec.engine.image"))
+		})
+
+		It("Should admit matching spec.image and spec.engine.image", func() {
+			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
+			obj.Spec.Image = "same:v1"
+			obj.Spec.Engine.Image = "same:v1"
+
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+		})
+
 		It("Should admit a single modelCache volume", func() {
 			obj.Spec.Model.ID = "meta-llama/Llama-2-7b-chat-hf"
 			obj.Spec.Model.Storage = &airunwayv1alpha1.StorageSpec{

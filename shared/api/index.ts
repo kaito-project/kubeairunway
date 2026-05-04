@@ -23,6 +23,7 @@ import { createHuggingFaceApi, type HuggingFaceApi } from './huggingface';
 import { createAikitApi, type AikitApi } from './aikit';
 import { createAIConfiguratorApi, type AIConfiguratorApi } from './aiconfigurator';
 import { createMetricsApi, type MetricsApi } from './metrics';
+import { createVllmRecipesApi, type VllmRecipesApi } from './vllmRecipes';
 
 // Re-export API types
 export type { ModelsApi } from './models';
@@ -64,6 +65,7 @@ export type {
 } from './aikit';
 export type { AIConfiguratorApi, NormalizeGpuResponse } from './aiconfigurator';
 export type { MetricsApi } from './metrics';
+export type { VllmRecipesApi } from './vllmRecipes';
 
 /**
  * Complete API client with all endpoints
@@ -81,6 +83,7 @@ export interface ApiClient {
   aikit: AikitApi;
   aiConfigurator: AIConfiguratorApi;
   metrics: MetricsApi;
+  vllmRecipes: VllmRecipesApi;
 }
 
 /**
@@ -124,5 +127,6 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     aikit: createAikitApi(request),
     aiConfigurator: createAIConfiguratorApi(request),
     metrics: createMetricsApi(request),
+    vllmRecipes: createVllmRecipesApi(request),
   };
 }

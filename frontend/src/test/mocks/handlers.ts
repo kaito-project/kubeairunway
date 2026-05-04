@@ -100,6 +100,31 @@ export const handlers = [
     return HttpResponse.json(mockClusterStatus)
   }),
 
+  // vLLM Recipes API
+  http.get(`${API_BASE}/vllm/recipes`, () => {
+    return HttpResponse.json({ recipes: [], total: 0, source: 'mock' })
+  }),
+
+  http.post(`${API_BASE}/vllm/recipes/resolve`, async ({ request }) => {
+    const body = await request.json() as { modelId?: string }
+    return HttpResponse.json({
+      provider: 'vllm',
+      engine: 'vllm',
+      mode: 'aggregated',
+      imageRef: 'vllm/vllm-openai:cu130-nightly',
+      resources: { gpu: 1 },
+      engineArgs: { model: body.modelId || 'test/model' },
+      engineExtraArgs: [],
+      env: {},
+      annotations: {},
+      recipeProvenance: {
+        source: 'mock',
+        modelId: body.modelId || 'test/model',
+      },
+      warnings: [],
+    })
+  }),
+
   // Settings API
   http.get(`${API_BASE}/settings`, () => {
     return HttpResponse.json(mockSettings)

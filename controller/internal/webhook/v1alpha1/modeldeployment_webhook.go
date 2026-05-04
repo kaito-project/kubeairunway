@@ -210,6 +210,15 @@ func (v *ModelDeploymentCustomValidator) validateSpec(obj *airunwayv1alpha1.Mode
 	spec := &obj.Spec
 	specPath := field.NewPath("spec")
 
+	// Validate image override fields are not conflicting.
+	if err := spec.ValidateImageFields(); err != nil {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("engine", "image"),
+			spec.Engine.Image,
+			err.Error(),
+		))
+	}
+
 	// Validate model.id is required for huggingface source
 	if spec.Model.Source == airunwayv1alpha1.ModelSourceHuggingFace || spec.Model.Source == "" {
 		if spec.Model.ID == "" {

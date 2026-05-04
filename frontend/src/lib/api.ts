@@ -52,6 +52,11 @@ export type {
   StorageSpec,
   VolumePurpose,
   PersistentVolumeAccessMode,
+  VllmRecipeIndexEntry,
+  VllmRecipeListResponse,
+  VllmRecipeRawResponse,
+  VllmRecipeResolveRequest,
+  VllmRecipeResolveResult,
 } from '@airunway/shared';
 
 // Settings types
@@ -161,6 +166,10 @@ import type {
   AikitBuildResult,
   AikitPreviewResult,
   AikitInfrastructureStatus,
+  VllmRecipeListResponse,
+  VllmRecipeRawResponse,
+  VllmRecipeResolveRequest,
+  VllmRecipeResolveResult,
 } from '@airunway/shared';
 
 // ============================================================================
@@ -261,6 +270,29 @@ async function request<T>(endpoint: string, options?: RequestOptions): Promise<T
 export const modelsApi = {
   list: () => request<{ models: Model[] }>('/models'),
   get: (id: string) => request<Model>(`/models/${encodeURIComponent(id)}`),
+};
+
+
+// ============================================================================
+// vLLM Recipes API
+// ============================================================================
+
+export const vllmRecipesApi = {
+  /** List known upstream vLLM deployment recipes */
+  list: () => request<VllmRecipeListResponse>('/vllm/recipes'),
+
+  /** Resolve a recipe into deployment-ready engine args, image, resources, and provenance */
+  resolve: (data: VllmRecipeResolveRequest) =>
+    request<VllmRecipeResolveResult>('/vllm/recipes/resolve', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /** Fetch a raw recipe payload for a Hugging Face organization/model pair */
+  get: (org: string, model: string) =>
+    request<VllmRecipeRawResponse>(
+      `/vllm/recipes/${encodeURIComponent(org)}/${encodeURIComponent(model)}`
+    ),
 };
 
 // ============================================================================

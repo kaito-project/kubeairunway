@@ -262,6 +262,25 @@ func TestTransformAggregatedCustomImage(t *testing.T) {
 	}
 }
 
+func TestTransformAggregatedEngineImagePreferredOverLegacyImage(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Image = "legacy-vllm:latest"
+	md.Spec.Engine.Image = "engine-vllm:latest"
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	deploy := resources[0]
+	containers, _, _ := unstructured.NestedSlice(deploy.Object, "spec", "template", "spec", "containers")
+	container := containers[0].(map[string]interface{})
+	if container["image"] != "engine-vllm:latest" {
+		t.Errorf("expected engine image to take precedence, got %s", container["image"])
+	}
+}
+
 func TestTransformAggregatedGPUResources(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
@@ -461,6 +480,33 @@ func TestTransformAggregatedCustomEngineArgs(t *testing.T) {
 
 	assertArg(t, args, "--gpu-memory-utilization", "0.9")
 	assertFlag(t, args, "--disable-log-requests")
+}
+
+func TestTransformAggregatedEngineExtraArgsAppendedAfterSortedEngineArgs(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Args = map[string]string{
+		"zeta":  "last",
+		"alpha": "first",
+	}
+	md.Spec.Engine.ExtraArgs = []string{"--raw-flag", "raw-value", "--second-raw"}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := getContainerArgs(t, resources[0])
+	expectedSuffix := []string{"--alpha", "first", "--zeta", "last", "--raw-flag", "raw-value", "--second-raw"}
+	if len(args) < len(expectedSuffix) {
+		t.Fatalf("expected at least %d args, got %d: %v", len(expectedSuffix), len(args), args)
+	}
+	suffix := args[len(args)-len(expectedSuffix):]
+	for i := range expectedSuffix {
+		if suffix[i] != expectedSuffix[i] {
+			t.Fatalf("expected suffix %v, got %v (all args: %v)", expectedSuffix, suffix, args)
+		}
+	}
 }
 
 func TestTransformAggregatedInvalidEngineArgKey(t *testing.T) {
@@ -771,9 +817,9 @@ func TestTransformUserLabelsCannotClobberSelectors(t *testing.T) {
 	md.Spec.PodTemplate = &airunwayv1alpha1.PodTemplateSpec{
 		Metadata: &airunwayv1alpha1.PodTemplateMetadata{
 			Labels: map[string]string{
-				"app":                        "my-custom-app",
+				"app":                    "my-custom-app",
 				"airunway.ai/deployment": "my-custom-deployment",
-				"my-label":                   "my-value",
+				"my-label":               "my-value",
 			},
 		},
 	}
