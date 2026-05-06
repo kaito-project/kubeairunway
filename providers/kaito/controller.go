@@ -360,33 +360,56 @@ func (r *KaitoProviderReconciler) handleDeletion(ctx context.Context, md *airunw
 
 		// Resource exists and is owned by us, delete it
 		logger.Info("Deleting Workspace", "name", md.Name)
-		if err := r.Delete(ctx, ws); err != nil && !errors.IsNotFound(err) {
-			logger.Error(err, "Failed to delete Workspace")
+		if err := r.Delete(ctx, ws); err != nil {
+			if upstreamResourceUnavailable(err) {
+				logger.Info("Workspace unavailable during deletion, removing finalizer", "name", md.Name)
+			} else {
+				logger.Error(err, "Failed to delete Workspace")
 
-			// Check if we should force-remove the finalizer
-			deletionTime := md.DeletionTimestamp.Time
-			if time.Since(deletionTime) > FinalizerTimeout {
-				logger.Info("Finalizer timeout reached, removing finalizer without cleanup")
-				controllerutil.RemoveFinalizer(md, FinalizerName)
-				return ctrl.Result{}, r.Update(ctx, md)
+				// Check if we should force-remove the finalizer
+				deletionTime := md.DeletionTimestamp.Time
+				if time.Since(deletionTime) > FinalizerTimeout {
+					logger.Info("Finalizer timeout reached, removing finalizer without cleanup")
+					controllerutil.RemoveFinalizer(md, FinalizerName)
+					return ctrl.Result{}, r.Update(ctx, md)
+				}
+
+				// Requeue to retry deletion
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 			}
-
-			// Requeue to retry deletion
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		} else {
+			// Requeue to wait for deletion
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 		}
-
-		// Requeue to wait for deletion
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	if !errors.IsNotFound(err) {
-		return ctrl.Result{}, fmt.Errorf("failed to get upstream resource: %w", err)
+	if !upstreamResourceUnavailable(err) {
+		// Unexpected error fetching the upstream resource (e.g. transient API
+		// server failure). Honor the finalizer timeout so the ModelDeployment
+		// can still be removed if the error persists, instead of requeueing
+		// forever.
+		deletionTime := md.DeletionTimestamp.Time
+		if time.Since(deletionTime) > FinalizerTimeout {
+			logger.Info("Finalizer timeout reached, removing finalizer without cleanup")
+			controllerutil.RemoveFinalizer(md, FinalizerName)
+			return ctrl.Result{}, r.Update(ctx, md)
+		}
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	// Resource is gone, remove finalizer
-	logger.Info("Upstream resource deleted, removing finalizer", "name", md.Name)
+	// The upstream resource is already gone or its CRD is no longer installed,
+	// so cleanup can finish by removing the finalizer.
+	logger.Info("Upstream resource unavailable or deleted, removing finalizer", "name", md.Name)
 	controllerutil.RemoveFinalizer(md, FinalizerName)
 	return ctrl.Result{}, r.Update(ctx, md)
+}
+
+// upstreamResourceUnavailable returns true when the error indicates the
+// upstream resource is missing or its CRD is not installed in the cluster.
+// This mirrors the helper used by the dynamo and kuberay providers so that
+// finalizer cleanup completes even when KAITO has been uninstalled.
+func upstreamResourceUnavailable(err error) bool {
+	return errors.IsNotFound(err) || meta.IsNoMatchError(err)
 }
 
 // setCondition updates a condition on the ModelDeployment

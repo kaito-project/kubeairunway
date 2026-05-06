@@ -2,16 +2,22 @@ package kaito
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -452,6 +458,140 @@ func TestReconcileHandleDeletion(t *testing.T) {
 		t.Error("expected finalizer to be removed after deletion with no upstream resource")
 	}
 	_ = result
+}
+
+// TestReconcileDeletionWithMissingUpstreamCRDRemovesFinalizer reproduces
+// https://github.com/kaito-project/airunway/issues/239 — when the KAITO
+// upstream CRDs are not installed, fetching the Workspace returns
+// meta.NoKindMatchError (not IsNotFound). The reconciler must still complete
+// finalizer removal so the ModelDeployment can be deleted.
+func TestReconcileDeletionWithMissingUpstreamCRDRemovesFinalizer(t *testing.T) {
+	scheme := newScheme()
+	md := newMDForController("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+	now := metav1.Now()
+	md.DeletionTimestamp = &now
+
+	interceptorFuncs := interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if u, ok := obj.(*unstructured.Unstructured); ok && u.GetKind() == WorkspaceKind {
+				return &apimeta.NoKindMatchError{
+					GroupKind:        schema.GroupKind{Group: KaitoAPIGroup, Kind: WorkspaceKind},
+					SearchedVersions: []string{KaitoAPIVersion},
+				}
+			}
+			return c.Get(ctx, key, obj, opts...)
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(md).
+		WithStatusSubresource(md).
+		WithInterceptorFuncs(interceptorFuncs).
+		Build()
+	r := NewKaitoProviderReconciler(c, scheme)
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Requeue || result.RequeueAfter != 0 {
+		t.Fatalf("expected deletion to finish without requeue, got %#v", result)
+	}
+
+	var updated airunwayv1alpha1.ModelDeployment
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected ModelDeployment to be deleted after finalizer removal, got %v", err)
+	}
+}
+
+// TestReconcileDeletionTransientGetErrorBeforeTimeout confirms that an
+// unexpected (non-NoMatch / non-NotFound) error fetching the upstream
+// resource requeues instead of returning a hard error, so subsequent
+// reconciles can still observe the timeout fallback.
+func TestReconcileDeletionTransientGetErrorBeforeTimeout(t *testing.T) {
+	scheme := newScheme()
+	md := newMDForController("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+	now := metav1.Now()
+	md.DeletionTimestamp = &now
+
+	interceptorFuncs := interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if u, ok := obj.(*unstructured.Unstructured); ok && u.GetKind() == WorkspaceKind {
+				return errors.New("transient API server failure")
+			}
+			return c.Get(ctx, key, obj, opts...)
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(md).
+		WithStatusSubresource(md).
+		WithInterceptorFuncs(interceptorFuncs).
+		Build()
+	r := NewKaitoProviderReconciler(c, scheme)
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Fatalf("expected requeue while waiting for timeout, got %#v", result)
+	}
+
+	var updated airunwayv1alpha1.ModelDeployment
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); err != nil {
+		t.Fatalf("expected ModelDeployment to still exist before timeout, got %v", err)
+	}
+	if !controllerutil.ContainsFinalizer(&updated, FinalizerName) {
+		t.Error("expected finalizer to still be present before timeout")
+	}
+}
+
+// TestReconcileDeletionTransientGetErrorAfterTimeout confirms the documented
+// 5-minute force-remove fallback eventually fires when the upstream Get
+// continues to fail with an unexpected error.
+func TestReconcileDeletionTransientGetErrorAfterTimeout(t *testing.T) {
+	scheme := newScheme()
+	md := newMDForController("test", "default")
+	controllerutil.AddFinalizer(md, FinalizerName)
+	old := metav1.NewTime(time.Now().Add(-(FinalizerTimeout + time.Minute)))
+	md.DeletionTimestamp = &old
+
+	interceptorFuncs := interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if u, ok := obj.(*unstructured.Unstructured); ok && u.GetKind() == WorkspaceKind {
+				return errors.New("persistent API server failure")
+			}
+			return c.Get(ctx, key, obj, opts...)
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(md).
+		WithStatusSubresource(md).
+		WithInterceptorFuncs(interceptorFuncs).
+		Build()
+	r := NewKaitoProviderReconciler(c, scheme)
+
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var updated airunwayv1alpha1.ModelDeployment
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected ModelDeployment to be deleted after finalizer timeout, got %v", err)
+	}
 }
 
 func TestReconcileDeletionNoFinalizer(t *testing.T) {
