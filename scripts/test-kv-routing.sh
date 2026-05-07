@@ -1,247 +1,214 @@
 #!/usr/bin/env bash
-# test-kv-routing.sh — smoke-test KV-aware routing for a ModelDeployment.
-# NOTE: This script is meant for demonstrating and validating KV-aware routing 
-# in a live cluster. Can be used for e2e once GPU resources are available.
+# test-kv-routing.sh — measure prefix/KV-cache hit numbers against any
+# OpenAI-compatible chat-completions endpoint.
 #
-# REQUIRED SETUP for this test to be meaningful:
-#   1. AGGREGATED mode (spec.serving.mode: aggregated)
-#        Disagg mode muddies the signal — the decode pod always receives KV
-#        blocks via NIXL from a prefill peer, so "external prefix cache hit
-#        rate" trivially reads ~100% and doesn't tell you anything about
-#        cross-request routing decisions.
-#   2. ≥2 worker pods (spec.scaling.replicas: 2+)
-#        With a single pod there's no routing decision to make — all traffic
-#        lands on the one pod trivially. You can only observe caching, not
-#        routing.
-#   3. KV-aware router mode enabled
-#        The provider's router must be configured for prefix-aware routing,
-#        not round-robin. How to set this depends on the provider — e.g.
-#        for Dynamo set spec.provider.overrides.routerMode to "kv".
-#        Without this, the test measures plain round-robin + on-pod prefix
-#        caching — not KV-aware routing.
+# What it measures (works against any OpenAI-compatible server):
+#   1. Cold vs warm latency for N distinct long prompts.
+#        Phase 1 sends N prompts concurrently (creates queue pressure so a
+#        KV-aware router has to distribute across workers); phase 2 re-sends
+#        them sequentially so each warm hit gets a clean measurement window.
+#   2. Per-response `usage.prompt_tokens_details.cached_tokens` — the
+#        canonical client-visible signal that the server reused KV blocks
+#        for the prompt prefix. Reported by vLLM (≥0.6), OpenAI, SGLang,
+#        and other OpenAI-compatible servers. If a server doesn't return
+#        this field, the script falls back to latency speedup as the signal.
 #
-# What this test proves (given the setup above):
-#   The provider's KV-aware router picks the worker that is most likely to
-#   already hold KV-cache blocks for a given prompt prefix. A successful
-#   KV-aware routing hit has two observable effects:
+# Optional Kubernetes mode (--kube-namespace + --kube-worker-label):
+#   - Attributes each request to a worker pod by snapshotting
+#     vllm:prompt_tokens_total on each worker before/after the request and
+#     picking the pod whose counter increased. Requires vLLM workers and
+#     `kubectl exec` access. Without this, the script is purely client-side.
+#   - Reports each pod's cumulative "Prefix cache hit rate" line scraped
+#     from worker logs after the run.
 #
-#     1. LATENCY: the second request with the same prompt is much faster
-#        than the first — prefill recompute is skipped on the chosen pod.
-#     2. PREFIX CACHE REUSE: the worker that serves A2 reports a high
-#        "Prefix cache hit rate" for the window, because it's the same pod
-#        that served A1 and still has the blocks resident.
+# Usage examples:
+#   # Pure client-side, any endpoint
+#   ./test-kv-routing.sh -e http://localhost:8000 -m Qwen/Qwen3-0.6B
 #
-# What it does:
-#   1. Resolves the gateway endpoint and model name from the ModelDeployment.
-#   2. Phase 1 — Cold requests (concurrent):
-#        Sends A1, B1, C1, D1 simultaneously. Four distinct prompts hit the
-#        router at once, creating queue pressure that forces distribution
-#        across workers. Without concurrency, the router has no reason to
-#        move off the first (warm-cache) worker.
-#   3. Phase 2 — Warm requests (sequential):
-#        Sends A2, B2, C2, D2 one at a time. Each repeats the prompt from
-#        Phase 1. The KV router should send each back to the same worker
-#        that cached the corresponding cold prompt.
-#   4. Reports latency and target pod for each request.
-#      X2 should be faster than X1 (cache hit) and land on the same pod.
-#      With ≥2 workers, different prompt families (A vs B vs C vs D) should
-#      distribute across workers — demonstrating the router distributes by
-#      prefix, not randomly.
-#   5. Reports the worker pod's own vLLM "Prefix cache hit rate" after the
-#      run — this is the cross-request reuse signal.
+#   # OpenAI / hosted endpoint with API key
+#   ./test-kv-routing.sh -e https://api.openai.com -m gpt-4o-mini -k "$OPENAI_API_KEY"
 #
-# Usage:
-#   ./scripts/test-kv-routing.sh <md-name> <md-namespace>
+#   # Custom routing header (e.g. for GAIE / Inference Gateway)
+#   ./test-kv-routing.sh -e http://gateway:8000 -m Qwen/Qwen3-0.6B \
+#     -H "X-Gateway-Model-Name: Qwen/Qwen3-0.6B"
 #
-# Requires:
-#   - kubectl configured against the target cluster
-#   - jq, curl
-#   - The ModelDeployment to be Running and HTTPRoute created
+#   # Kubernetes mode: also attribute requests to vLLM worker pods
+#   ./test-kv-routing.sh -e http://gateway:8000 -m Qwen/Qwen3-0.6B \
+#     --kube-namespace <namespace> --kube-worker-label app=qwen3-worker
+#
+# Flags (env-var equivalents in parentheses):
+#   -e, --endpoint URL          (ENDPOINT)        Required. Base URL, no /v1 suffix.
+#   -m, --model NAME            (MODEL)           Required. Model identifier.
+#   -k, --api-key KEY           (API_KEY)         Optional bearer token.
+#   -n, --num-prompts N         (NUM_PROMPTS)     1-4 distinct prompt families [4].
+#   -t, --max-tokens N          (MAX_TOKENS)      Response max_tokens [16].
+#   -H, --header "Name: value"  (repeatable)      Extra HTTP header.
+#   --kube-namespace NS         (KUBE_NAMESPACE)  Optional, enables pod attribution.
+#   --kube-worker-label LABEL   (KUBE_WORKER_LABEL) e.g. "app=foo" or
+#                                                 "nvidia.com/dynamo-graph-deployment-name=qwen-agg".
+#   --kube-metrics-port PORT    (KUBE_METRICS_PORT) Worker metrics port [9090].
+#
+# Requires: bash, curl, jq, bc (and kubectl in Kubernetes mode).
 
 set -euo pipefail
 
-MD_NAME="${1:?usage: $0 <md-name> <md-namespace>}"
-MD_NAMESPACE="${2:?usage: $0 <md-name> <md-namespace>}"
+# ── Defaults ───────────────────────────────────────────────────────────
+ENDPOINT="${ENDPOINT:-}"
+MODEL="${MODEL:-}"
+API_KEY="${API_KEY:-}"
+NUM_PROMPTS="${NUM_PROMPTS:-4}"
+MAX_TOKENS="${MAX_TOKENS:-16}"
+EXTRA_HEADERS=()
+KUBE_NAMESPACE="${KUBE_NAMESPACE:-}"
+KUBE_WORKER_LABEL="${KUBE_WORKER_LABEL:-}"
+KUBE_METRICS_PORT="${KUBE_METRICS_PORT:-9090}"
 
-echo "==> Resolving gateway endpoint and model name..."
-ENDPOINT="${ENDPOINT:-$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
-  -o jsonpath='{.status.gateway.endpoint}')}"
-MODEL_NAME="${MODEL_NAME:-$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
-  -o jsonpath='{.status.gateway.modelName}')}"
+usage() { sed -n '2,50p' "$0"; exit "${1:-0}"; }
 
-if [[ -z "$ENDPOINT" || -z "$MODEL_NAME" ]]; then
-  echo "ERROR: could not resolve gateway endpoint/model name from MD status" >&2
-  echo "       .status.gateway must be populated — is the MD Running?" >&2
-  echo "       Or set ENDPOINT and MODEL_NAME env vars to override." >&2
-  exit 1
-fi
-
-echo "    endpoint:   $ENDPOINT"
-echo "    modelName:  $MODEL_NAME"
-
-PROVIDER="${PROVIDER:-$(kubectl get modeldeployment -n "$MD_NAMESPACE" "$MD_NAME" \
-  -o jsonpath='{.status.provider.name}' 2>/dev/null)}"
-echo "    provider:   ${PROVIDER:-(unknown)}"
-
-# ── Worker pod discovery ──────────────────────────────────────────────
-# Try provider-specific labels first, then fall back to generic strategies.
-# Each provider labels its inference-serving pods differently.
-WORKER_NAMESPACE="$MD_NAMESPACE"
-WORKERS=""
-
-discover_workers() {
-  local label="$1"
-  kubectl get pods -n "$WORKER_NAMESPACE" -l "$label" \
-    --field-selector=status.phase=Running \
-    -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | tr ' ' '\n'
-}
-
-case "$PROVIDER" in
-  dynamo)
-    # Dynamo labels workers with the DGD name and component type.
-    # Workers live in the same namespace as the ModelDeployment, but if the MD
-    # namespace differs from dynamo-system, also check dynamo-system as a fallback.
-    WORKERS=$(discover_workers "nvidia.com/dynamo-graph-deployment-name=$MD_NAME" \
-      | grep -i worker || true)
-    if [[ -z "$WORKERS" && "$WORKER_NAMESPACE" != "dynamo-system" ]]; then
-      WORKER_NAMESPACE="dynamo-system"
-      WORKERS=$(discover_workers "nvidia.com/dynamo-graph-deployment-name=$MD_NAME" \
-        | grep -i worker || true)
-    fi
-    ;;
-  kaito)
-    # KAITO uses workspace-based labeling
-    WORKERS=$(discover_workers "kaito.sh/workspace=$MD_NAME" || true)
-    ;;
-  llmd)
-    # llm-d labels worker pods with the deployment name
-    WORKERS=$(discover_workers "app.kubernetes.io/instance=$MD_NAME" \
-      | grep -vi -e epp -e router -e frontend || true)
-    ;;
-esac
-
-# Generic fallback: look for pods with the airunway managed-by label
-if [[ -z "$WORKERS" ]]; then
-  WORKERS=$(discover_workers "app.kubernetes.io/instance=$MD_NAME" \
-    | grep -vi -e epp -e router -e frontend -e gateway || true)
-fi
-
-if [[ -z "$WORKERS" ]]; then
-  echo "ERROR: no worker pods found for $MD_NAME in $WORKER_NAMESPACE" >&2
-  echo "       Detected provider: ${PROVIDER:-(none)}. Check pod labels." >&2
-  exit 1
-fi
-
-echo
-NUM_WORKERS=$(echo "$WORKERS" | wc -w | tr -d ' ')
-echo "==> Found $NUM_WORKERS worker pod(s):"
-for w in $WORKERS; do echo "      - $w"; done
-if [[ "$NUM_WORKERS" -lt 2 ]]; then
-  echo
-  echo "WARNING: only $NUM_WORKERS worker pod(s) detected. KV-aware routing needs"
-  echo "         >=2 workers to make a meaningful routing decision — with a single"
-  echo "         pod you will only observe on-pod prefix caching, not routing."
-fi
-
-# ── Build pod IP → name map ──────────────────────────────────────────
-# Used to resolve EPP log endpoints (IPs) back to pod names.
-declare -A IP_TO_POD
-for w in $WORKERS; do
-  ip=$(kubectl get pod -n "$WORKER_NAMESPACE" "$w" -o jsonpath='{.status.podIP}' 2>/dev/null || true)
-  if [[ -n "$ip" ]]; then
-    IP_TO_POD["$ip"]="$w"
-  fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -e|--endpoint)        ENDPOINT="$2"; shift 2 ;;
+    -m|--model)           MODEL="$2"; shift 2 ;;
+    -k|--api-key)         API_KEY="$2"; shift 2 ;;
+    -n|--num-prompts)     NUM_PROMPTS="$2"; shift 2 ;;
+    -t|--max-tokens)      MAX_TOKENS="$2"; shift 2 ;;
+    -H|--header)          EXTRA_HEADERS+=("$2"); shift 2 ;;
+    --kube-namespace)     KUBE_NAMESPACE="$2"; shift 2 ;;
+    --kube-worker-label)  KUBE_WORKER_LABEL="$2"; shift 2 ;;
+    --kube-metrics-port)  KUBE_METRICS_PORT="$2"; shift 2 ;;
+    -h|--help)            usage ;;
+    *)                    echo "unknown arg: $1" >&2; usage 1 ;;
+  esac
 done
 
-if [[ -n "${EPP_POD:-}" ]]; then
-  echo "==> EPP pod: $EPP_POD"
+[[ -z "$ENDPOINT" ]] && { echo "ERROR: --endpoint (or ENDPOINT env) is required" >&2; exit 1; }
+[[ -z "$MODEL"    ]] && { echo "ERROR: --model (or MODEL env) is required" >&2; exit 1; }
+if ! [[ "$NUM_PROMPTS" =~ ^[1-4]$ ]]; then
+  echo "ERROR: --num-prompts must be 1-4 (got: $NUM_PROMPTS)" >&2; exit 1
 fi
 
-# Cut-off timestamp for log scraping (ignore anything earlier).
+ENDPOINT="${ENDPOINT%/}"  # strip trailing slash
+
+KUBE_MODE=0
+if [[ -n "$KUBE_NAMESPACE" && -n "$KUBE_WORKER_LABEL" ]]; then
+  KUBE_MODE=1
+elif [[ -n "$KUBE_NAMESPACE$KUBE_WORKER_LABEL" ]]; then
+  echo "ERROR: --kube-namespace and --kube-worker-label must be set together" >&2; exit 1
+fi
+
+echo "==> Configuration"
+echo "    endpoint:    $ENDPOINT"
+echo "    model:       $MODEL"
+echo "    prompts:     $NUM_PROMPTS"
+echo "    max-tokens:  $MAX_TOKENS"
+echo "    auth:        $([[ -n "$API_KEY" ]] && echo yes || echo no)"
+echo "    kube-mode:   $([[ $KUBE_MODE -eq 1 ]] && echo 'ns='"$KUBE_NAMESPACE"' label='"$KUBE_WORKER_LABEL" || echo off)"
+
+# ── Worker pod discovery (Kubernetes mode only) ───────────────────────
+WORKERS=""
+if [[ $KUBE_MODE -eq 1 ]]; then
+  WORKERS=$(kubectl get pods -n "$KUBE_NAMESPACE" -l "$KUBE_WORKER_LABEL" \
+    --field-selector=status.phase=Running \
+    -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | tr ' ' '\n' || true)
+
+  if [[ -z "$WORKERS" ]]; then
+    echo "WARNING: no Running pods matched -n $KUBE_NAMESPACE -l $KUBE_WORKER_LABEL" >&2
+    echo "         Continuing in client-only mode." >&2
+    KUBE_MODE=0
+  else
+    NUM_WORKERS=$(echo "$WORKERS" | wc -w | tr -d ' ')
+    echo
+    echo "==> Found $NUM_WORKERS worker pod(s):"
+    for w in $WORKERS; do echo "      - $w"; done
+    if [[ "$NUM_WORKERS" -lt 2 ]]; then
+      echo "WARNING: only $NUM_WORKERS worker(s) — KV-aware routing needs ≥2 to make"
+      echo "         a meaningful routing decision; you'll only see on-pod caching."
+    fi
+  fi
+fi
+
 SINCE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# ── Metrics-based pod detection ──────────────────────────────────────
-# The gateway may send requests to any pod (EPP returns uniform scores),
-# but the sidecar forwards over Dynamo RPC to the actual target worker.
-# To find which worker actually processed the request, we scrape
-# vllm:prompt_tokens_total from each worker before and after the request.
-# The worker whose counter increased is the one that did the work.
-METRICS_PORT=9090
-
+# ── Worker metrics scraping (Kubernetes mode only) ────────────────────
 get_prompt_tokens() {
   local pod="$1"
-  kubectl exec -n "$WORKER_NAMESPACE" "$pod" -c main -- \
-    curl -s "localhost:${METRICS_PORT}/metrics" 2>/dev/null \
+  kubectl exec -n "$KUBE_NAMESPACE" "$pod" -c main -- \
+    curl -s "localhost:${KUBE_METRICS_PORT}/metrics" 2>/dev/null \
     | grep '^vllm:prompt_tokens_total' \
     | grep -oE '[0-9.]+$' || echo "0"
 }
 
-# fire_request <label> <prompt> <tmpdir> — sends one request, records latency.
-# Does NOT detect pod (caller handles that separately).
-fire_request() {
-  local label="$1" prompt="$2" tmpdir="$3"
-  jq -nc --arg model "$MODEL_NAME" --arg prompt "$prompt" '{
-    model: $model, max_tokens: 16, temperature: 0,
-    messages: [{role: "user", content: $prompt}]
-  }' | curl -sS -X POST "http://$ENDPOINT/v1/chat/completions" \
-    -H 'Content-Type: application/json' \
-    -H "X-Gateway-Model-Name: $MODEL_NAME" \
-    -d @- \
-    -o "$tmpdir/$label.body" \
-    -w '%{time_total}' > "$tmpdir/$label.latency"
-}
-
-# detect_pod <label> <tmpdir> — uses per-request before/after metrics snapshots
-# to determine which worker processed the request.
-detect_pod() {
-  local label="$1" tmpdir="$2"
-  sleep 1  # let metrics flush
-  local pod_name="unknown"
-  local max_delta=0
-  for w in $WORKERS; do
-    local after_tok
-    after_tok=$(get_prompt_tokens "$w")
-    local before_tok
-    before_tok=$(cat "$tmpdir/$label.before.$w")
-    local delta
-    delta=$(echo "$after_tok - $before_tok" | bc 2>/dev/null || echo "0")
-    if (( $(echo "$delta > $max_delta" | bc 2>/dev/null) )); then
-      max_delta="$delta"
-      pod_name="$w"
-    fi
-  done
-  echo "$pod_name" > "$tmpdir/$label.pod"
-}
-
-# snapshot_tokens <tmpdir> <prefix> — saves current prompt_tokens for each worker.
 snapshot_tokens() {
   local tmpdir="$1" prefix="$2"
+  [[ $KUBE_MODE -eq 0 ]] && return
   for w in $WORKERS; do
     get_prompt_tokens "$w" > "$tmpdir/${prefix}.before.$w"
   done
 }
 
-# send_request <label> <prompt> <tmpdir> — sequential send with per-request pod detection.
+detect_pod() {
+  local label="$1" tmpdir="$2"
+  if [[ $KUBE_MODE -eq 0 ]]; then echo "n/a" > "$tmpdir/$label.pod"; return; fi
+  sleep 1  # let metrics flush
+  local pod_name="unknown" max_delta=0
+  for w in $WORKERS; do
+    local after_tok before_tok delta
+    after_tok=$(get_prompt_tokens "$w")
+    before_tok=$(cat "$tmpdir/$label.before.$w" 2>/dev/null || echo "0")
+    delta=$(echo "$after_tok - $before_tok" | bc 2>/dev/null || echo "0")
+    if (( $(echo "$delta > $max_delta" | bc 2>/dev/null) )); then
+      max_delta="$delta"; pod_name="$w"
+    fi
+  done
+  echo "$pod_name" > "$tmpdir/$label.pod"
+}
+
+# ── Request firing ────────────────────────────────────────────────────
+fire_request() {
+  local label="$1" prompt="$2" tmpdir="$3"
+  local headers=( -H 'Content-Type: application/json' )
+  [[ -n "$API_KEY" ]] && headers+=( -H "Authorization: Bearer $API_KEY" )
+  local h
+  if [[ ${#EXTRA_HEADERS[@]} -gt 0 ]]; then
+    for h in "${EXTRA_HEADERS[@]}"; do headers+=( -H "$h" ); done
+  fi
+
+  jq -nc \
+      --arg model "$MODEL" \
+      --arg prompt "$prompt" \
+      --argjson max_tokens "$MAX_TOKENS" \
+      '{model: $model, max_tokens: $max_tokens, temperature: 0,
+        messages: [{role: "user", content: $prompt}]}' \
+    | curl -sS -X POST "$ENDPOINT/v1/chat/completions" \
+        "${headers[@]}" \
+        -d @- \
+        -o "$tmpdir/$label.body" \
+        -w '%{time_total}' > "$tmpdir/$label.latency"
+}
+
 send_request() {
   local label="$1" prompt="$2" tmpdir="$3"
   echo
   echo "==> Sending $label"
   snapshot_tokens "$tmpdir" "$label"
   fire_request "$label" "$prompt" "$tmpdir"
-  local lat
-  lat=$(cat "$tmpdir/$label.latency")
   detect_pod "$label" "$tmpdir"
-  printf "    latency: %ss   pod: %s\n" "$lat" "$(cat "$tmpdir/$label.pod")"
+  printf "    latency: %ss   pod: %s\n" \
+    "$(cat "$tmpdir/$label.latency")" "$(cat "$tmpdir/$label.pod")"
 }
 
-# Prompts must be long enough that prefill dominates total latency. On H100
-# with a 7B model, ~500 tokens still finishes in single-digit milliseconds —
-# lost in the ~180ms of fixed overhead (HTTP, routing, decode). We need ~4K+
-# tokens so prefill takes hundreds of milliseconds, making the A1→A2 delta
-# from prefix cache reuse unmistakable.
-#
-# PROMPT_A and PROMPT_B share NO meaningful prefix (beyond BOS / chat template)
-# so B1 cannot benefit from A1's cached blocks.
+# Extract usage fields from a response body. Returns "0" if missing.
+field() {
+  local body="$1" path="$2"
+  jq -r "(${path}) // 0" "$body" 2>/dev/null || echo "0"
+}
+
+# ── Prompts ───────────────────────────────────────────────────────────
+# Long, distinct prompts so prefill dominates total latency and warm-vs-cold
+# delta is unmistakable. PROMPTS share no meaningful prefix beyond the chat
+# template, so each prompt's hit/miss is independent of the others.
+PROMPT_NAMES=("A" "B" "C" "D")
+
 read -r -d '' PROMPT_A << 'PROMPT_EOF' || true
 You are a distributed systems expert. I need an exhaustive technical explanation covering all of the following topics in a single, cohesive response. Be extremely thorough — for each topic, include the full protocol specification, correctness invariants, failure modes, and performance characteristics.
 
@@ -347,145 +314,166 @@ You are an operating systems expert. I need an exhaustive technical explanation 
 Be precise and technical. Include pseudocode for all key algorithm steps.
 PROMPT_EOF
 
+# Random nonce prepended to each prompt so re-runs see a fresh prefix.
+# MUST be at the START of the prompt — prefix caching keys on the prompt
+# prefix, so a trailing nonce only invalidates the last block(s) and lets
+# a previous run's cache make subsequent "cold" requests look like hits.
+PROMPTS=()
+for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+  name="${PROMPT_NAMES[$i]}"
+  base_var="PROMPT_${name}"
+  nonce="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  PROMPTS+=("[Session nonce: ${nonce}]
+
+${!base_var}")
+done
+
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# Append a random nonce to each base prompt so re-runs don't hit stale cache
-# entries from previous runs. X2 reuses X1's exact prompt within each family.
-NONCE_A="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-NONCE_B="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-NONCE_C="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-NONCE_D="session-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-PROMPT_A_RUN="${PROMPT_A}
-
-[Session nonce: ${NONCE_A}]"
-PROMPT_B_RUN="${PROMPT_B}
-
-[Session nonce: ${NONCE_B}]"
-PROMPT_C_RUN="${PROMPT_C}
-
-[Session nonce: ${NONCE_C}]"
-PROMPT_D_RUN="${PROMPT_D}
-
-[Session nonce: ${NONCE_D}]"
-
-# ── Phase 1: Cold requests (concurrent) ─────────────────────────────
-# Send A1, B1, C1, D1 simultaneously so the router sees queue pressure
-# and is forced to distribute across workers.
+# ── Phase 1: cold (concurrent) ───────────────────────────────────────
 echo
-echo "==> Phase 1: Sending cold requests A1, B1, C1, D1 concurrently..."
+echo "==> Phase 1: sending $NUM_PROMPTS cold request(s) concurrently..."
+if [[ $KUBE_MODE -eq 1 ]]; then
+  for w in $WORKERS; do get_prompt_tokens "$w" > "$TMPDIR/batch1.before.$w"; done
+fi
 
-# Snapshot tokens once before the batch.
-for w in $WORKERS; do
-  get_prompt_tokens "$w" > "$TMPDIR/batch1.before.$w"
+for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+  fire_request "${PROMPT_NAMES[$i]}1" "${PROMPTS[$i]}" "$TMPDIR" &
 done
-
-fire_request "A1" "$PROMPT_A_RUN" "$TMPDIR" &
-fire_request "B1" "$PROMPT_B_RUN" "$TMPDIR" &
-fire_request "C1" "$PROMPT_C_RUN" "$TMPDIR" &
-fire_request "D1" "$PROMPT_D_RUN" "$TMPDIR" &
 wait
 
-# Print latencies.
-for lbl in A1 B1 C1 D1; do
+for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+  lbl="${PROMPT_NAMES[$i]}1"
   printf "    %s latency: %ss\n" "$lbl" "$(cat "$TMPDIR/$lbl.latency")"
 done
 
-# Detect which workers handled the batch by comparing token deltas.
-sleep 1
+if [[ $KUBE_MODE -eq 1 ]]; then
+  sleep 1
+  echo
+  echo "    Worker token deltas from cold batch:"
+  for w in $WORKERS; do
+    before=$(cat "$TMPDIR/batch1.before.$w")
+    after=$(get_prompt_tokens "$w")
+    delta=$(echo "$after - $before" | bc 2>/dev/null || echo "0")
+    printf "      [%s] +%s tokens\n" "$w" "$delta"
+  done
+fi
+
+# ── Phase 2: warm (sequential) ──────────────────────────────────────
 echo
-echo "    Worker token deltas from cold batch:"
-for w in $WORKERS; do
-  before=$(cat "$TMPDIR/batch1.before.$w")
-  after=$(get_prompt_tokens "$w")
-  delta=$(echo "$after - $before" | bc 2>/dev/null || echo "0")
-  printf "      [%s] +%s tokens\n" "$w" "$delta"
-  # Save post-batch baseline for the warm phase.
-  echo "$after" > "$TMPDIR/batch1.after.$w"
+echo "==> Phase 2: sending warm requests sequentially..."
+for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+  send_request "${PROMPT_NAMES[$i]}2" "${PROMPTS[$i]}" "$TMPDIR"
 done
 
-# ── Phase 2: Warm requests (sequential) ─────────────────────────────
-# Send A2, B2, C2, D2 one at a time. The KV router should send each
-# back to the worker that cached the corresponding cold prompt.
-# We also use X2's detected pod as X1's pod — the router picks the same
-# worker for the same prompt, so the worker that serves X2 (cache hit)
-# is the one that served X1 (cold).
-echo
-echo "==> Phase 2: Sending warm requests sequentially..."
-send_request "A2" "$PROMPT_A_RUN" "$TMPDIR"
-send_request "B2" "$PROMPT_B_RUN" "$TMPDIR"
-send_request "C2" "$PROMPT_C_RUN" "$TMPDIR"
-send_request "D2" "$PROMPT_D_RUN" "$TMPDIR"
+# Attribute cold to same pod as warm (KV router picks same worker for same prompt).
+if [[ $KUBE_MODE -eq 1 ]]; then
+  for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+    n="${PROMPT_NAMES[$i]}"
+    cp "$TMPDIR/${n}2.pod" "$TMPDIR/${n}1.pod"
+  done
+fi
 
-# Attribute cold requests to the same pod as their warm counterpart.
-cp "$TMPDIR/A2.pod" "$TMPDIR/A1.pod"
-cp "$TMPDIR/B2.pod" "$TMPDIR/B1.pod"
-cp "$TMPDIR/C2.pod" "$TMPDIR/C1.pod"
-cp "$TMPDIR/D2.pod" "$TMPDIR/D1.pod"
+# ── Wait for vLLM to flush cumulative prefix-cache-hit log line (Kube only) ──
+if [[ $KUBE_MODE -eq 1 ]]; then
+  echo
+  echo "==> Waiting for worker metrics to flush (up to 20s)..."
+  for _ in $(seq 1 20); do
+    seen=0
+    for w in $WORKERS; do
+      if kubectl logs -n "$KUBE_NAMESPACE" "$w" --since-time="$SINCE" 2>/dev/null \
+           | grep -q 'Prefix cache hit rate'; then
+        seen=1; break
+      fi
+    done
+    [[ $seen -eq 1 ]] && break
+    sleep 1
+  done
+fi
 
+# ── Report ──────────────────────────────────────────────────────────
 echo
-echo "==> Waiting for worker metrics to flush (up to 20s)..."
-# vLLM emits "Prefix cache hit rate" summary lines every ~10s, only when
-# there was activity in the window. Poll until at least one appears.
-for _ in $(seq 1 20); do
-  seen=0
-  for w in $WORKERS; do
-    if kubectl logs -n "$WORKER_NAMESPACE" "$w" --since-time="$SINCE" 2>/dev/null \
-         | grep -q 'Prefix cache hit rate'; then
-      seen=1
-      break
+echo "========================================================================"
+echo "  KV / prefix cache test results"
+echo "========================================================================"
+
+# Header
+if [[ $KUBE_MODE -eq 1 ]]; then
+  printf "  %-4s  %-9s  %-9s  %-9s  %-9s  %s\n" \
+    "req" "latency" "prompt" "cached" "hit%" "pod"
+else
+  printf "  %-4s  %-9s  %-9s  %-9s  %s\n" \
+    "req" "latency" "prompt" "cached" "hit%"
+fi
+
+total_cached=0
+total_prompt=0
+sum_speedup="0"
+families=0
+
+for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+  n="${PROMPT_NAMES[$i]}"
+  for round in 1 2; do
+    lbl="${n}${round}"
+    body="$TMPDIR/$lbl.body"
+    lat=$(cat "$TMPDIR/$lbl.latency" 2>/dev/null || echo "?")
+    p_tok=$(field "$body" '.usage.prompt_tokens')
+    c_tok=$(field "$body" '.usage.prompt_tokens_details.cached_tokens')
+    if [[ "$p_tok" =~ ^[0-9]+$ && "$p_tok" -gt 0 ]]; then
+      hit=$(echo "scale=1; $c_tok * 100 / $p_tok" | bc 2>/dev/null || echo "0")
+    else
+      hit="?"
+    fi
+    if [[ $KUBE_MODE -eq 1 ]]; then
+      pod=$(cat "$TMPDIR/$lbl.pod" 2>/dev/null || echo "?")
+      printf "  %-4s  %-9s  %-9s  %-9s  %-9s  %s\n" \
+        "$lbl" "${lat}s" "$p_tok" "$c_tok" "${hit}%" "$pod"
+    else
+      printf "  %-4s  %-9s  %-9s  %-9s  %s\n" \
+        "$lbl" "${lat}s" "$p_tok" "$c_tok" "${hit}%"
+    fi
+    if [[ "$round" == "2" ]]; then
+      total_cached=$(echo "$total_cached + $c_tok" | bc)
+      total_prompt=$(echo "$total_prompt + $p_tok" | bc)
     fi
   done
-  if [[ $seen -eq 1 ]]; then break; fi
-  sleep 1
+  # Speedup A1 vs A2
+  l1=$(cat "$TMPDIR/${n}1.latency" 2>/dev/null || echo "0")
+  l2=$(cat "$TMPDIR/${n}2.latency" 2>/dev/null || echo "0")
+  if [[ "$l2" != "0" ]]; then
+    speedup=$(echo "scale=2; $l1 / $l2" | bc 2>/dev/null || echo "0")
+    sum_speedup=$(echo "$sum_speedup + $speedup" | bc)
+    families=$((families + 1))
+  fi
 done
 
-A1_LAT=$(cat "$TMPDIR/A1.latency")
-A2_LAT=$(cat "$TMPDIR/A2.latency")
-B1_LAT=$(cat "$TMPDIR/B1.latency")
-B2_LAT=$(cat "$TMPDIR/B2.latency")
-C1_LAT=$(cat "$TMPDIR/C1.latency")
-C2_LAT=$(cat "$TMPDIR/C2.latency")
-D1_LAT=$(cat "$TMPDIR/D1.latency")
-D2_LAT=$(cat "$TMPDIR/D2.latency")
-
-# The real signal in agg mode lives in each worker's vLLM engine logs,
-# emitted every ~10s as a cumulative summary line:
-#   * "Prefix cache hit rate: X%"
-#       → fraction of token blocks served from this pod's own on-pod cache
-#         instead of recomputing. This is the cross-request reuse signal we
-#         want: if A1 populated a pod's cache and the KV-aware router
-#         correctly sent A2 back to the SAME pod, that pod's prefix cache
-#         hit rate for the window will jump. If the router scattered A1 and
-#         A2 across different pods, no pod will show a meaningful hit rate
-#         and A2's latency won't drop.
-#
-# These are cumulative since engine start; we take the LAST line after SINCE.
-latest_metric() {
-  local pod="$1" pattern="$2"
-  kubectl logs -n "$WORKER_NAMESPACE" "$pod" --since-time="$SINCE" 2>/dev/null \
-    | grep -oE "$pattern" | tail -1 || true
-}
-
 echo
-echo "========================================================================"
-echo "  KV-aware routing test results"
-echo "========================================================================"
-printf "  %-4s  %-11s  %s\n" "req" "latency" "pod"
-printf "  %-4s  %-11s  %s\n" "A1" "${A1_LAT}s" "$(cat "$TMPDIR/A1.pod")"
-printf "  %-4s  %-11s  %s\n" "A2" "${A2_LAT}s" "$(cat "$TMPDIR/A2.pod")"
-printf "  %-4s  %-11s  %s\n" "B1" "${B1_LAT}s" "$(cat "$TMPDIR/B1.pod")"
-printf "  %-4s  %-11s  %s\n" "B2" "${B2_LAT}s" "$(cat "$TMPDIR/B2.pod")"
-printf "  %-4s  %-11s  %s\n" "C1" "${C1_LAT}s" "$(cat "$TMPDIR/C1.pod")"
-printf "  %-4s  %-11s  %s\n" "C2" "${C2_LAT}s" "$(cat "$TMPDIR/C2.pod")"
-printf "  %-4s  %-11s  %s\n" "D1" "${D1_LAT}s" "$(cat "$TMPDIR/D1.pod")"
-printf "  %-4s  %-11s  %s\n" "D2" "${D2_LAT}s" "$(cat "$TMPDIR/D2.pod")"
+echo "  Aggregate (warm requests):"
+if [[ "$total_prompt" != "0" ]]; then
+  agg_hit=$(echo "scale=1; $total_cached * 100 / $total_prompt" | bc)
+  printf "    cached / prompt:  %s / %s  (%s%%)\n" "$total_cached" "$total_prompt" "$agg_hit"
+fi
+if [[ "$families" -gt 0 ]]; then
+  avg_speedup=$(echo "scale=2; $sum_speedup / $families" | bc)
+  printf "    avg cold/warm speedup:  %sx\n" "$avg_speedup"
+fi
 
+if [[ $KUBE_MODE -eq 1 ]]; then
+  echo
+  echo "  Worker prefix cache hit rates since $SINCE:"
+  for w in $WORKERS; do
+    hit=$(kubectl logs -n "$KUBE_NAMESPACE" "$w" --since-time="$SINCE" 2>/dev/null \
+            | grep -oE 'Prefix cache hit rate: [0-9.]+%' | tail -1 || true)
+    printf "    [%s] %s\n" "$w" "${hit:-(no metrics flushed yet)}"
+  done
+fi
+
+echo "========================================================================"
 echo
-echo "  Worker prefix cache hit rates since $SINCE:"
-for w in $WORKERS; do
-  hit=$(latest_metric "$w" 'Prefix cache hit rate: [0-9.]+%')
-  printf "    [%s] %s\n" "$w" "${hit:-(no metrics flushed yet)}"
-done
-
-echo "========================================================================"
+echo "Notes:"
+echo "  - 'cached' is usage.prompt_tokens_details.cached_tokens from the"
+echo "    response body; servers that don't populate this field show 0."
+echo "    A high warm 'hit%' alongside a >1x speedup is the strongest signal."
+echo "  - For meaningful KV-aware *routing* numbers (vs single-pod caching),"
+echo "    run against an endpoint with ≥2 worker replicas."
