@@ -1,9 +1,10 @@
 # AI Runway Kubernetes Deployment
 
-This directory contains Kubernetes manifests for deploying AI Runway to a cluster. The deployment is split into two manifests:
+This directory contains Kubernetes manifests for deploying AI Runway to a cluster. The deployment is split into required, optional, and opt-in installer manifests:
 
 - **`controller.yaml`** — CRDs, controller, webhooks, and RBAC (required)
 - **`dashboard.yaml`** — Web UI dashboard deployment and service (optional)
+- **`dashboard-installer-rbac.yaml`** — optional elevated RBAC for one-click provider installation from the dashboard
 
 ## Quick Start
 
@@ -17,6 +18,10 @@ kubectl apply -f https://raw.githubusercontent.com/kaito-project/airunway/main/p
 
 # 3. Install dashboard UI (optional)
 kubectl apply -f dashboard.yaml
+
+# 4. Optional: enable dashboard-driven provider installs
+# This grants broad cluster-scoped installer permissions. See dashboard-installer-rbac.yaml below.
+kubectl apply -f dashboard-installer-rbac.yaml
 ```
 
 > **Note:** `controller.yaml` must be applied first — it creates the CRDs and namespace that the dashboard depends on. Provider shims must be installed before providers appear in the UI. Webhooks become fully functional after the controller starts and completes certificate rotation (~10-30s).
@@ -56,6 +61,20 @@ Then open http://localhost:3001 in your browser.
 | `Secret` | Webhook TLS certificate secret |
 | `Service` | Controller metrics service |
 | `Role` / `RoleBinding` | Leader election RBAC |
+
+
+### dashboard-installer-rbac.yaml
+
+This manifest is optional and should be applied only when you want the dashboard
+to run Helm/kubectl for provider installation. Provider charts for KAITO, Dynamo,
+and KubeRay create cluster-scoped resources such as CRDs, admission webhooks,
+ClusterRoles, and ClusterRoleBindings. Kubernetes therefore requires elevated
+installer permissions, including RBAC `bind` and `escalate`. Treat this as
+cluster-admin-like access for the dashboard ServiceAccount.
+
+If you do not apply this manifest, the dashboard can still show the manual
+installation commands. Automatic install buttons will return a clear permission
+message when the dashboard lacks installer permissions.
 
 ### dashboard.yaml
 
@@ -111,6 +130,9 @@ kubectl exec -it -n airunway-system deploy/airunway -- curl localhost:3001/api/h
 ## Uninstall
 
 ```bash
+# Remove optional dashboard installer RBAC (if installed)
+kubectl delete -f dashboard-installer-rbac.yaml
+
 # Remove dashboard (if installed)
 kubectl delete -f dashboard.yaml
 

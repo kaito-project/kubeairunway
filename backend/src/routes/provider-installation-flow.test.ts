@@ -78,6 +78,16 @@ describe('Provider Installation Flow', () => {
         'getInstallCommands',
         (() => ['helm repo add kaito ...', 'helm install kaito-workspace ...']) as typeof helmService.getInstallCommands,
       ),
+      mockServiceMethod(
+        kubernetesService,
+        'checkKaitoInstallationStatus',
+        (async () => ({
+          installed: false,
+          crdFound: false,
+          operatorRunning: false,
+          message: 'KAITO workspace CRD not found',
+        })) as typeof kubernetesService.checkKaitoInstallationStatus,
+      ),
     );
 
     const statusRes1 = await app.request('/api/installation/providers/kaito/status');
@@ -131,6 +141,16 @@ describe('Provider Installation Flow', () => {
         kubernetesService,
         'getInferenceProviderConfig',
         (async () => mockInferenceProviderConfig) as typeof kubernetesService.getInferenceProviderConfig,
+      ),
+      mockServiceMethod(
+        kubernetesService,
+        'checkKaitoInstallationStatus',
+        (async () => ({
+          installed: true,
+          crdFound: true,
+          operatorRunning: true,
+          message: 'KAITO workspace CRD found and KAITO operator pods are ready',
+        })) as typeof kubernetesService.checkKaitoInstallationStatus,
       ),
     );
 

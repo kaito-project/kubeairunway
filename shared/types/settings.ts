@@ -77,8 +77,10 @@ export interface Settings {
 export interface RuntimeStatus {
   id: string;           // 'dynamo' | 'kuberay'
   name: string;         // Display name
-  installed: boolean;   // CRD exists
-  healthy: boolean;     // Operator pods running
+  installed: boolean;   // Runtime is ready to use
+  healthy: boolean;     // Runtime service is running
+  crdFound?: boolean;   // Provider API is available
+  operatorRunning?: boolean; // Runtime service pods are ready
   version?: string;     // Detected version
   message?: string;     // Status message
 }

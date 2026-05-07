@@ -18,6 +18,7 @@ package kuberay
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -81,45 +82,47 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 		},
 		SelectionRules: []airunwayv1alpha1.SelectionRule{
 			{
-				// Prefer for multi-GPU vLLM workloads
 				Condition: "has(spec.resources.gpu) && spec.resources.gpu.count > 1 && spec.engine.type == 'vllm'",
 				Priority:  80,
 			},
 		},
-		Installation: &airunwayv1alpha1.InstallationInfo{
-			Description:      "Ray Serve via KubeRay for distributed Ray-based model serving with vLLM",
-			DefaultNamespace: "ray-system",
-			HelmRepos: []airunwayv1alpha1.HelmRepo{
-				{Name: "kuberay", URL: "https://ray-project.github.io/kuberay-helm/"},
-			},
-			HelmCharts: []airunwayv1alpha1.HelmChart{
-				{
-					Name:            "kuberay-operator",
-					Chart:           "kuberay/kuberay-operator",
-					Version:         "1.3.0",
-					Namespace:       "ray-system",
-					CreateNamespace: true,
-				},
-			},
-			Steps: []airunwayv1alpha1.InstallationStep{
-				{
-					Title:       "Add KubeRay Helm Repository",
-					Command:     "helm repo add kuberay https://ray-project.github.io/kuberay-helm/",
-					Description: "Add the KubeRay Helm repository.",
-				},
-				{
-					Title:       "Update Helm Repositories",
-					Command:     "helm repo update",
-					Description: "Update local Helm repository cache.",
-				},
-				{
-					Title:       "Install KubeRay Operator",
-					Command:     "helm upgrade --install kuberay-operator kuberay/kuberay-operator --version 1.3.0 -n ray-system --create-namespace --wait",
-					Description: "Install the KubeRay operator v1.3.0.",
-				},
+	}
+}
+
+// GetInstallationInfo returns the installation metadata for KubeRay
+func GetInstallationInfo() *airunwayv1alpha1.InstallationInfo {
+	return &airunwayv1alpha1.InstallationInfo{
+		Description:      "Ray Serve via KubeRay for distributed Ray-based model serving with vLLM",
+		DefaultNamespace: "ray-system",
+		HelmRepos: []airunwayv1alpha1.HelmRepo{
+			{Name: "kuberay", URL: "https://ray-project.github.io/kuberay-helm/"},
+		},
+		HelmCharts: []airunwayv1alpha1.HelmChart{
+			{
+				Name:            "kuberay-operator",
+				Chart:           "kuberay/kuberay-operator",
+				Version:         "1.3.0",
+				Namespace:       "ray-system",
+				CreateNamespace: true,
 			},
 		},
-		Documentation: ProviderDocumentation,
+		Steps: []airunwayv1alpha1.InstallationStep{
+			{
+				Title:       "Add KubeRay Helm Repository",
+				Command:     "helm repo add kuberay https://ray-project.github.io/kuberay-helm/",
+				Description: "Add the KubeRay Helm repository.",
+			},
+			{
+				Title:       "Update Helm Repositories",
+				Command:     "helm repo update",
+				Description: "Update local Helm repository cache.",
+			},
+			{
+				Title:       "Install KubeRay Operator",
+				Command:     "helm upgrade --install kuberay-operator kuberay/kuberay-operator --version 1.3.0 -n ray-system --create-namespace --wait",
+				Description: "Install the KubeRay operator v1.3.0.",
+			},
+		},
 	}
 }
 
@@ -127,19 +130,23 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
+	annotations, err := buildAnnotations()
+	if err != nil {
+		return fmt.Errorf("failed to build annotations: %w", err)
+	}
+
 	config := &airunwayv1alpha1.InferenceProviderConfig{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: ProviderConfigName,
+			Name:        ProviderConfigName,
+			Annotations: annotations,
 		},
 		Spec: GetProviderConfigSpec(),
 	}
 
-	// Check if config already exists
 	existing := &airunwayv1alpha1.InferenceProviderConfig{}
-	err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, existing)
+	err = m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, existing)
 
 	if errors.IsNotFound(err) {
-		// Create new config
 		logger.Info("Creating InferenceProviderConfig", "name", ProviderConfigName)
 		if err := m.client.Create(ctx, config); err != nil {
 			return fmt.Errorf("failed to create InferenceProviderConfig: %w", err)
@@ -147,8 +154,13 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	} else if err != nil {
 		return fmt.Errorf("failed to get InferenceProviderConfig: %w", err)
 	} else {
-		// Update existing config spec if changed
 		existing.Spec = config.Spec
+		if existing.Annotations == nil {
+			existing.Annotations = make(map[string]string)
+		}
+		for k, v := range annotations {
+			existing.Annotations[k] = v
+		}
 		logger.Info("Updating InferenceProviderConfig", "name", ProviderConfigName)
 		if err := m.client.Update(ctx, existing); err != nil {
 			return fmt.Errorf("failed to update InferenceProviderConfig: %w", err)
@@ -254,4 +266,15 @@ func (m *ProviderConfigManager) StartHeartbeat(ctx context.Context) {
 // Unregister marks the provider as not ready
 func (m *ProviderConfigManager) Unregister(ctx context.Context) error {
 	return m.UpdateStatus(ctx, false)
+}
+
+func buildAnnotations() (map[string]string, error) {
+	installJSON, err := json.Marshal(GetInstallationInfo())
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal installation info: %w", err)
+	}
+	return map[string]string{
+		airunwayv1alpha1.AnnotationInstallation:  string(installJSON),
+		airunwayv1alpha1.AnnotationDocumentation: ProviderDocumentation,
+	}, nil
 }

@@ -13,6 +13,7 @@ import {
   hasStaticFiles,
 } from './static';
 import type { UserInfo } from '@airunway/shared';
+import type { AppEnv } from './types/hono';
 
 // Import route modules
 import {
@@ -46,7 +47,7 @@ logger.info(
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // Global middleware
 app.use('*', compress());

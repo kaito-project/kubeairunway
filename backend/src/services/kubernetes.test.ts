@@ -1,6 +1,116 @@
 import { describe, test, expect } from 'bun:test';
-import { toPodStatus, type ClusterGpuCapacity, type NodeGpuInfo, type GPUAvailability, type GPUOperatorStatus } from './kubernetes';
+import { extractCRDVersionFromAnnotations, kubernetesService, toPodStatus, type ClusterGpuCapacity, type NodeGpuInfo, type GPUAvailability, type GPUOperatorStatus } from './kubernetes';
 import { toDeploymentStatus, type ClusterStatus, type PodStatus, type DeploymentStatus, type PodPhase, type ModelDeployment } from '@airunway/shared';
+
+
+describe('KubernetesService - CRD Version Annotation Extraction', () => {
+  test('extracts and trims the Inference Extension bundle version from a raw CRD object', () => {
+    const crd = {
+      metadata: {
+        annotations: {
+          'inference.networking.k8s.io/bundle-version': ' v1.5.0 ',
+        },
+      },
+    };
+
+    expect(extractCRDVersionFromAnnotations(crd, [
+      'inference.networking.k8s.io/bundle-version',
+      'app.kubernetes.io/version',
+    ])).toBe('v1.5.0');
+  });
+
+  test('extracts the Gateway API version from a Kubernetes response wrapper', () => {
+    const response = {
+      body: {
+        metadata: {
+          annotations: {
+            'gateway.networking.k8s.io/bundle-version': 'v1.2.1',
+          },
+        },
+      },
+    };
+
+    expect(extractCRDVersionFromAnnotations(response, [
+      'gateway.networking.k8s.io/bundle-version',
+      'app.kubernetes.io/version',
+    ])).toBe('v1.2.1');
+  });
+
+  test('returns undefined when version annotations are missing', () => {
+    const crd = {
+      metadata: {
+        annotations: {
+          'example.com/other': 'v0.1.0',
+        },
+      },
+    };
+
+    expect(extractCRDVersionFromAnnotations(crd, [
+      'inference.networking.k8s.io/bundle-version',
+      'app.kubernetes.io/version',
+    ])).toBeUndefined();
+  });
+
+
+  test('checks Gateway CRD status with a single read per CRD', async () => {
+    const service = kubernetesService as any;
+    const originalApiExtensionsApi = service.apiExtensionsApi;
+    const originalGetGatewayStatus = service.getGatewayStatus;
+    const readCalls: string[] = [];
+
+    service.apiExtensionsApi = {
+      readCustomResourceDefinition: async (crdName: string) => {
+        readCalls.push(crdName);
+
+        if (crdName === 'gateways.gateway.networking.k8s.io') {
+          return {
+            body: {
+              metadata: {
+                annotations: {
+                  'gateway.networking.k8s.io/bundle-version': 'v1.2.1',
+                },
+              },
+            },
+          };
+        }
+
+        if (crdName === 'inferencepools.inference.networking.k8s.io') {
+          return {
+            body: {
+              metadata: {
+                annotations: {
+                  'inference.networking.k8s.io/bundle-version': 'v1.5.0',
+                },
+              },
+            },
+          };
+        }
+
+        throw { statusCode: 404 };
+      },
+    };
+    service.getGatewayStatus = async () => ({ available: true, endpoint: 'gateway.example.com' });
+
+    try {
+      const status = await kubernetesService.checkGatewayCRDStatus();
+
+      expect(readCalls).toEqual([
+        'gateways.gateway.networking.k8s.io',
+        'inferencepools.inference.networking.k8s.io',
+      ]);
+      expect(status.gatewayApiInstalled).toBe(true);
+      expect(status.inferenceExtInstalled).toBe(true);
+      expect(status.gatewayApiVersion).toBe('v1.2.1');
+      expect(status.inferenceExtVersion).toBe('v1.5.0');
+      expect(status.gatewayAvailable).toBe(true);
+      expect(status.gatewayEndpoint).toBe('gateway.example.com');
+    } finally {
+      service.apiExtensionsApi = originalApiExtensionsApi;
+      service.getGatewayStatus = originalGetGatewayStatus;
+    }
+  });
+});
+
 
 describe('KubernetesService - Type Definitions', () => {
   describe('ClusterGpuCapacity', () => {

@@ -40,7 +40,7 @@ export interface DeploymentConfig {
   modelId: string;
   engine: Engine;
   mode: DeploymentMode;
-  provider?: 'dynamo' | 'kuberay' | 'kaito'| 'llmd';
+  provider?: string;
   servedModelName?: string;
   routerMode: RouterMode;
   replicas: number;

@@ -50,12 +50,12 @@ import { cn } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 
 type SettingsTab = 'general' | 'runtimes' | 'integrations'
-type RuntimeId = 'dynamo' | 'kuberay' | 'kaito'| 'llmd'
+type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { isLoading: settingsLoading } = useSettings()
-  const { data: runtimesStatus, isLoading: runtimesLoading } = useRuntimesStatus()
+  const { data: runtimesStatus, isLoading: runtimesLoading, refetch: refetchRuntimesStatus } = useRuntimesStatus()
   const { data: clusterStatus, isLoading: clusterLoading } = useClusterStatus()
   const { data: helmStatus, isLoading: helmLoading } = useHelmStatus()
   const { data: autoscaler, isLoading: autoscalerLoading } = useAutoscalerDetection()
@@ -79,6 +79,7 @@ export function SettingsPage() {
   // Runtime installation state
   const [selectedRuntime, setSelectedRuntime] = useState<RuntimeId | null>(null)
   const [isInstalling, setIsInstalling] = useState(false)
+  const [pendingInstallRuntime, setPendingInstallRuntime] = useState<RuntimeId | null>(null)
   const [isUninstalling, setIsUninstalling] = useState(false)
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
 
@@ -123,8 +124,10 @@ export function SettingsPage() {
     try {
       const result = await installProvider.mutateAsync(providerId)
       if (result.success) {
-        toast({ title: 'Installation Complete', description: result.message })
+        setPendingInstallRuntime(providerId)
+        toast({ title: 'Installation Started', description: `${result.message}. Waiting for the runtime service to become ready.` })
         refetchInstallation()
+        refetchRuntimesStatus()
       } else {
         toast({ title: 'Installation Failed', description: result.message, variant: 'destructive' })
       }
@@ -141,8 +144,10 @@ export function SettingsPage() {
     try {
       const result = await uninstallProvider.mutateAsync(providerId)
       if (result.success) {
+        setPendingInstallRuntime((current) => current === providerId ? null : current)
         toast({ title: 'Uninstall Complete', description: result.message })
         refetchInstallation()
+        refetchRuntimesStatus()
       } else {
         toast({ title: 'Uninstall Failed', description: result.message, variant: 'destructive' })
       }
@@ -159,6 +164,24 @@ export function SettingsPage() {
   }
 
   const isInstalled = installationStatus?.installed ?? false
+  const isWaitingForInstall = pendingInstallRuntime === effectiveRuntime && !isInstalled
+
+  useEffect(() => {
+    if (pendingInstallRuntime === effectiveRuntime && isInstalled) {
+      setPendingInstallRuntime(null)
+    }
+  }, [effectiveRuntime, isInstalled, pendingInstallRuntime])
+
+  useEffect(() => {
+    if (!isWaitingForInstall) return
+
+    const intervalId = window.setInterval(() => {
+      refetchInstallation()
+      refetchRuntimesStatus()
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [isWaitingForInstall, refetchInstallation, refetchRuntimesStatus])
 
   if (settingsLoading || clusterLoading || runtimesLoading) {
     return (
@@ -436,12 +459,19 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <span className="font-heading font-bold">{runtime.name}</span>
                       {runtime.installed ? (
-                        <span className="text-green-400 text-sm flex items-center gap-1">
-                          <CheckCircle className="h-4 w-4" /> Installed
+                        <Badge variant="success" className="shrink-0">
+                          <CheckCircle className="h-4 w-4" />
+                          Installed
+                        </Badge>
+                      ) : pendingInstallRuntime === runtime.id ? (
+                        <span className="text-cyan-400 text-sm flex items-center gap-1">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Starting
                         </span>
                       ) : (
                         <span className="text-muted-foreground text-sm flex items-center gap-1">
-                          <XCircle className="h-4 w-4" /> Not Installed
+                          <XCircle className="h-4 w-4 text-red-500" />
+                          Not Installed
                         </span>
                       )}
                     </div>
@@ -459,18 +489,18 @@ export function SettingsPage() {
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">CRD</span>
-                        {runtime.installed ? (
+                        {runtime.crdFound ?? runtime.installed ? (
                           <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                          <XCircle className="h-4 w-4 text-red-500" />
                         )}
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Operator</span>
-                        {runtime.healthy ? (
+                        {runtime.operatorRunning ?? runtime.healthy ? (
                           <CheckCircle className="h-4 w-4 text-green-400" />
                         ) : (
-                          <XCircle className="h-4 w-4 text-muted-foreground" />
+                          <XCircle className="h-4 w-4 text-red-500" />
                         )}
                       </div>
                       {runtime.version && (
@@ -496,17 +526,26 @@ export function SettingsPage() {
                   {installationStatus?.providerName || runtimes.find(r => r.id === effectiveRuntime)?.name || 'Runtime'} Installation
                 </div>
                 {isInstalled ? (
-                  <span className="text-green-400 text-sm flex items-center gap-1">
-                    <CheckCircle className="h-4 w-4" /> Installed
+                  <Badge variant="success" className="shrink-0">
+                    <CheckCircle className="h-4 w-4" />
+                    Installed
+                  </Badge>
+                ) : isWaitingForInstall ? (
+                  <span className="text-cyan-400 text-sm flex items-center gap-1">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Starting
                   </span>
                 ) : (
                   <span className="text-muted-foreground text-sm flex items-center gap-1">
-                    <XCircle className="h-4 w-4" /> Not Installed
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    Not Installed
                   </span>
                 )}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {installationStatus?.message || 'Checking installation status...'}
+                {isWaitingForInstall
+                  ? 'Install command completed. Waiting for the runtime service to become ready...'
+                  : installationStatus?.message || 'Checking installation status...'}
               </p>
             </div>
             <div className="space-y-4">
@@ -539,13 +578,18 @@ export function SettingsPage() {
                     {!isInstalled && (
                       <Button
                         onClick={() => handleInstall(effectiveRuntime)}
-                        disabled={isInstalling || !helmAvailable || !clusterStatus?.connected}
+                        disabled={isInstalling || isWaitingForInstall || !helmAvailable || !clusterStatus?.connected}
                         className="flex items-center gap-2"
                       >
                         {isInstalling ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin" />
                             Installing...
+                          </>
+                        ) : isWaitingForInstall ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Checking runtime...
                           </>
                         ) : (
                           <>
@@ -579,7 +623,10 @@ export function SettingsPage() {
 
                     <Button
                       variant="outline"
-                      onClick={() => refetchInstallation()}
+                      onClick={() => {
+                        refetchInstallation()
+                        refetchRuntimesStatus()
+                      }}
                       disabled={installationLoading}
                     >
                       <RefreshCw className={cn('h-4 w-4', installationLoading && 'animate-spin')} />
@@ -849,8 +896,8 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between rounded-lg bg-muted p-3">
                       <div className="flex items-center gap-1">
                         <span>Inference Extension</span>
-                        {gatewayCRDStatus?.pinnedVersion && (
-                          <span className="text-xs text-muted-foreground">({gatewayCRDStatus.pinnedVersion})</span>
+                        {gatewayCRDStatus?.inferenceExtInstalled && gatewayCRDStatus?.inferenceExtVersion && (
+                          <span className="text-xs text-muted-foreground">({gatewayCRDStatus.inferenceExtVersion})</span>
                         )}
                       </div>
                       {gatewayCRDStatus?.inferenceExtInstalled ? (
