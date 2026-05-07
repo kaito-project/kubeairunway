@@ -1054,11 +1054,18 @@ rules:
   - secrets
   verbs:
   - create
-  - get
   - list
+  - watch
+- apiGroups:
+  - ""
+  resourceNames:
+  - airunway-webhook-server-cert
+  resources:
+  - secrets
+  verbs:
+  - get
   - patch
   - update
-  - watch
 - apiGroups:
   - admissionregistration.k8s.io
   resources:
@@ -1222,12 +1229,8 @@ rules:
   - leases
   verbs:
   - create
-  - delete
   - get
-  - list
-  - patch
   - update
-  - watch
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
