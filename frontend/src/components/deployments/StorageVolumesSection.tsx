@@ -36,6 +36,7 @@ interface StorageVolumesSectionProps {
   volumes: StorageVolume[]
   onChange: (volumes: StorageVolume[]) => void
   deploymentName?: string
+  availablePVCs?: Array<{ name: string; status: string; storageClass: string; capacity: string }>
 }
 
 // Cross-browser info tooltip using native title + visible popover on hover/focus.
@@ -96,7 +97,7 @@ function validateMountPath(mountPath: string | undefined, purpose: VolumePurpose
   return null
 }
 
-export function StorageVolumesSection({ volumes, onChange, deploymentName }: StorageVolumesSectionProps) {
+export function StorageVolumesSection({ volumes, onChange, deploymentName, availablePVCs }: StorageVolumesSectionProps) {
   // Track which volume cards have been interacted with for showing validation
   const [touched, setTouched] = useState<Record<number, Set<string>>>({})
   // Explicitly track storage source mode per volume index.
@@ -406,21 +407,49 @@ export function StorageVolumesSection({ volumes, onChange, deploymentName }: Sto
                         <Label htmlFor={`vol-claim-${index}`}>
                           Existing Disk Name <span className="text-destructive">*</span>
                         </Label>
-                        <InfoHint text="The name of a pre-provisioned persistent volume claim in your cluster" />
+                        <InfoHint text="Select a persistent volume claim from the deployment namespace" />
                       </div>
-                      <Input
-                        id={`vol-claim-${index}`}
-                        value={vol.claimName || ''}
-                        onChange={(e) => {
-                          updateVolume(index, { claimName: e.target.value || undefined })
-                          markTouched(index, 'claimName')
-                        }}
-                        onBlur={() => markTouched(index, 'claimName')}
-                        placeholder="my-shared-storage"
-                        className={isTouched(index, 'claimName') && !vol.claimName ? 'border-destructive' : ''}
-                      />
+                      {availablePVCs && availablePVCs.length > 0 ? (
+                        <Select
+                          value={vol.claimName || ''}
+                          onValueChange={(value) => {
+                            updateVolume(index, { claimName: value || undefined })
+                            markTouched(index, 'claimName')
+                          }}
+                        >
+                          <SelectTrigger
+                            id={`vol-claim-${index}`}
+                            onBlur={() => markTouched(index, 'claimName')}
+                            className={isTouched(index, 'claimName') && !vol.claimName ? 'border-destructive' : ''}
+                          >
+                            <SelectValue placeholder="Select a disk..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availablePVCs.map((pvc) => (
+                              <SelectItem key={pvc.name} value={pvc.name}>
+                                {pvc.name}{pvc.capacity ? ` (${pvc.capacity})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          id={`vol-claim-${index}`}
+                          value={vol.claimName || ''}
+                          onChange={(e) => {
+                            updateVolume(index, { claimName: e.target.value || undefined })
+                            markTouched(index, 'claimName')
+                          }}
+                          onBlur={() => markTouched(index, 'claimName')}
+                          placeholder="my-shared-storage"
+                          className={isTouched(index, 'claimName') && !vol.claimName ? 'border-destructive' : ''}
+                        />
+                      )}
                       {isTouched(index, 'claimName') && !vol.claimName && (
                         <p className="text-xs text-destructive">A disk name is required when using existing storage</p>
+                      )}
+                      {availablePVCs && availablePVCs.length === 0 && (
+                        <p className="text-xs text-muted-foreground">No existing disks found in this namespace</p>
                       )}
                     </div>
                   </div>

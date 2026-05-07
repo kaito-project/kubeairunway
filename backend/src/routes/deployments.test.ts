@@ -2,6 +2,7 @@ import { describe, test, expect, afterEach } from 'bun:test';
 import app from '../hono-app';
 import { kubernetesService } from '../services/kubernetes';
 import { configService } from '../services/config';
+import { authService } from '../services/auth';
 import { mockServiceMethod } from '../test/helpers';
 import {
   mockDeployment,
@@ -610,6 +611,85 @@ describe('Deployment Routes', () => {
 
       const res = await app.request('/api/deployments/test-deploy/manifest');
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('GET /api/deployments/pvcs', () => {
+    test('returns PVCs for the requested namespace', async () => {
+      let capturedNamespace: string | undefined;
+      let capturedToken: string | undefined;
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'listPVCs', async (namespace, userToken) => {
+          capturedNamespace = namespace;
+          capturedToken = userToken;
+          return [
+            {
+              name: 'model-cache',
+              status: 'Bound',
+              storageClass: 'azure-lustre',
+              capacity: '200Gi',
+            },
+          ];
+        }),
+      );
+
+      const res = await app.request('/api/deployments/pvcs?namespace=dynamo-system');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(capturedNamespace).toBe('dynamo-system');
+      expect(capturedToken).toBeUndefined();
+      expect(data).toEqual({
+        pvcs: [
+          {
+            name: 'model-cache',
+            status: 'Bound',
+            storageClass: 'azure-lustre',
+            capacity: '200Gi',
+          },
+        ],
+      });
+    });
+
+    test('passes the authenticated user token to PVC listing', async () => {
+      let tokenValidated: string | undefined;
+      let capturedToken: string | undefined;
+
+      restores.push(
+        mockServiceMethod(authService, 'isAuthEnabled', () => true),
+        mockServiceMethod(authService, 'validateToken', async (token) => {
+          tokenValidated = token;
+          return { valid: true, user: { username: 'test-user' } };
+        }),
+        mockServiceMethod(kubernetesService, 'listPVCs', async (_namespace, userToken) => {
+          capturedToken = userToken;
+          return [];
+        }),
+      );
+
+      const res = await app.request('/api/deployments/pvcs?namespace=dynamo-system', {
+        headers: { Authorization: 'Bearer user-token' },
+      });
+      expect(res.status).toBe(200);
+
+      expect(tokenValidated).toBe('user-token');
+      expect(capturedToken).toBe('user-token');
+      expect(await res.json()).toEqual({ pvcs: [] });
+    });
+
+    test('returns an empty PVC list when Kubernetes listing fails', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'listPVCs', async () => {
+          throw new Error('forbidden');
+        }),
+      );
+
+      const res = await app.request('/api/deployments/pvcs?namespace=dynamo-system');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ pvcs: [] });
     });
   });
 
