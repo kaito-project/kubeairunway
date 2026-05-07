@@ -45,7 +45,23 @@ logger.info(
 // Main App
 // ============================================================================
 
-const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
+
+// Parse CORS_ORIGIN into a value the cors middleware can use:
+//   - "*"               → pass through as a string (wildcard)
+//   - "a,b,c"           → array of trimmed, non-empty origins
+// Splitting "*" into ["*"] matches request origins literally, which never
+// equals a real origin and effectively disables CORS — so handle it explicitly.
+function parseCorsOrigin(raw: string): string | string[] {
+  const trimmed = raw.trim();
+  if (trimmed === '*') return '*';
+  const list = trimmed
+    .split(',')
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+  // Fall back to '*' if every entry was empty (e.g. CORS_ORIGIN=",,").
+  return list.length > 0 ? list : '*';
+}
 
 const app = new Hono<AppEnv>();
 
@@ -54,7 +70,7 @@ app.use('*', compress());
 app.use(
   '*',
   cors({
-    origin: CORS_ORIGIN,
+    origin: parseCorsOrigin(CORS_ORIGIN),
   })
 );
 
@@ -69,11 +85,19 @@ app.use('*', async (c, next) => {
 // ============================================================================
 
 // Routes that don't require authentication
+// Keep this list minimal — only routes needed before login
 const PUBLIC_ROUTES = [
-  '/api/health',
+  '/api/health',        // Basic health check only (not /health/nodes or /health/status)
   '/api/cluster/status',
-  '/api/settings',  // Settings is public (read-only auth config needed by frontend)
-  '/api/oauth',     // OAuth routes must be public for initial authentication
+  '/api/settings',      // Settings is public (read-only auth config needed by frontend)
+  '/api/oauth',         // OAuth routes must be public for initial authentication
+];
+
+// Public routes that must match exactly (no sub-path matching)
+const PUBLIC_ROUTES_EXACT = [
+  '/api/health',
+  '/api/health/',
+  '/api/health/version',
 ];
 
 // Auth middleware for protected API routes
@@ -83,9 +107,16 @@ app.use('/api/*', async (c, next) => {
     return next();
   }
 
-  // Skip auth for public routes
+  // Skip auth for exact-match public routes
   const path = c.req.path;
-  if (PUBLIC_ROUTES.some(route => path === route || path.startsWith(route + '/'))) {
+  if (PUBLIC_ROUTES_EXACT.includes(path)) {
+    return next();
+  }
+
+  // Skip auth for prefix-match public routes (cluster/status, settings, oauth)
+  if (PUBLIC_ROUTES.some(route =>
+    route !== '/api/health' && (path === route || path.startsWith(route + '/'))
+  )) {
     return next();
   }
 
@@ -192,10 +223,11 @@ app.onError((err, c) => {
     );
   }
 
+  // Don't leak internal error details to clients
   return c.json(
     {
       error: {
-        message: err.message || 'Internal Server Error',
+        message: 'Internal Server Error',
         statusCode: 500,
       },
     },
