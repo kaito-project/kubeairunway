@@ -27,6 +27,12 @@ vi.mock('@/hooks/useAikit', () => ({
   usePremadeModels: () => ({ data: [] }),
 }))
 
+const gatewayMock = vi.hoisted(() => ({ data: { available: false } as { available: boolean } }))
+
+vi.mock('@/hooks/useGateway', () => ({
+  useGatewayStatus: () => gatewayMock,
+}))
+
 vi.mock('@/hooks/useToast', () => ({
   useToast: () => ({ toast }),
 }))
@@ -100,6 +106,7 @@ describe('DeploymentForm', () => {
   beforeEach(() => {
     mutateAsync.mockReset()
     toast.mockReset()
+    gatewayMock.data = { available: false }
   })
 
   it('keeps manual topology edits instead of snapping back to the recommendation', async () => {
@@ -132,5 +139,46 @@ describe('DeploymentForm', () => {
     expect(
       screen.queryByText(/Multi-Node \(2 nodes × 8 GPUs = 16 total\)/i)
     ).not.toBeInTheDocument()
+  })
+
+  it('does not render the gateway routing toggle when no gateway is available', () => {
+    gatewayMock.data = { available: false }
+    render(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel()}
+          detailedCapacity={createCapacity()}
+          runtimes={[createRuntime()]}
+        />
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByLabelText(/Gateway routing/i)).not.toBeInTheDocument()
+  })
+
+  it('renders the gateway routing toggle (on by default) when a gateway is available', async () => {
+    gatewayMock.data = { available: true }
+    render(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel()}
+          detailedCapacity={createCapacity()}
+          runtimes={[createRuntime()]}
+        />
+      </MemoryRouter>
+    )
+
+    // Expand the Advanced Settings <details> to make the toggle visible
+    const summary = await screen.findByText(/Advanced Settings/i)
+    fireEvent.click(summary)
+
+    const toggle = await screen.findByRole('switch', { name: /Gateway routing/i })
+    expect(toggle).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.click(toggle)
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+    })
   })
 })
