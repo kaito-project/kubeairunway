@@ -236,9 +236,15 @@ export interface EndpointStatus {
   port?: number;
 }
 
+export interface EngineStatus {
+  selectedReason?: string;
+  type?: string;
+}
+
 export interface ModelDeploymentStatus {
   phase?: DeploymentPhase;
   message?: string;
+  engine?: EngineStatus;
   provider?: ProviderStatus;
   replicas?: ReplicaStatus;
   prefillReplicas?: {
@@ -660,7 +666,7 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
     namespace: md.metadata.namespace,
     modelId: spec.model.id,
     servedModelName: spec.model.servedName,
-    engine: (spec.engine?.type as Engine) || undefined,
+    engine: (spec.engine?.type as Engine) || (status.engine?.type as Engine) || undefined,
     mode: spec.serving?.mode || 'aggregated',
     phase: resolveDeploymentPhase(spec, status, pods),
     provider: status.provider?.name || spec.provider?.name || 'unknown',
