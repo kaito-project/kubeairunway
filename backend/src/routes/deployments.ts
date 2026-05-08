@@ -322,6 +322,103 @@ const createDeploymentSchema = z.object({
   }
 });
 
+
+function parseJsonObject(text: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getNestedStringValue(source: unknown, path: string[]): string | undefined {
+  let current = source;
+  for (const segment of path) {
+    if (!current || typeof current !== 'object') {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+
+  return typeof current === 'string' && current.trim() ? current : undefined;
+}
+
+function truncateErrorMessage(message: string, maxLength = 500): string {
+  return message.length > maxLength ? `${message.slice(0, maxLength)}…` : message;
+}
+
+function getUpstreamChatErrorMessage(
+  statusCode: number,
+  details: string,
+  deploymentName: string
+): string {
+  const status = parseJsonObject(details);
+  const statusMessage = getNestedStringValue(status, ['message']);
+  const openAiErrorMessage = getNestedStringValue(status, ['error', 'message']);
+  const detailMessage = getNestedStringValue(status, ['detail']);
+  const reason = getNestedStringValue(status, ['reason']);
+  const detailObject = status?.details && typeof status.details === 'object'
+    ? status.details as Record<string, unknown>
+    : undefined;
+  const kind = getNestedStringValue(detailObject, ['kind']);
+
+  if (statusCode === 404 && reason === 'NotFound' && kind === 'services') {
+    return `The model endpoint for '${deploymentName}' is not available yet. The deployment may still be starting, or its endpoint may have changed. Try again in a moment or check the logs.`;
+  }
+
+  const parsedMessage = openAiErrorMessage || statusMessage || detailMessage;
+  if (parsedMessage) {
+    return truncateErrorMessage(parsedMessage);
+  }
+
+  const plainDetails = details.trim();
+  if (plainDetails && !plainDetails.startsWith('<')) {
+    return truncateErrorMessage(plainDetails);
+  }
+
+  return `The model did not accept the chat request (HTTP ${statusCode}). Try again in a moment.`;
+}
+
+function isMissingServiceProxyResponse(statusCode: number, details: string): boolean {
+  const status = parseJsonObject(details);
+  const reason = typeof status?.reason === 'string' ? status.reason : undefined;
+  const detailObject = status?.details && typeof status.details === 'object'
+    ? status.details as Record<string, unknown>
+    : undefined;
+  const kind = typeof detailObject?.kind === 'string' ? detailObject.kind : undefined;
+
+  return statusCode === 404 && reason === 'NotFound' && kind === 'services';
+}
+
+function buildGatewayChatUrl(endpoint: string): string {
+  const withScheme = endpoint.includes('://') ? endpoint : `http://${endpoint}`;
+  const baseUrl = new URL(withScheme);
+  const normalizedPath = baseUrl.pathname.replace(/\/+$/, '');
+  baseUrl.pathname = normalizedPath.endsWith('/v1')
+    ? `${normalizedPath}/chat/completions`
+    : `${normalizedPath}/v1/chat/completions`;
+  baseUrl.search = '';
+  baseUrl.hash = '';
+  return baseUrl.toString();
+}
+
+async function proxyGatewayChatPostStream(
+  endpoint: string,
+  body: unknown,
+  modelName: string
+): Promise<Response> {
+  return fetch(buildGatewayChatUrl(endpoint), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      'X-Gateway-Model-Name': modelName,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 function extractFirstModelId(modelsResponse: unknown): string | undefined {
   if (!modelsResponse || typeof modelsResponse !== 'object') {
     return undefined;
@@ -429,10 +526,59 @@ async function handleDeploymentChat(
 
   if (!upstreamResponse.ok) {
     const details = await upstreamResponse.text();
+
+    if (deployment.gateway?.endpoint && isMissingServiceProxyResponse(upstreamResponse.status, details)) {
+      const gatewayResponse = await proxyGatewayChatPostStream(
+        deployment.gateway.endpoint,
+        {
+          ...body,
+          model: resolvedModel,
+          stream: true,
+        },
+        resolvedModel
+      );
+
+      if (gatewayResponse.ok) {
+        if (!gatewayResponse.body) {
+          return c.json(
+            {
+              error: {
+                message: 'Gateway chat response did not include a stream body',
+                statusCode: 502,
+              },
+            },
+            502
+          );
+        }
+
+        return new Response(gatewayResponse.body, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+          },
+        });
+      }
+
+      const gatewayDetails = await gatewayResponse.text();
+      return c.json(
+        {
+          error: {
+            message: getUpstreamChatErrorMessage(gatewayResponse.status, gatewayDetails, name),
+            statusCode: gatewayResponse.status,
+            details: gatewayDetails,
+          },
+        },
+        gatewayResponse.status as never
+      );
+    }
+
     return c.json(
       {
         error: {
-          message: 'Upstream chat completion request failed',
+          message: getUpstreamChatErrorMessage(upstreamResponse.status, details, name),
           statusCode: upstreamResponse.status,
           details,
         },

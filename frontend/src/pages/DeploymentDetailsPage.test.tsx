@@ -128,6 +128,29 @@ describe('DeploymentDetailsPage chat panel', () => {
     expect(screen.queryByRole('heading', { name: 'Chat with model' })).not.toBeInTheDocument()
   })
 
+  it('shows readable chat errors instead of raw API JSON', async () => {
+    chatMock.mockResolvedValue(new Response(JSON.stringify({
+      error: {
+        message: "The model endpoint for 'qwen3-0-6b-vllm-abc123' is not available yet. Try again in a moment.",
+        statusCode: 404,
+        details: '{\"message\":\"services \\\"qwen3-0-6b-vllm-abc123-frontend\\\" not found\"}',
+      },
+    }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+
+    renderDetailsPage()
+
+    await userEvent.type(screen.getByLabelText('Message'), 'Hello')
+    await userEvent.click(screen.getByRole('button', { name: /send/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "The model endpoint for 'qwen3-0-6b-vllm-abc123' is not available yet. Try again in a moment."
+    )
+    expect(screen.queryByText(/\{"error"/)).not.toBeInTheDocument()
+  })
+
   it('sends the prompt and renders streamed assistant responses', async () => {
     chatMock.mockResolvedValue(streamResponse([
       'data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n',

@@ -277,6 +277,190 @@ describe('Hono Routes', () => {
       ]);
     });
 
+    test('POST /api/deployments/:name/chat falls back to the gateway when the internal model endpoint is missing', async () => {
+      let capturedGatewayUrl: string | undefined;
+      let capturedGatewayBody: unknown;
+      let capturedGatewayHeaders: Headers;
+      const originalFetch = globalThis.fetch;
+      const missingServiceDetails = JSON.stringify({
+        kind: 'Status',
+        apiVersion: 'v1',
+        status: 'Failure',
+        message: 'services \"test-deploy-frontend\" not found',
+        reason: 'NotFound',
+        details: { name: 'test-deploy-frontend', kind: 'services' },
+        code: 404,
+      });
+      const gatewaySse = 'data: {"choices":[{"delta":{"content":"Hello from gateway"}}]}\n\ndata: [DONE]\n\n';
+
+      restores.push(() => {
+        globalThis.fetch = originalFetch;
+      });
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        capturedGatewayUrl = input.toString();
+        capturedGatewayBody = init?.body ? JSON.parse(init.body.toString()) : undefined;
+        capturedGatewayHeaders = new Headers(init?.headers);
+        return new Response(gatewaySse, {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        });
+      }) as typeof fetch;
+
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDeployment', async () => ({
+          ...mockDeployment,
+          phase: 'Running',
+          provider: 'dynamo',
+          replicas: { desired: 1, ready: 1, available: 1 },
+          frontendService: 'test-deploy-frontend:8080',
+          gateway: { endpoint: '20.92.155.15', modelName: 'served-from-gateway' },
+        } as never)),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'proxyServicePostStream', async () => (
+          new Response(missingServiceDetails, {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )),
+      );
+
+      const res = await app.request('/api/deployments/test-deploy/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hello' }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toContain('text/event-stream');
+      expect(await res.text()).toBe(gatewaySse);
+      expect(capturedGatewayUrl).toBe('http://20.92.155.15/v1/chat/completions');
+      expect(capturedGatewayHeaders!.get('X-Gateway-Model-Name')).toBe('served-from-gateway');
+      expect(capturedGatewayBody).toEqual({
+        messages: [{ role: 'user', content: 'Hello' }],
+        model: 'served-from-gateway',
+        stream: true,
+      });
+    });
+
+    test('POST /api/deployments/:name/chat preserves OpenAI-compatible gateway error messages', async () => {
+      const originalFetch = globalThis.fetch;
+      const missingServiceDetails = JSON.stringify({
+        kind: 'Status',
+        apiVersion: 'v1',
+        status: 'Failure',
+        message: 'services \"test-deploy-frontend\" not found',
+        reason: 'NotFound',
+        details: { name: 'test-deploy-frontend', kind: 'services' },
+        code: 404,
+      });
+      const gatewayError = JSON.stringify({
+        error: {
+          message: 'Model served-from-gateway is not loaded by this endpoint.',
+          type: 'invalid_request_error',
+        },
+      });
+
+      restores.push(() => {
+        globalThis.fetch = originalFetch;
+      });
+      globalThis.fetch = (async () => (
+        new Response(gatewayError, {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )) as typeof fetch;
+
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDeployment', async () => ({
+          ...mockDeployment,
+          phase: 'Running',
+          provider: 'dynamo',
+          replicas: { desired: 1, ready: 1, available: 1 },
+          frontendService: 'test-deploy-frontend:8080',
+          gateway: { endpoint: '20.92.155.15', modelName: 'served-from-gateway' },
+        } as never)),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'proxyServicePostStream', async () => (
+          new Response(missingServiceDetails, {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )),
+      );
+
+      const res = await app.request('/api/deployments/test-deploy/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hello' }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.message).toBe('Model served-from-gateway is not loaded by this endpoint.');
+      expect(data.error.details).toBe(gatewayError);
+    });
+
+    test('POST /api/deployments/:name/chat returns a readable message when the model endpoint is missing', async () => {
+      const upstreamDetails = JSON.stringify({
+        kind: 'Status',
+        apiVersion: 'v1',
+        status: 'Failure',
+        message: 'services \"test-deploy-frontend\" not found',
+        reason: 'NotFound',
+        details: { name: 'test-deploy-frontend', kind: 'services' },
+        code: 404,
+      });
+
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDeployment', async () => ({
+          ...mockDeployment,
+          phase: 'Running',
+          provider: 'dynamo',
+          replicas: { desired: 1, ready: 1, available: 1 },
+          frontendService: 'test-deploy-frontend:8080',
+          servedModelName: 'served-from-status',
+        } as never)),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'proxyServicePostStream', async () => (
+          new Response(upstreamDetails, {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )),
+      );
+
+      const res = await app.request('/api/deployments/test-deploy/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hello' }],
+        }),
+      });
+
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error.message).toBe(
+        "The model endpoint for 'test-deploy' is not available yet. The deployment may still be starting, or its endpoint may have changed. Try again in a moment or check the logs."
+      );
+      expect(data.error.details).toBe(upstreamDetails);
+    });
+
     test('POST /api/deployments/:name/chat rejects deployments that are not running', async () => {
       restores.push(
         mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),

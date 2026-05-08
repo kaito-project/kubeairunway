@@ -20,6 +20,51 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'An unexpected error occurred'
 }
 
+function getMessageFromErrorPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+
+  const body = payload as {
+    error?: { message?: unknown; details?: unknown }
+    message?: unknown
+  }
+
+  if (typeof body.error?.message === 'string' && body.error.message.trim()) {
+    return body.error.message
+  }
+
+  if (typeof body.message === 'string' && body.message.trim()) {
+    return body.message
+  }
+
+  const details = body.error?.details
+  if (typeof details === 'string' && details.trim()) {
+    try {
+      const parsedDetails = JSON.parse(details) as { message?: unknown }
+      if (typeof parsedDetails.message === 'string' && parsedDetails.message.trim()) {
+        return parsedDetails.message
+      }
+    } catch {
+      return details
+    }
+  }
+
+  return undefined
+}
+
+async function getChatResponseError(response: Response): Promise<string> {
+  const fallback = `Chat request failed with status ${response.status}`
+  const responseText = await response.text()
+
+  if (!responseText) return fallback
+
+  try {
+    const parsed = JSON.parse(responseText)
+    return getMessageFromErrorPayload(parsed) ?? fallback
+  } catch {
+    return responseText
+  }
+}
+
 function getChatDelta(payload: string): string {
   try {
     const parsed = JSON.parse(payload) as {
@@ -108,8 +153,7 @@ export function ChatPanel({ deploymentName, namespace, className, style }: ChatP
       )
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(errorText || `Chat request failed with status ${response.status}`)
+        throw new Error(await getChatResponseError(response))
       }
 
       if (!response.body) {
