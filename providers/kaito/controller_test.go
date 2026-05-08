@@ -433,7 +433,6 @@ func TestReconcileAlreadyRunning(t *testing.T) {
 	}
 }
 
-
 func TestReconcileHandleDeletion(t *testing.T) {
 	scheme := newScheme()
 	md := newMDForController("test", "default")
@@ -505,6 +504,79 @@ func TestReconcileDeletionWithMissingUpstreamCRDRemovesFinalizer(t *testing.T) {
 	var updated airunwayv1alpha1.ModelDeployment
 	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); !apierrors.IsNotFound(err) {
 		t.Fatalf("expected ModelDeployment to be deleted after finalizer removal, got %v", err)
+	}
+}
+
+func TestReconcileDeletionWithUpstreamUnavailableDeleteRemovesFinalizer(t *testing.T) {
+	tests := []struct {
+		name      string
+		deleteErr error
+	}{
+		{
+			name: "workspace deleted between get and delete",
+			deleteErr: apierrors.NewNotFound(
+				schema.GroupResource{Group: KaitoAPIGroup, Resource: "workspaces"},
+				"test",
+			),
+		},
+		{
+			name: "workspace CRD removed between get and delete",
+			deleteErr: &apimeta.NoKindMatchError{
+				GroupKind:        schema.GroupKind{Group: KaitoAPIGroup, Kind: WorkspaceKind},
+				SearchedVersions: []string{KaitoAPIVersion},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newScheme()
+			md := newMDForController("test", "default")
+			md.UID = "test-uid"
+			controllerutil.AddFinalizer(md, FinalizerName)
+			now := metav1.Now()
+			md.DeletionTimestamp = &now
+
+			ws := &unstructured.Unstructured{}
+			setWorkspaceGVK(ws)
+			ws.SetName("test")
+			ws.SetNamespace("default")
+			ws.SetOwnerReferences([]metav1.OwnerReference{
+				{UID: "test-uid", APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+			})
+
+			interceptorFuncs := interceptor.Funcs{
+				Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if u, ok := obj.(*unstructured.Unstructured); ok && u.GetKind() == WorkspaceKind {
+						return tt.deleteErr
+					}
+					return c.Delete(ctx, obj, opts...)
+				},
+			}
+
+			c := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(md, ws).
+				WithStatusSubresource(md).
+				WithInterceptorFuncs(interceptorFuncs).
+				Build()
+			r := NewKaitoProviderReconciler(c, scheme)
+
+			result, err := r.Reconcile(context.Background(), ctrl.Request{
+				NamespacedName: types.NamespacedName{Name: "test", Namespace: "default"},
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.Requeue || result.RequeueAfter != 0 {
+				t.Fatalf("expected deletion to finish without requeue, got %#v", result)
+			}
+
+			var updated airunwayv1alpha1.ModelDeployment
+			if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, &updated); !apierrors.IsNotFound(err) {
+				t.Fatalf("expected ModelDeployment to be deleted after finalizer removal, got %v", err)
+			}
+		})
 	}
 }
 

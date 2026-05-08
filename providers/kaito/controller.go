@@ -360,27 +360,29 @@ func (r *KaitoProviderReconciler) handleDeletion(ctx context.Context, md *airunw
 
 		// Resource exists and is owned by us, delete it
 		logger.Info("Deleting Workspace", "name", md.Name)
-		if err := r.Delete(ctx, ws); err != nil {
-			if upstreamResourceUnavailable(err) {
+		if deleteErr := r.Delete(ctx, ws); deleteErr != nil {
+			if upstreamResourceUnavailable(deleteErr) {
 				logger.Info("Workspace unavailable during deletion, removing finalizer", "name", md.Name)
-			} else {
-				logger.Error(err, "Failed to delete Workspace")
-
-				// Check if we should force-remove the finalizer
-				deletionTime := md.DeletionTimestamp.Time
-				if time.Since(deletionTime) > FinalizerTimeout {
-					logger.Info("Finalizer timeout reached, removing finalizer without cleanup")
-					controllerutil.RemoveFinalizer(md, FinalizerName)
-					return ctrl.Result{}, r.Update(ctx, md)
-				}
-
-				// Requeue to retry deletion
-				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+				controllerutil.RemoveFinalizer(md, FinalizerName)
+				return ctrl.Result{}, r.Update(ctx, md)
 			}
-		} else {
-			// Requeue to wait for deletion
-			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+
+			logger.Error(deleteErr, "Failed to delete Workspace")
+
+			// Check if we should force-remove the finalizer
+			deletionTime := md.DeletionTimestamp.Time
+			if time.Since(deletionTime) > FinalizerTimeout {
+				logger.Info("Finalizer timeout reached, removing finalizer without cleanup")
+				controllerutil.RemoveFinalizer(md, FinalizerName)
+				return ctrl.Result{}, r.Update(ctx, md)
+			}
+
+			// Requeue to retry deletion
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
+
+		// Requeue to wait for deletion
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	if !upstreamResourceUnavailable(err) {
