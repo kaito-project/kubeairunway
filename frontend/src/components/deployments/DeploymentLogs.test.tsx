@@ -56,7 +56,7 @@ describe('DeploymentLogs', () => {
 
   it('moves back to an available instance when the selected instance disappears', async () => {
     let pods = [createPod('demo-abc123'), createPod('demo-def456')]
-    let logRequestCount = 0
+    const requestedPodNames: string[] = []
 
     server.use(
       http.get(`${API_BASE}/deployments/:name/pods`, () => {
@@ -64,11 +64,11 @@ describe('DeploymentLogs', () => {
       }),
       http.get(`${API_BASE}/deployments/:name/logs`, ({ request }) => {
         const url = new URL(request.url)
-        const podName = url.searchParams.get('podName')
-        logRequestCount += 1
+        const podName = url.searchParams.get('podName') || ''
+        requestedPodNames.push(podName)
 
         return HttpResponse.json({
-          logs: `logs for ${podName} request ${logRequestCount}`,
+          logs: `logs for ${podName}`,
           podName,
         })
       })
@@ -78,17 +78,20 @@ describe('DeploymentLogs', () => {
       <DeploymentLogs deploymentName="demo" namespace="default" />
     )
 
-    expect(await screen.findByText('logs for demo-abc123 request 1')).toBeInTheDocument()
+    expect(await screen.findByText('logs for demo-abc123')).toBeInTheDocument()
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('combobox', { name: /instance/i }))
     await user.click(await screen.findByRole('option', { name: /demo-def456/i }))
-    expect(await screen.findByText('logs for demo-def456 request 2')).toBeInTheDocument()
+    expect(await screen.findByText('logs for demo-def456')).toBeInTheDocument()
 
     pods = [createPod('demo-abc123')]
     await queryClient.invalidateQueries({ queryKey: ['deployment-pods', 'demo', 'default'] })
 
-    expect(await screen.findByText('logs for demo-abc123 request 3')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(requestedPodNames[requestedPodNames.length - 1]).toBe('demo-abc123')
+    })
+    expect(await screen.findByText('logs for demo-abc123')).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: /instance/i })).not.toBeInTheDocument()
   })
 })

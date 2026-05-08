@@ -546,7 +546,7 @@ class KubernetesService {
       `kaito.sh/workspace=${name}`,              // KAITO workspace label
     ];
 
-    for (const labelSelector of exactLabelSelectors) {
+    const listPodsByLabelSelector = async (labelSelector: string, operationName = 'getDeploymentPods'): Promise<k8s.V1Pod[]> => {
       try {
         const response = await withRetry(
           () => coreApi.listNamespacedPod(
@@ -557,18 +557,23 @@ class KubernetesService {
             undefined,
             labelSelector
           ),
-          { operationName: 'getDeploymentPods', maxRetries: 1 }
+          { operationName, maxRetries: 1 }
         );
 
         if (response.body.items.length > 0) {
           logger.debug({ name, namespace, labelSelector, podCount: response.body.items.length }, 'Found pods with selector');
-          addPods(response.body.items);
         }
+        return response.body.items;
       } catch (error) {
         logger.debug({ error, name, namespace, labelSelector }, 'Error trying label selector');
-        // Continue to next selector
+        return [];
       }
-    }
+    };
+
+    const exactSelectorResults = await Promise.all(
+      exactLabelSelectors.map(labelSelector => listPodsByLabelSelector(labelSelector))
+    );
+    exactSelectorResults.forEach(addPods);
 
     // KubeRay creates pods with ray.io/cluster label set to a generated RayCluster name.
     // Modern Airunway KubeRay pods carry airunway.ai/model-deployment (handled above),
@@ -607,28 +612,15 @@ class KubernetesService {
       // can legitimately share the same app label in a namespace.
       try {
         const labelSelector = `app=${name}`;
-        const response = await withRetry(
-          () => coreApi.listNamespacedPod(
-            namespace,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            labelSelector
-          ),
-          { operationName: 'getDeploymentPods:fallbackApp', maxRetries: 1 }
-        );
-
-        if (response.body.items.length > 0) {
-          logger.debug({ name, namespace, labelSelector, podCount: response.body.items.length }, 'Found pods with fallback selector');
-          addPods(response.body.items);
-        }
+        const pods = await listPodsByLabelSelector(labelSelector, 'getDeploymentPods:fallbackApp');
+        addPods(pods);
       } catch (error) {
         logger.debug({ error, name, namespace }, 'Error trying fallback app label selector');
       }
     }
 
-    const pods = Array.from(podsByName.values());
+    const pods = Array.from(podsByName.values())
+      .sort((a, b) => (a.metadata?.name || '').localeCompare(b.metadata?.name || ''));
     if (pods.length === 0) {
       logger.debug({ name, namespace }, 'No pods found with any label selector');
       return [];
@@ -1655,7 +1647,7 @@ class KubernetesService {
     }
 
     const statuses = new Map((pod.status?.containerStatuses || []).map(status => [status.name, status]));
-    const preferredNames = ['main', 'inference', 'worker', 'server', 'frontend'];
+    const preferredNames = ['main', 'vllm', 'model', 'ray-head', 'ray-worker', 'inference', 'worker', 'server', 'frontend'];
 
     for (const name of preferredNames) {
       if (containers.some(container => container.name === name)) {
@@ -1673,11 +1665,20 @@ class KubernetesService {
     }
 
     const response = await withRetry(
-      () => this.coreV1Api.readNamespacedPod(podName, namespace),
-      { operationName: 'getPodLogs:readPod', maxRetries: 1 }
+      () => this.coreV1Api.listNamespacedPod(
+        namespace,
+        undefined,
+        undefined,
+        undefined,
+        `metadata.name=${podName}`,
+        undefined,
+        1
+      ),
+      { operationName: 'getPodLogs:listPodByName', maxRetries: 1 }
     );
 
-    return this.selectLogContainer(response.body);
+    const pod = response.body.items[0];
+    return pod ? this.selectLogContainer(pod) : undefined;
   }
 
   /**

@@ -174,13 +174,13 @@ describe('KubernetesService - deployment pod lookup', () => {
       const pods = await kubernetesService.getDeploymentPods('demo', 'default');
 
       expect(pods.map((item) => item.name)).toEqual([
+        'demo-epp',
+        'demo-ray-head',
+        'demo-ray-template',
         'demo-router',
         'demo-shared',
-        'demo-worker',
-        'demo-ray-template',
-        'demo-epp',
         'demo-vllmworker',
-        'demo-ray-head',
+        'demo-worker',
       ]);
       expect(new Set(pods.map((item) => item.name)).size).toBe(pods.length);
       expect(selectors).toEqual([
@@ -245,29 +245,33 @@ describe('KubernetesService - deployment pod lookup', () => {
 
 
 describe('KubernetesService - pod logs', () => {
-  test('defaults multi-container pod logs to the primary main container', async () => {
+  test('defaults multi-container pod logs to the primary main container using pod list permission', async () => {
     const service = kubernetesService as any;
     const originalCoreV1Api = service.coreV1Api;
     let requestedContainer: string | undefined;
 
     service.coreV1Api = {
-      readNamespacedPod: async (name: string, namespace: string) => {
-        expect(name).toBe('demo-worker');
+      listNamespacedPod: async (namespace: string, _pretty?: string, _allowWatchBookmarks?: boolean, _continue?: string, fieldSelector?: string) => {
         expect(namespace).toBe('default');
+        expect(fieldSelector).toBe('metadata.name=demo-worker');
         return {
           body: {
-            spec: {
-              containers: [
-                { name: 'frontend' },
-                { name: 'main' },
-              ],
-            },
-            status: {
-              containerStatuses: [
-                { name: 'frontend', ready: true, restartCount: 0, state: { running: {} } },
-                { name: 'main', ready: true, restartCount: 0, state: { running: {} } },
-              ],
-            },
+            items: [
+              {
+                spec: {
+                  containers: [
+                    { name: 'frontend' },
+                    { name: 'main' },
+                  ],
+                },
+                status: {
+                  containerStatuses: [
+                    { name: 'frontend', ready: true, restartCount: 0, state: { running: {} } },
+                    { name: 'main', ready: true, restartCount: 0, state: { running: {} } },
+                  ],
+                },
+              },
+            ],
           },
         };
       },
@@ -282,6 +286,51 @@ describe('KubernetesService - pod logs', () => {
 
       expect(logs).toBe('worker logs');
       expect(requestedContainer).toBe('main');
+    } finally {
+      service.coreV1Api = originalCoreV1Api;
+    }
+  });
+
+  test('prefers generated model containers before ready sidecars', async () => {
+    const service = kubernetesService as any;
+    const originalCoreV1Api = service.coreV1Api;
+    let requestedContainer: string | undefined;
+
+    service.coreV1Api = {
+      listNamespacedPod: async (_namespace: string, _pretty?: string, _allowWatchBookmarks?: boolean, _continue?: string, fieldSelector?: string) => {
+        expect(fieldSelector).toBe('metadata.name=demo-model');
+        return {
+          body: {
+            items: [
+              {
+                spec: {
+                  containers: [
+                    { name: 'istio-proxy' },
+                    { name: 'vllm' },
+                  ],
+                },
+                status: {
+                  containerStatuses: [
+                    { name: 'istio-proxy', ready: true, restartCount: 0, state: { running: {} } },
+                    { name: 'vllm', ready: false, restartCount: 3, state: { waiting: { reason: 'CrashLoopBackOff' } } },
+                  ],
+                },
+              },
+            ],
+          },
+        };
+      },
+      readNamespacedPodLog: async (...args: unknown[]) => {
+        requestedContainer = args[2] as string | undefined;
+        return { body: 'model logs' };
+      },
+    };
+
+    try {
+      const logs = await kubernetesService.getPodLogs('demo-model', 'default', { tailLines: 10 });
+
+      expect(logs).toBe('model logs');
+      expect(requestedContainer).toBe('vllm');
     } finally {
       service.coreV1Api = originalCoreV1Api;
     }
