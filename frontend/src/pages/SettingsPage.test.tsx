@@ -67,6 +67,14 @@ vi.mock('@/hooks/useRuntimes', () => ({
           crdFound: true,
           operatorRunning: false,
         },
+        {
+          id: 'vllm',
+          name: 'Direct vLLM',
+          installed: false,
+          healthy: false,
+          crdFound: false,
+          operatorRunning: false,
+        },
       ],
     },
     isLoading: false,
@@ -111,14 +119,23 @@ vi.mock('@/hooks/useInstallation', () => ({
             operatorRunning: false,
             installationSteps: [],
           }
-        : {
-            installed: true,
-            providerName: 'Installed Runtime',
-            message: 'Installed Runtime is ready.',
-            crdFound: true,
-            operatorRunning: true,
-            installationSteps: [],
-          },
+        : providerId === 'vllm'
+          ? {
+              installed: false,
+              providerName: 'Direct vLLM',
+              message: 'Direct vLLM is not installed yet.',
+              crdFound: false,
+              operatorRunning: false,
+              installationSteps: [],
+            }
+          : {
+              installed: true,
+              providerName: 'Installed Runtime',
+              message: 'Installed Runtime is ready.',
+              crdFound: true,
+              operatorRunning: true,
+              installationSteps: [],
+            },
     isLoading: false,
     refetch,
   }),
@@ -242,6 +259,18 @@ describe('SettingsPage', () => {
     expect(installationStatus?.querySelector('svg')).toHaveClass('text-red-500')
   })
 
+
+  it('shows the Direct vLLM runtime description instead of KubeRay copy', () => {
+    render(
+      <MemoryRouter initialEntries={['/settings?tab=runtimes']}>
+        <SettingsPage />
+      </MemoryRouter>
+    )
+
+    const vllmCard = screen.getByText('Direct vLLM').closest('.rounded-2xl')
+    expect(within(vllmCard as HTMLElement).getByText('Direct vLLM provider for newest model support and configurable launch images')).toBeInTheDocument()
+    expect(vllmCard).not.toHaveTextContent('Ray Serve via KubeRay')
+  })
 
   it('does not show uninstall for a runtime that has only its CRD installed', () => {
     render(

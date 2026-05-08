@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -75,6 +75,46 @@ function GpuPerReplicaField({ id, value, onChange, maxGpus = 8, recommendation, 
           Multi-Node ({multiNode.nodeCount} nodes × {multiNode.gpusPerNode} GPUs = {multiNode.totalGpus} total)
         </div>
       )}
+    </div>
+  )
+}
+
+interface RecipeMetricProps {
+  label: string
+  children: ReactNode
+}
+
+function RecipeMetric({ label, children }: RecipeMetricProps) {
+  return (
+    <div className="min-w-0 rounded-xl border border-border/70 bg-background/40 p-3 shadow-soft-xs dark:border-white/10 dark:bg-white/[0.03]">
+      <span className="sr-only">{label}: {children}</span>
+      <span aria-hidden="true" className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </span>
+      <strong aria-hidden="true" className="mt-1 block break-words text-sm font-semibold leading-5 text-foreground">
+        {children}
+      </strong>
+    </div>
+  )
+}
+
+interface RecipeCodePanelProps {
+  title: string
+  value: unknown
+}
+
+function RecipeCodePanel({ title, value }: RecipeCodePanelProps) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-background/70 shadow-soft-xs dark:border-white/10 dark:bg-[#0b1118]/90">
+      <div className="flex items-center justify-between gap-3 border-b border-border/70 bg-muted/30 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+        <span className="truncate font-mono text-xs font-semibold text-foreground">{title}</span>
+        <Badge variant="outline" className="shrink-0 border-border/70 px-2 py-0 text-[10px] text-muted-foreground dark:border-white/10">
+          JSON
+        </Badge>
+      </div>
+      <pre className="max-h-56 overflow-auto p-3 font-mono text-xs leading-5 text-muted-foreground">
+        {JSON.stringify(value, null, 2)}
+      </pre>
     </div>
   )
 }
@@ -245,23 +285,6 @@ function normalizeDirectVllmConfig(
   }
 }
 
-function parseRecipeFeatures(value: string): string[] | undefined {
-  const features = value
-    .split(/[\n,]+/)
-    .map(feature => feature.trim())
-    .filter(Boolean)
-
-  return features.length > 0 ? features : undefined
-}
-
-function getRecipeEntryId(recipe: VllmRecipeIndexEntry): string {
-  return recipe.hf_id
-}
-
-function getRecipeEntryLabel(recipe: VllmRecipeIndexEntry): string {
-  return recipe.title ? `${recipe.hf_id} — ${recipe.title}` : recipe.hf_id
-}
-
 export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }: DeploymentFormProps) {
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -335,12 +358,6 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   const [vllmRecipesLoading, setVllmRecipesLoading] = useState(false)
   const [vllmRecipesLoaded, setVllmRecipesLoaded] = useState(false)
   const [vllmRecipesError, setVllmRecipesError] = useState<string | null>(null)
-  const [vllmRecipeSearch, setVllmRecipeSearch] = useState(model.id)
-  const [selectedVllmRecipeModelId, setSelectedVllmRecipeModelId] = useState(model.id)
-  const [vllmRecipeStrategy, setVllmRecipeStrategy] = useState('')
-  const [vllmRecipeHardware, setVllmRecipeHardware] = useState('')
-  const [vllmRecipeVariant, setVllmRecipeVariant] = useState('')
-  const [vllmRecipeFeatures, setVllmRecipeFeatures] = useState('')
   const [vllmRecipeApplying, setVllmRecipeApplying] = useState(false)
   const [vllmRecipeWarnings, setVllmRecipeWarnings] = useState<string[]>([])
   const [resolvedVllmRecipe, setResolvedVllmRecipe] = useState<VllmRecipeResolveResult | null>(null)
@@ -437,13 +454,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   const directVllmImageRef = getDirectVllmImageRef(directVllmImageChoice, directVllmCustomImage)
   const selectedDirectVllmImageRef = config.imageRef || directVllmImageRef
   const directVllmCustomImageRequired = selectedRuntime === 'vllm' && directVllmImageChoice === 'custom' && !directVllmImageRef
-  const filteredVllmRecipes = vllmRecipes.filter(recipe => {
-    const query = vllmRecipeSearch.trim().toLowerCase()
-    if (!query) return true
-    return [recipe.hf_id, recipe.title, recipe.provider]
-      .filter((value): value is string => typeof value === 'string')
-      .some(value => value.toLowerCase().includes(query))
-  })
+  const exactVllmRecipe = vllmRecipes.find(recipe => recipe.hf_id === model.id)
 
   const loadVllmRecipes = useCallback(async () => {
     setVllmRecipesLoading(true)
@@ -462,8 +473,17 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   }, [])
 
   const handleApplyVllmRecipe = async () => {
-    const recipeModelId = selectedVllmRecipeModelId.trim() || model.id
+    const recipeModelId = model.id
     const imageRef = getDirectVllmImageRef(directVllmImageChoice, directVllmCustomImage)
+
+    if (!exactVllmRecipe) {
+      toast({
+        title: 'No recipe match',
+        description: 'No official vLLM recipe exactly matches this model id.',
+        variant: 'destructive',
+      })
+      return
+    }
 
     if (directVllmImageChoice === 'custom' && !imageRef) {
       toast({
@@ -474,7 +494,6 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       return
     }
 
-    const features = parseRecipeFeatures(vllmRecipeFeatures)
     const imageChoice: VllmRecipeResolveRequest['imageChoice'] = directVllmImageChoice === 'custom'
       ? { type: 'custom', imageRef }
       : { type: 'recipe' }
@@ -482,10 +501,6 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       modelId: recipeModelId,
       mode: config.mode,
       imageChoice,
-      ...(vllmRecipeStrategy.trim() ? { strategy: vllmRecipeStrategy.trim() } : {}),
-      ...(vllmRecipeHardware.trim() ? { hardware: vllmRecipeHardware.trim() } : {}),
-      ...(vllmRecipeVariant.trim() ? { variant: vllmRecipeVariant.trim() } : {}),
-      ...(features ? { features } : {}),
     }
 
     setVllmRecipeApplying(true)
@@ -1309,8 +1324,8 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         </div>
       </div>
 
-      {/* Engine Selection - show for non-KAITO runtimes OR KAITO with vLLM models */}
-      {(selectedRuntime !== 'kaito' || isVllmModel) && (
+      {/* Engine Selection - hide Direct vLLM because vLLM is its only model server */}
+      {selectedRuntime !== 'vllm' && (selectedRuntime !== 'kaito' || isVllmModel) && (
       <div className="glass-panel">
         <h3 className="text-lg font-semibold mb-4">Model server</h3>
         <div>
@@ -1998,238 +2013,215 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             </div>
           )}
 
-          <div className="rounded-lg border p-4 space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h4 className="font-medium flex items-center gap-2">
-                  vLLM Recipe
-                  {resolvedVllmRecipe && (
-                    <Badge variant="secondary" className="gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Applied
-                    </Badge>
+          <p className="rounded-lg border border-border/70 bg-background/40 px-3 py-2 font-mono text-xs text-muted-foreground dark:border-white/10 dark:bg-white/[0.03]">
+            {`Selected image: ${directVllmImageRef || 'No launch image entered'}`}
+          </p>
+
+          <div className="overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-br from-emerald-500/10 via-card/80 to-card p-4 shadow-soft dark:border-white/10 dark:from-emerald-500/[0.08] dark:via-white/[0.035] dark:to-white/[0.02]">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 gap-3">
+                <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 sm:grid">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-foreground">
+                      Official vLLM recipe
+                    </h4>
+                    {resolvedVllmRecipe && (
+                      <Badge variant="success" className="gap-1 border-emerald-500/20">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Applied
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+                    Airunway checks the official vLLM recipe catalog for an exact match to this model id and applies recommended launch settings when available.
+                  </p>
+                </div>
+              </div>
+              {vllmRecipesLoaded && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={loadVllmRecipes}
+                  disabled={vllmRecipesLoading}
+                >
+                  {vllmRecipesLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Refreshing
+                    </>
+                  ) : (
+                    'Refresh'
                   )}
-                </h4>
-                <p className="text-xs text-muted-foreground">
-                  Search recipes by model id, then apply launch arguments, resources, environment, and provenance.
-                </p>
-                {vllmRecipesLoaded && vllmRecipes.some(recipe => getRecipeEntryId(recipe) === selectedVllmRecipeModelId) && (
-                  <p className="mt-1 text-xs font-medium text-green-700 dark:text-green-300">
-                    Official vLLM recipe found
-                  </p>
-                )}
-                {vllmRecipesSource && (
-                  <p className="mt-1 break-all text-xs text-muted-foreground">
-                    Source: {vllmRecipesSource}
-                  </p>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={loadVllmRecipes}
-                disabled={vllmRecipesLoading}
-              >
-                {vllmRecipesLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading
-                  </>
-                ) : vllmRecipesLoaded ? (
-                  'Reload recipes'
-                ) : (
-                  'Load recipes'
-                )}
-              </Button>
+                </Button>
+              )}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="vllmRecipeSearch">Search recipes</Label>
-                <Input
-                  id="vllmRecipeSearch"
-                  placeholder="Search by model id or title"
-                  value={vllmRecipeSearch}
-                  onChange={(e) => setVllmRecipeSearch(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="selectedVllmRecipeModelId">Recipe model id</Label>
-                <Input
-                  id="selectedVllmRecipeModelId"
-                  placeholder={model.id}
-                  value={selectedVllmRecipeModelId}
-                  onChange={(e) => setSelectedVllmRecipeModelId(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {vllmRecipesError && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                {vllmRecipesError}
-              </div>
-            )}
-
-            {vllmRecipesLoading && !vllmRecipesLoaded ? (
-              <div className="flex items-center gap-2 rounded-md border p-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading vLLM recipes...
-              </div>
-            ) : filteredVllmRecipes.length > 0 ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Available recipes</Label>
-                  <span className="text-xs text-muted-foreground">
-                    {filteredVllmRecipes.length} match{filteredVllmRecipes.length === 1 ? '' : 'es'}
-                  </span>
+            <div className="mt-4 space-y-4">
+              {vllmRecipesError && !vllmRecipesLoaded ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                  <div className="font-medium">Could not check official vLLM recipes</div>
+                  <div className="mt-1">{vllmRecipesError}</div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={loadVllmRecipes}
+                    disabled={vllmRecipesLoading}
+                  >
+                    {vllmRecipesLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Retrying
+                      </>
+                    ) : (
+                      'Retry'
+                    )}
+                  </Button>
                 </div>
-                <div className="max-h-52 overflow-y-auto rounded-md border divide-y">
-                  {filteredVllmRecipes.slice(0, 25).map((recipe) => {
-                    const recipeId = getRecipeEntryId(recipe)
-                    const selected = selectedVllmRecipeModelId === recipeId
-                    return (
-                      <button
-                        key={recipeId}
-                        type="button"
-                        className={cn(
-                          "flex w-full flex-col items-start gap-1 p-3 text-left text-sm transition-colors hover:bg-muted/60",
-                          selected && "bg-primary/5 text-primary"
-                        )}
-                        onClick={() => {
-                          setSelectedVllmRecipeModelId(recipeId)
-                          setVllmRecipeSearch(recipeId)
-                        }}
-                      >
-                        <span className="break-all font-medium">{getRecipeEntryLabel(recipe)}</span>
-                        {recipe.provider && (
-                          <span className="text-xs text-muted-foreground">Provider: {recipe.provider}</span>
-                        )}
-                      </button>
-                    )
-                  })}
+              ) : vllmRecipesLoading && !vllmRecipesLoaded ? (
+                <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/40 p-4 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/[0.03]">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                  <span className="min-w-0 break-words">Checking official vLLM recipes for {model.id}…</span>
                 </div>
-                {filteredVllmRecipes.length > 25 && (
-                  <p className="text-xs text-muted-foreground">
-                    Showing the first 25 matches. Narrow the search to find a specific model id.
-                  </p>
-                )}
-              </div>
-            ) : vllmRecipesLoaded ? (
-              <div className="rounded-md border p-3 text-sm text-muted-foreground">
-                No recipes match this search. You can still enter a recipe model id manually.
-              </div>
-            ) : null}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="vllmRecipeStrategy">Strategy (optional)</Label>
-                <Input
-                  id="vllmRecipeStrategy"
-                  placeholder="Recipe strategy"
-                  value={vllmRecipeStrategy}
-                  onChange={(e) => setVllmRecipeStrategy(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vllmRecipeHardware">Hardware (optional)</Label>
-                <Input
-                  id="vllmRecipeHardware"
-                  placeholder="Recipe hardware"
-                  value={vllmRecipeHardware}
-                  onChange={(e) => setVllmRecipeHardware(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vllmRecipeVariant">Variant (optional)</Label>
-                <Input
-                  id="vllmRecipeVariant"
-                  placeholder="Recipe variant"
-                  value={vllmRecipeVariant}
-                  onChange={(e) => setVllmRecipeVariant(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vllmRecipeFeatures">Features (optional)</Label>
-                <Input
-                  id="vllmRecipeFeatures"
-                  placeholder="Comma-separated features"
-                  value={vllmRecipeFeatures}
-                  onChange={(e) => setVllmRecipeFeatures(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="break-all text-xs text-muted-foreground">
-                Selected image: {selectedDirectVllmImageRef || 'No launch image entered'}
-              </p>
-              <Button
-                type="button"
-                onClick={handleApplyVllmRecipe}
-                disabled={vllmRecipeApplying || directVllmCustomImageRequired || !selectedVllmRecipeModelId.trim()}
-              >
-                {vllmRecipeApplying ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Applying recipe
-                  </>
-                ) : (
-                  'Apply recipe'
-                )}
-              </Button>
-            </div>
-
-            {vllmRecipeWarnings.length > 0 && (
-              <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-800 dark:text-yellow-200">
-                <div className="mb-2 flex items-center gap-2 font-medium">
-                  <AlertTriangle className="h-4 w-4" />
-                  Recipe warnings
-                </div>
-                <ul className="list-disc space-y-1 pl-5">
-                  {vllmRecipeWarnings.map((warning, index) => (
-                    <li key={`${warning}-${index}`}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {resolvedVllmRecipe && (
-              <div className="rounded-md border border-green-500/30 bg-green-500/10 p-3 text-sm">
-                <div className="mb-2 flex items-center gap-2 font-medium text-green-700 dark:text-green-300">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Recipe applied to the deployment form
-                </div>
-                <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                  <div>Mode: {resolvedVllmRecipe.mode}</div>
-                  <div>GPUs: {resolvedVllmRecipe.resources.gpu}</div>
-                  <div className="break-all">Image: {resolvedVllmRecipe.imageRef || directVllmImageRef}</div>
-                  <div>Model-server args: {Object.keys(resolvedVllmRecipe.engineArgs || {}).length}</div>
-                  <div>Extra args: {resolvedVllmRecipe.engineExtraArgs?.length || 0}</div>
-                  <div>Environment values: {Object.keys(resolvedVllmRecipe.env || {}).length}</div>
-                </div>
-                <div className="mt-3 grid gap-3 text-xs md:grid-cols-3">
-                  <div>
-                    <p className="mb-1 font-medium text-foreground">engine.args</p>
-                    <pre className="max-h-32 overflow-auto rounded bg-muted/60 p-2">
-                      {JSON.stringify(resolvedVllmRecipe.engineArgs || {}, null, 2)}
-                    </pre>
+              ) : exactVllmRecipe ? (
+                <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 shadow-soft-xs dark:bg-emerald-500/[0.07]">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-emerald-700 dark:text-emerald-300">
+                          Official vLLM recipe found
+                        </div>
+                        <p className="mt-1 break-all text-xs text-muted-foreground">
+                          {exactVllmRecipe.hf_id}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      className="shrink-0"
+                      onClick={() => void handleApplyVllmRecipe()}
+                      disabled={vllmRecipeApplying || directVllmCustomImageRequired}
+                    >
+                      {vllmRecipeApplying ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Applying recipe
+                        </>
+                      ) : (
+                        'Apply recipe'
+                      )}
+                    </Button>
                   </div>
-                  <div>
-                    <p className="mb-1 font-medium text-foreground">engine.extraArgs</p>
-                    <pre className="max-h-32 overflow-auto rounded bg-muted/60 p-2">
-                      {JSON.stringify(resolvedVllmRecipe.engineExtraArgs || [], null, 2)}
-                    </pre>
-                  </div>
-                  <div>
-                    <p className="mb-1 font-medium text-foreground">env</p>
-                    <pre className="max-h-32 overflow-auto rounded bg-muted/60 p-2">
-                      {JSON.stringify(resolvedVllmRecipe.env || {}, null, 2)}
-                    </pre>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="min-w-0 rounded-lg border border-border/60 bg-background/40 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                      <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Model</span>
+                      <p className="mt-1 break-all text-xs font-medium text-foreground">{exactVllmRecipe.hf_id}</p>
+                    </div>
+                    <div className="min-w-0 rounded-lg border border-border/60 bg-background/40 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                      <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Source</span>
+                      <p className="mt-1 break-all text-xs font-medium text-foreground">{vllmRecipesSource || 'Official vLLM catalog'}</p>
+                    </div>
+                    <div className="min-w-0 rounded-lg border border-border/60 bg-background/40 p-3 dark:border-white/10 dark:bg-white/[0.03] md:col-span-2 xl:col-span-1">
+                      <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Default image</span>
+                      <p className="mt-1 break-all text-xs font-medium text-foreground">
+                        {directVllmImageChoice === 'custom'
+                          ? selectedDirectVllmImageRef || 'Custom image required'
+                          : 'Official recipe image'}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : vllmRecipesLoaded ? (
+                <div className="rounded-xl border border-border/70 bg-background/40 p-4 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/[0.03]">
+                  <div className="font-medium text-foreground">No exact official vLLM recipe found for {model.id}</div>
+                  <p className="mt-1">
+                    Airunway will continue with the default Direct vLLM settings.
+                  </p>
+                </div>
+              ) : null}
+
+              {vllmRecipesError && vllmRecipesLoaded && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  {vllmRecipesError}
+                </div>
+              )}
+
+              {vllmRecipeWarnings.length > 0 && (
+                <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-800 dark:text-yellow-200">
+                  <div className="mb-2 flex items-center gap-2 font-medium">
+                    <AlertTriangle className="h-4 w-4" />
+                    Recipe warnings
+                  </div>
+                  <ul className="list-disc space-y-1 pl-5">
+                    {vllmRecipeWarnings.map((warning, index) => (
+                      <li key={`${warning}-${index}`}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {resolvedVllmRecipe && (
+                <div className="overflow-hidden rounded-xl border border-emerald-500/25 bg-card/80 shadow-soft-xs dark:bg-white/[0.025]">
+                  <div className="flex flex-col gap-3 border-b border-border/70 bg-emerald-500/[0.05] p-4 dark:border-white/10 dark:bg-emerald-500/[0.06] sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-emerald-700 dark:text-emerald-300">
+                          Recipe applied to the deployment form
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          Recommended vLLM launch settings are now loaded and ready to deploy.
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="success" className="w-fit shrink-0 border-emerald-500/20">
+                      Ready
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-4 p-4">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <RecipeMetric label="Mode">
+                        {resolvedVllmRecipe.mode}
+                      </RecipeMetric>
+                      <RecipeMetric label="GPUs">
+                        {resolvedVllmRecipe.resources.gpu}
+                      </RecipeMetric>
+                      <RecipeMetric label="Image">
+                        {resolvedVllmRecipe.imageRef || directVllmImageRef}
+                      </RecipeMetric>
+                      <RecipeMetric label="Model-server args">
+                        {Object.keys(resolvedVllmRecipe.engineArgs || {}).length}
+                      </RecipeMetric>
+                      <RecipeMetric label="Extra args">
+                        {resolvedVllmRecipe.engineExtraArgs?.length || 0}
+                      </RecipeMetric>
+                      <RecipeMetric label="Environment values">
+                        {Object.keys(resolvedVllmRecipe.env || {}).length}
+                      </RecipeMetric>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-3">
+                      <RecipeCodePanel title="engine.args" value={resolvedVllmRecipe.engineArgs || {}} />
+                      <RecipeCodePanel title="engine.extraArgs" value={resolvedVllmRecipe.engineExtraArgs || []} />
+                      <RecipeCodePanel title="env" value={resolvedVllmRecipe.env || {}} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

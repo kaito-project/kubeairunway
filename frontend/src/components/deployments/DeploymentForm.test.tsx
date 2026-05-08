@@ -104,7 +104,7 @@ describe('DeploymentForm', () => {
     toast.mockReset()
   })
 
-  it('labels Direct vLLM as a deployment method and shows vLLM as the fixed model server', () => {
+  it('labels Direct vLLM as a deployment method and omits the redundant model server section', () => {
     render(
       <MemoryRouter>
         <DeploymentForm
@@ -116,19 +116,9 @@ describe('DeploymentForm', () => {
     )
 
     expect(screen.getByRole('heading', { name: /Deployment method/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /Model server/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Model server/i })).not.toBeInTheDocument()
     expect(screen.getByText('Direct vLLM deployment method')).toBeInTheDocument()
-
-    const modelServerSection = screen
-      .getByRole('heading', { name: /Model server/i })
-      .closest('.glass-panel')
-    expect(modelServerSection).not.toBeNull()
-
-    const modelServerQueries = within(modelServerSection as HTMLElement)
-    expect(
-      modelServerQueries.getByText(/vLLM is the only compatible model server for Direct vLLM\./i)
-    ).toBeInTheDocument()
-    expect(modelServerQueries.queryByRole('radio', { name: /vLLM/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/vLLM is the only compatible model server for Direct vLLM\./i)).not.toBeInTheDocument()
 
     const launchImageSection = screen
       .getByRole('heading', { name: /^Launch image$/i })

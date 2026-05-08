@@ -114,6 +114,7 @@ const ENGINE_ARCHITECTURE_ALLOWLIST: Record<Engine, string[]> = {
     'ExaoneMoEForCausalLM',
     'ArcticForCausalLM',
     'JambaForCausalLM',
+    'LagunaForCausalLM',
     'PersimmonForCausalLM',
     'SolarForCausalLM',
     'TeleChat2ForCausalLM',

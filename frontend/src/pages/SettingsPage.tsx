@@ -50,7 +50,19 @@ import { cn } from '@/lib/utils'
 import { useSearchParams } from 'react-router-dom'
 
 type SettingsTab = 'general' | 'runtimes' | 'integrations'
-type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
+type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd' | 'vllm'
+
+const RUNTIME_DESCRIPTIONS: Record<RuntimeId, string> = {
+  kaito: 'KAITO for simplified model deployment',
+  dynamo: 'NVIDIA Dynamo for high-performance GPU inference',
+  llmd: 'LLM-D for distributed inference',
+  kuberay: 'Ray Serve via KubeRay for distributed Ray-based model serving with vLLM',
+  vllm: 'Direct vLLM provider for newest model support and configurable launch images',
+}
+
+function getRuntimeDescription(runtimeId: string): string {
+  return RUNTIME_DESCRIPTIONS[runtimeId as RuntimeId] || 'Inference runtime provider'
+}
 
 export function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -476,13 +488,7 @@ export function SettingsPage() {
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {runtime.id === 'kaito'
-                        ? 'KAITO for simplified model deployment'
-                        : runtime.id === 'dynamo'
-                          ? 'NVIDIA Dynamo for high-performance GPU inference'
-                          : runtime.id === 'llmd'
-                        ? 'LLM-D for distributed inference'
-                          : 'Ray Serve via KubeRay for distributed Ray-based model serving with vLLM'}
+                      {getRuntimeDescription(runtime.id)}
                     </p>
                   </div>
                   <div>
