@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -175,6 +174,3 @@ func TestTranslateStatusAvailableFalseWithMessage(t *testing.T) {
 		t.Errorf("expected message 'insufficient replicas', got %s", result.Message)
 	}
 }
-
-// Verify metav1 is used (suppress unused import warning in some Go versions)
-var _ = metav1.Now

@@ -898,29 +898,6 @@ func TestBuildResourceLimits(t *testing.T) {
 	}
 }
 
-func TestSanitizeLabelValue(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"simple", "simple"},
-		{"with spaces", "with-spaces"},
-		{"with/slashes", "with-slashes"},
-		{"-leading-dash", "leading-dash"},
-		{"trailing-dash-", "trailing-dash"},
-		{
-			"this-is-a-very-long-label-value-that-exceeds-the-sixty-three-character-limit",
-			"this-is-a-very-long-label-value-that-exceeds-the-sixty-three-ch",
-		},
-	}
-	for _, tt := range tests {
-		result := sanitizeLabelValue(tt.input)
-		if result != tt.expected {
-			t.Errorf("sanitizeLabelValue(%q) = %q, expected %q", tt.input, result, tt.expected)
-		}
-	}
-}
-
 // --- helpers ---
 
 func argsToStrings(args []interface{}) []string {

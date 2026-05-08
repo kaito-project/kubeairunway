@@ -21,11 +21,8 @@ COPY controller/ controller/
 # Copy the provider Go source
 COPY providers/vllm/ providers/vllm/
 
-# Ensure go.sum is complete for all transitive dependencies
-RUN cd providers/vllm && go mod tidy
-
-# Build
-RUN cd providers/vllm && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o provider cmd/main.go
+# Build with the committed module graph. -mod=readonly fails if go.mod/go.sum are incomplete.
+RUN cd providers/vllm && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -mod=readonly -a -o provider cmd/main.go
 
 # Use distroless as minimal base image to package the provider binary
 FROM gcr.io/distroless/static:nonroot

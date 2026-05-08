@@ -113,7 +113,7 @@ export const handlers = [
       mode: 'aggregated',
       imageRef: 'vllm/vllm-openai:cu130-nightly',
       resources: { gpu: 1 },
-      engineArgs: { model: body.modelId || 'test/model' },
+      engineArgs: {},
       engineExtraArgs: [],
       env: {},
       annotations: {},

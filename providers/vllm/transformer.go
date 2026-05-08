@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	// DefaultVLLMImage is the default container image for vLLM vLLM deployments
+	// DefaultVLLMImage is the default container image for Direct vLLM deployments
 	DefaultVLLMImage = "vllm/vllm-openai:cu130-nightly"
 
 	// DefaultVLLMPort is the default serving port for vLLM
@@ -683,21 +683,6 @@ func isValidArgKey(key string) bool {
 		}
 	}
 	return true
-}
-
-// sanitizeLabelValue ensures a value is valid for a Kubernetes label.
-func sanitizeLabelValue(value string) string {
-	if len(value) > 63 {
-		value = value[:63]
-	}
-	value = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
-			return r
-		}
-		return '-'
-	}, value)
-	value = strings.Trim(value, "-_.")
-	return value
 }
 
 // boolPtr returns a pointer to a bool.
