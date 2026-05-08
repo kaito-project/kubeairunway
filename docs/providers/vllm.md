@@ -72,37 +72,11 @@ spec:
 
 `spec.engine.image` is the preferred image override for Direct vLLM. The older top-level `spec.image` field still exists for compatibility, but do not set both to different values.
 
-## Disaggregated serving
+## Serving modes
 
-Direct vLLM can also render separate prefill and decode Deployments when `serving.mode` is `disaggregated`. Provide GPU counts for both components:
+Direct vLLM advertises **aggregated** serving only. Use Dynamo, KubeRay, or llm-d for disaggregated prefill/decode serving.
 
-```yaml
-apiVersion: airunway.ai/v1alpha1
-kind: ModelDeployment
-metadata:
-  name: phi4-direct-vllm-disagg
-  namespace: default
-spec:
-  provider:
-    name: vllm
-  model:
-    id: microsoft/Phi-4-mini-instruct
-    source: huggingface
-  engine:
-    type: vllm
-    image: vllm/vllm-openai:cu130-nightly
-  serving:
-    mode: disaggregated
-  scaling:
-    prefill:
-      replicas: 1
-      gpu:
-        count: 1
-    decode:
-      replicas: 1
-      gpu:
-        count: 1
-```
+The provider contains internal experimental prefill/decode rendering code, but it is not advertised as a supported capability because production-grade disaggregated vLLM typically also needs router/orchestration and KV-transfer plumbing. Do not rely on Direct vLLM for disaggregated serving until that path is promoted with end-to-end coverage.
 
 ## Official vLLM recipes
 

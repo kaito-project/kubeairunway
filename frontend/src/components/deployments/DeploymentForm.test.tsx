@@ -119,6 +119,8 @@ describe('DeploymentForm', () => {
     expect(screen.queryByRole('heading', { name: /Model server/i })).not.toBeInTheDocument()
     expect(screen.getByText('Direct vLLM deployment method')).toBeInTheDocument()
     expect(screen.queryByText(/vLLM is the only compatible model server for Direct vLLM\./i)).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Disaggregated \(P\/D\)/i })).toBeDisabled()
+    expect(screen.getByText('Use Dynamo, KubeRay, or llm-d for prefill/decode serving')).toBeInTheDocument()
 
     const launchImageSection = screen
       .getByRole('heading', { name: /^Launch image$/i })

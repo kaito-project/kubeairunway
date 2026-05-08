@@ -66,7 +66,6 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 			},
 			ServingModes: []airunwayv1alpha1.ServingMode{
 				airunwayv1alpha1.ServingModeAggregated,
-				airunwayv1alpha1.ServingModeDisaggregated,
 			},
 			CPUSupport: false,
 			GPUSupport: true,

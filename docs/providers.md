@@ -43,7 +43,7 @@ IF gpu.count > 1 AND engine == "vllm":
 IF gpu.count > 0 AND engine == "vllm":
     → Dynamo
 
-IF gpu.count > 0 AND engine == "vllm" AND no higher-priority vLLM provider matches:
+IF mode == "aggregated" AND gpu.count > 0 AND engine == "vllm" AND no higher-priority vLLM provider matches:
     → Direct vLLM fallback
 ```
 
@@ -61,10 +61,10 @@ The selection reason is recorded in `status.provider.selectedReason` for observa
 | sglang engine              | No      | **Yes**       | No                     | No                 | No                             |
 | trtllm engine              | No      | **Yes**       | No                     | No                 | No                             |
 | llamacpp engine            | **Yes** | No            | No                     | No                 | No                             |
-| Disaggregated P/D          | No      | **Yes**       | Yes                    | Yes                | Yes                            |
+| Disaggregated P/D          | No      | **Yes**       | Yes                    | Yes                | No                             |
 | Self-managed InferencePool | No      | **Yes**       | No                     | No                 | No                             |
 | Self-managed EPP           | No      | **Yes**       | No                     | No                 | No                             |
-| Auto-selection             | Yes     | Yes           | Via selection rules    | Explicit/config rules only | Low-priority fallback or explicit |
+| Auto-selection             | Yes     | Yes           | Via selection rules    | Explicit/config rules only | Aggregated fallback or explicit |
 
 ## Provider Abstraction
 

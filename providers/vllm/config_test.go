@@ -50,8 +50,8 @@ func TestGetProviderConfigSpec(t *testing.T) {
 	if !hasAggregated {
 		t.Error("expected aggregated serving mode")
 	}
-	if !hasDisaggregated {
-		t.Error("expected disaggregated serving mode")
+	if hasDisaggregated {
+		t.Error("did not expect disaggregated serving mode to be advertised")
 	}
 
 	if len(spec.SelectionRules) != 1 {
