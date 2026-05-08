@@ -13,6 +13,12 @@ rules:
       - services
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # Service proxy subresource used for in-browser model chat and metrics passthrough
+  - apiGroups: [""]
+    resources:
+      - services/proxy
+    verbs: ["get", "create"]
+
   # Secrets and ConfigMaps (needed for HF tokens, config storage)
   # Note: secret delete is scoped per-namespace via Roles below
   - apiGroups: [""]

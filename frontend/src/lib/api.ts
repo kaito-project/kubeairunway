@@ -267,6 +267,21 @@ export const modelsApi = {
 // Deployments API
 // ============================================================================
 
+export interface ChatMessage {
+  role: string;
+  content: unknown;
+}
+
+export interface ChatCompletionRequest {
+  messages: ChatMessage[];
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  max_completion_tokens?: number;
+  top_p?: number;
+  [key: string]: unknown;
+}
+
 export const deploymentsApi = {
   list: (namespace?: string, options?: { limit?: number; offset?: number }) => {
     const params = new URLSearchParams();
@@ -329,6 +344,30 @@ export const deploymentsApi = {
     return request<PodLogsResponse>(
       `/deployments/${encodeURIComponent(name)}/logs${query ? `?${query}` : ''}`
     );
+  },
+
+  chat: async (name: string, payload: ChatCompletionRequest, namespace?: string): Promise<Response> => {
+    const url = namespace
+      ? `${API_BASE}/api/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/chat`
+      : `${API_BASE}/api/deployments/${encodeURIComponent(name)}/chat`;
+
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    const token = getAuthToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 401) {
+      dispatchUnauthorized();
+    }
+
+    return response;
   },
 
   getManifest: (name: string, namespace?: string) =>

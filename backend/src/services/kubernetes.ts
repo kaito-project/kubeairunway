@@ -1987,6 +1987,49 @@ class KubernetesService {
    * Uses raw fetch instead of the generated client to support text/plain responses.
    */
   async proxyServiceGet(serviceName: string, namespace: string, port: number, path: string): Promise<string> {
+    const response = await this.proxyServiceRequest(serviceName, namespace, port, path, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/plain',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Proxy a POST request to a Kubernetes service and return the raw response.
+   * Used for streaming OpenAI-compatible responses where the route must pipe bytes.
+   */
+  async proxyServicePostStream(
+    serviceName: string,
+    namespace: string,
+    port: number,
+    path: string,
+    body: unknown,
+    headers: Record<string, string> = {}
+  ): Promise<Response> {
+    return await this.proxyServiceRequest(serviceName, namespace, port, path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  private async proxyServiceRequest(
+    serviceName: string,
+    namespace: string,
+    port: number,
+    path: string,
+    init: RequestInit
+  ): Promise<Response> {
     const cluster = this.kc.getCurrentCluster();
     if (!cluster) {
       throw new Error('No active Kubernetes cluster configured');
@@ -2011,23 +2054,21 @@ class KubernetesService {
       tlsOpts.rejectUnauthorized = false;
     }
 
+    const headers = new Headers(reqOpts.headers);
+    if (init.headers) {
+      new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+    }
+
     const fetchOpts: RequestInit & { tls?: Record<string, any> } = {
-      method: 'GET',
-      headers: {
-        ...reqOpts.headers,
-        'Accept': 'text/plain',
-      },
+      ...init,
+      headers,
     };
 
     if (Object.keys(tlsOpts).length > 0) {
       fetchOpts.tls = tlsOpts;
     }
 
-    const response = await fetch(proxyUrl, fetchOpts);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    return await response.text();
+    return await fetch(proxyUrl, fetchOpts);
   }
 }
 

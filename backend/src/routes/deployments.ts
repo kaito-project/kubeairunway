@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
@@ -44,9 +45,38 @@ const deploymentParamsSchema = z.object({
   name: resourceNameSchema,
 });
 
+const namespacedDeploymentParamsSchema = z.object({
+  namespace: namespaceSchema,
+  name: resourceNameSchema,
+});
+
+const chatMessageSchema = z.object({
+  role: z.string().min(1),
+  content: z.unknown(),
+}).passthrough();
+
+const chatCompletionSchema = z.object({
+  messages: z.array(chatMessageSchema).min(1),
+  model: z.string().min(1).optional(),
+  temperature: z.number().optional(),
+  max_tokens: z.number().int().positive().optional(),
+  max_completion_tokens: z.number().int().positive().optional(),
+  top_p: z.number().optional(),
+  n: z.number().int().positive().optional(),
+  stop: z.union([z.string(), z.array(z.string())]).optional(),
+  presence_penalty: z.number().optional(),
+  frequency_penalty: z.number().optional(),
+  user: z.string().optional(),
+  tools: z.unknown().optional(),
+  tool_choice: z.unknown().optional(),
+  response_format: z.unknown().optional(),
+  seed: z.number().int().optional(),
+}).passthrough();
+
 const DNS_LABEL_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
 const SYSTEM_PATHS = ['/dev', '/proc', '/sys', '/etc', '/var/run'];
+const DEFAULT_FRONTEND_SERVICE_PORT = 8000;
 
 // Matches Kubernetes resource.Quantity: a valid decimal number with optional
 // binary (Ki, Mi, Gi, Ti, Pi, Ei) or decimal (n, u, m, k, M, G, T, P, E) suffix.
@@ -292,6 +322,148 @@ const createDeploymentSchema = z.object({
   }
 });
 
+function extractFirstModelId(modelsResponse: unknown): string | undefined {
+  if (!modelsResponse || typeof modelsResponse !== 'object') {
+    return undefined;
+  }
+
+  const data = (modelsResponse as { data?: unknown }).data;
+  if (!Array.isArray(data) || data.length === 0) {
+    return undefined;
+  }
+
+  const firstModel = data[0];
+  if (!firstModel || typeof firstModel !== 'object') {
+    return undefined;
+  }
+
+  const id = (firstModel as { id?: unknown }).id;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+}
+
+async function resolveChatModel(
+  deployment: DeploymentStatus,
+  serviceName: string,
+  namespace: string,
+  servicePort: number,
+  requestedModel?: string
+): Promise<string> {
+  const configuredModel = requestedModel
+    || deployment.gateway?.modelName
+    || deployment.servedModelName;
+
+  if (configuredModel) {
+    return configuredModel;
+  }
+
+  try {
+    const modelsText = await kubernetesService.proxyServiceGet(
+      serviceName,
+      namespace,
+      servicePort,
+      'v1/models'
+    );
+    const upstreamModel = extractFirstModelId(JSON.parse(modelsText));
+    if (upstreamModel) {
+      return upstreamModel;
+    }
+  } catch (error) {
+    logger.debug(
+      { error, deploymentName: deployment.name, namespace, serviceName, servicePort },
+      'Could not resolve model from upstream /v1/models; falling back to deployment model ID'
+    );
+  }
+
+  return deployment.modelId;
+}
+
+
+async function handleDeploymentChat(
+  c: Context<AppEnv>,
+  name: string,
+  body: z.infer<typeof chatCompletionSchema>,
+  namespace?: string
+) {
+  const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
+  const userToken = c.get('token') as string | undefined;
+
+  const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
+  if (!deployment) {
+    throw new HTTPException(404, { message: 'Deployment not found' });
+  }
+
+  if (deployment.phase !== 'Running') {
+    throw new HTTPException(409, {
+      message: `Deployment '${name}' is not running (current phase: ${deployment.phase})`,
+    });
+  }
+
+  const frontendService = parseFrontendService(deployment.frontendService);
+  if (!frontendService?.serviceName) {
+    throw new HTTPException(409, {
+      message: `Deployment '${name}' does not expose a frontend service for chat`,
+    });
+  }
+
+  const frontendServicePort = frontendService.servicePort || DEFAULT_FRONTEND_SERVICE_PORT;
+
+  const resolvedModel = await resolveChatModel(
+    deployment,
+    frontendService.serviceName,
+    resolvedNamespace,
+    frontendServicePort,
+    body.model
+  );
+
+  const upstreamResponse = await kubernetesService.proxyServicePostStream(
+    frontendService.serviceName,
+    resolvedNamespace,
+    frontendServicePort,
+    'v1/chat/completions',
+    {
+      ...body,
+      model: resolvedModel,
+      stream: true,
+    }
+  );
+
+  if (!upstreamResponse.ok) {
+    const details = await upstreamResponse.text();
+    return c.json(
+      {
+        error: {
+          message: 'Upstream chat completion request failed',
+          statusCode: upstreamResponse.status,
+          details,
+        },
+      },
+      upstreamResponse.status as never
+    );
+  }
+
+  if (!upstreamResponse.body) {
+    return c.json(
+      {
+        error: {
+          message: 'Upstream chat completion response did not include a stream body',
+          statusCode: 502,
+        },
+      },
+      502
+    );
+  }
+
+  return new Response(upstreamResponse.body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+}
+
 function resolveDeploymentImages(config: DeploymentConfig): DeploymentConfig {
   if (config.provider !== 'kaito') {
     return config;
@@ -473,6 +645,26 @@ const deployments = new Hono<AppEnv>()
       primaryResource: { kind: 'ModelDeployment', apiVersion: 'airunway.ai/v1alpha1' },
     });
   })
+  .post(
+    '/:namespace/:name/chat',
+    zValidator('param', namespacedDeploymentParamsSchema),
+    zValidator('json', chatCompletionSchema),
+    async (c) => {
+      const { namespace, name } = c.req.valid('param');
+      return handleDeploymentChat(c, name, c.req.valid('json'), namespace);
+    }
+  )
+  .post(
+    '/:name/chat',
+    zValidator('param', deploymentParamsSchema),
+    zValidator('query', deploymentQuerySchema),
+    zValidator('json', chatCompletionSchema),
+    async (c) => {
+      const { name } = c.req.valid('param');
+      const { namespace } = c.req.valid('query');
+      return handleDeploymentChat(c, name, c.req.valid('json'), namespace);
+    }
+  )
   .get(
     '/:name',
     zValidator('param', deploymentParamsSchema),

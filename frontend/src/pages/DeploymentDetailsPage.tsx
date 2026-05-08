@@ -22,8 +22,7 @@ import { useAutoscalerDetection, usePendingReasons } from '@/hooks/useAutoscaler
 import { PendingExplanation } from '@/components/deployments/PendingExplanation'
 import { DeploymentLogs } from '@/components/deployments/DeploymentLogs'
 import { ManifestViewer } from '@/components/deployments/ManifestViewer'
-
-
+import { ChatPanel } from '@/components/chat/ChatPanel'
 
 export function DeploymentDetailsPage() {
   const { name } = useParams<{ name: string }>()
@@ -123,6 +122,7 @@ export function DeploymentDetailsPage() {
         }
       })()
     : undefined
+  const showChatPanel = deployment.phase === 'Running' && !!deployment.gateway?.endpoint
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-slide-up">
@@ -363,6 +363,16 @@ export function DeploymentDetailsPage() {
           )}
         </div>
       </div>
+
+      {/* Chat */}
+      {showChatPanel && (
+        <ChatPanel
+          deploymentName={deployment.name}
+          namespace={deployment.namespace}
+          className="animate-slide-up"
+          style={{ animationDelay: '175ms', animationFillMode: 'both' }}
+        />
+      )}
 
       {/* Metrics */}
       <div className="animate-slide-up" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
