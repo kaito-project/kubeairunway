@@ -243,6 +243,51 @@ describe('KubernetesService - deployment pod lookup', () => {
   });
 });
 
+
+describe('KubernetesService - pod logs', () => {
+  test('defaults multi-container pod logs to the primary main container', async () => {
+    const service = kubernetesService as any;
+    const originalCoreV1Api = service.coreV1Api;
+    let requestedContainer: string | undefined;
+
+    service.coreV1Api = {
+      readNamespacedPod: async (name: string, namespace: string) => {
+        expect(name).toBe('demo-worker');
+        expect(namespace).toBe('default');
+        return {
+          body: {
+            spec: {
+              containers: [
+                { name: 'frontend' },
+                { name: 'main' },
+              ],
+            },
+            status: {
+              containerStatuses: [
+                { name: 'frontend', ready: true, restartCount: 0, state: { running: {} } },
+                { name: 'main', ready: true, restartCount: 0, state: { running: {} } },
+              ],
+            },
+          },
+        };
+      },
+      readNamespacedPodLog: async (...args: unknown[]) => {
+        requestedContainer = args[2] as string | undefined;
+        return { body: 'worker logs' };
+      },
+    };
+
+    try {
+      const logs = await kubernetesService.getPodLogs('demo-worker', 'default', { tailLines: 10 });
+
+      expect(logs).toBe('worker logs');
+      expect(requestedContainer).toBe('main');
+    } finally {
+      service.coreV1Api = originalCoreV1Api;
+    }
+  });
+});
+
 describe('KubernetesService - Type Definitions', () => {
   describe('ClusterGpuCapacity', () => {
     test('creates valid capacity with GPU nodes', () => {

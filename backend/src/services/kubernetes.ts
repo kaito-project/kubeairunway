@@ -1648,6 +1648,38 @@ class KubernetesService {
     }
   }
 
+  private selectLogContainer(pod: k8s.V1Pod): string | undefined {
+    const containers = pod.spec?.containers || [];
+    if (containers.length === 0) {
+      return undefined;
+    }
+
+    const statuses = new Map((pod.status?.containerStatuses || []).map(status => [status.name, status]));
+    const preferredNames = ['main', 'inference', 'worker', 'server', 'frontend'];
+
+    for (const name of preferredNames) {
+      if (containers.some(container => container.name === name)) {
+        return name;
+      }
+    }
+
+    const readyContainer = containers.find(container => statuses.get(container.name)?.ready);
+    return readyContainer?.name || containers[0].name;
+  }
+
+  private async resolveLogContainer(podName: string, namespace: string, requestedContainer?: string): Promise<string | undefined> {
+    if (requestedContainer) {
+      return requestedContainer;
+    }
+
+    const response = await withRetry(
+      () => this.coreV1Api.readNamespacedPod(podName, namespace),
+      { operationName: 'getPodLogs:readPod', maxRetries: 1 }
+    );
+
+    return this.selectLogContainer(response.body);
+  }
+
   /**
    * Get logs from a pod
    */
@@ -1662,11 +1694,12 @@ class KubernetesService {
   ): Promise<string> {
     try {
       const coreApi = this.coreV1Api;
+      const container = await this.resolveLogContainer(podName, namespace, options?.container);
       const response = await withRetry(
         () => coreApi.readNamespacedPodLog(
           podName,
           namespace,
-          options?.container,         // container
+          container,                  // container
           undefined,                  // follow (not supported in this API)
           undefined,                  // insecureSkipTLSVerifyBackend
           undefined,                  // limitBytes
