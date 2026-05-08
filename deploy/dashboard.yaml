@@ -78,6 +78,12 @@ rules:
   - list
   - create
 - apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
   - ""
   resources:
   - nodes
@@ -195,6 +201,8 @@ spec:
           value: "3001"
         - name: LOG_LEVEL
           value: info
+        - name: AUTH_ENABLED
+          value: "true"
         - name: HELM_CACHE_HOME
           value: /tmp/helm/cache
         - name: HELM_CONFIG_HOME

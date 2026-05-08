@@ -60,6 +60,12 @@ rules:
       - namespaces
     verbs: ["get", "list", "create"]
 
+  # Authentication API - validate bearer tokens when auth is enabled
+  - apiGroups: ["authentication.k8s.io"]
+    resources:
+      - tokenreviews
+    verbs: ["create"]
+
   # Node info for GPU detection (listNode only; no get/watch)
   - apiGroups: [""]
     resources:
