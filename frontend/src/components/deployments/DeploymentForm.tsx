@@ -129,6 +129,19 @@ const RUNTIME_ENGINES: Record<RuntimeId, TraditionalEngine[]> = {
   llmd: ['vllm'], // llm-d uses vLLM exclusively
 }
 
+function normalizeGatewayAvailability(
+  config: DeploymentConfig,
+  gatewayAvailable: boolean | undefined
+): DeploymentConfig {
+  if (gatewayAvailable !== false || !('gatewayEnabled' in config)) {
+    return config
+  }
+
+  const nextConfig = { ...config }
+  delete nextConfig.gatewayEnabled
+  return nextConfig
+}
+
 // Check if a runtime is compatible with a model based on engine support
 function isRuntimeCompatible(runtimeId: RuntimeId, modelEngines: Engine[]): boolean {
   // KAITO supports llamacpp (GGUF) AND vllm models
@@ -352,13 +365,10 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hfStatus?.configured])
 
-  // Default gatewayEnabled to true once we know a gateway is available,
-  // so the manifest preview reflects the on-by-default UI state.
+  // Clear stale gatewayEnabled when gateway support disappears; keep the default-on UI
+  // state implicit so untouched deployments omit spec.gateway.
   useEffect(() => {
-    if (gatewayInfo?.available && config.gatewayEnabled === undefined) {
-      setConfig(prev => ({ ...prev, gatewayEnabled: true }))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    setConfig(prev => normalizeGatewayAvailability(prev, gatewayInfo?.available))
   }, [gatewayInfo?.available])
 
   // Set initial GPU value from recommendation when component mounts
@@ -570,7 +580,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
     try {
       // Build the deployment config, adding KAITO-specific fields if needed
-      let deployConfig = { ...config }
+      let deployConfig = normalizeGatewayAvailability(config, gatewayInfo?.available)
 
       if (selectedRuntime === 'kaito') {
         // Add kaitoResourceType to all KAITO deployments
@@ -684,7 +694,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         variant: 'destructive',
       })
     }
-  }, [config, createDeployment, navigate, toast, triggerConfetti, selectedRuntime, kaitoComputeType, kaitoResourceType, selectedPremadeModel, isHuggingFaceGgufModel, isVllmModel, model.id, model.gated, ggufFile, ggufRunMode, maxModelLen])
+  }, [config, createDeployment, navigate, toast, triggerConfetti, selectedRuntime, kaitoComputeType, kaitoResourceType, selectedPremadeModel, isHuggingFaceGgufModel, isVllmModel, model.id, model.gated, ggufFile, ggufRunMode, maxModelLen, gatewayInfo?.available])
 
   const updateConfig = <K extends keyof DeploymentConfig>(
     key: K,
@@ -1793,7 +1803,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         {/* Manifest Preview - build config with KAITO-specific fields */}
         {(() => {
           // Build preview config with all necessary fields
-          let previewConfig = { ...config };
+          let previewConfig = normalizeGatewayAvailability(config, gatewayInfo?.available);
 
           if (selectedRuntime === 'kaito') {
             // Always include kaitoResourceType for KAITO deployments
