@@ -11,6 +11,7 @@ import { useConfetti } from '@/components/ui/confetti'
 import { useCreateDeployment, type DeploymentConfig } from '@/hooks/useDeployments'
 import { useHuggingFaceStatus, useGgufFiles } from '@/hooks/useHuggingFace'
 import { usePremadeModels } from '@/hooks/useAikit'
+import { useGatewayStatus } from '@/hooks/useGateway'
 import { useToast } from '@/hooks/useToast'
 import { generateDeploymentName, cn } from '@/lib/utils'
 import { type Model, type DetailedClusterCapacity, type AutoscalerDetectionResult, type RuntimeStatus, type PremadeModel, type AIConfiguratorResult, aikitApi, type Engine, type KaitoResourceType } from '@/lib/api'
@@ -128,6 +129,19 @@ const RUNTIME_ENGINES: Record<RuntimeId, TraditionalEngine[]> = {
   llmd: ['vllm'], // llm-d uses vLLM exclusively
 }
 
+function normalizeGatewayAvailability(
+  config: DeploymentConfig,
+  gatewayAvailable: boolean | undefined
+): DeploymentConfig {
+  if (gatewayAvailable !== false || !('gatewayEnabled' in config)) {
+    return config
+  }
+
+  const nextConfig = { ...config }
+  delete nextConfig.gatewayEnabled
+  return nextConfig
+}
+
 // Check if a runtime is compatible with a model based on engine support
 function isRuntimeCompatible(runtimeId: RuntimeId, modelEngines: Engine[]): boolean {
   // KAITO supports llamacpp (GGUF) AND vllm models
@@ -197,6 +211,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   const createDeployment = useCreateDeployment()
   const { data: hfStatus } = useHuggingFaceStatus()
   const { data: premadeModels } = usePremadeModels()
+  const { data: gatewayInfo } = useGatewayStatus()
   const formRef = useRef<HTMLFormElement>(null)
   const { trigger: triggerConfetti, ConfettiComponent } = useConfetti(2500)
 
@@ -349,6 +364,12 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hfStatus?.configured])
+
+  // Clear stale gatewayEnabled when gateway support disappears; keep the default-on UI
+  // state implicit so untouched deployments omit spec.gateway.
+  useEffect(() => {
+    setConfig(prev => normalizeGatewayAvailability(prev, gatewayInfo?.available))
+  }, [gatewayInfo?.available])
 
   // Set initial GPU value from recommendation when component mounts
   useEffect(() => {
@@ -559,7 +580,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
     try {
       // Build the deployment config, adding KAITO-specific fields if needed
-      let deployConfig = { ...config }
+      let deployConfig = normalizeGatewayAvailability(config, gatewayInfo?.available)
 
       if (selectedRuntime === 'kaito') {
         // Add kaitoResourceType to all KAITO deployments
@@ -673,7 +694,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         variant: 'destructive',
       })
     }
-  }, [config, createDeployment, navigate, toast, triggerConfetti, selectedRuntime, kaitoComputeType, kaitoResourceType, selectedPremadeModel, isHuggingFaceGgufModel, isVllmModel, model.id, model.gated, ggufFile, ggufRunMode, maxModelLen])
+  }, [config, createDeployment, navigate, toast, triggerConfetti, selectedRuntime, kaitoComputeType, kaitoResourceType, selectedPremadeModel, isHuggingFaceGgufModel, isVllmModel, model.id, model.gated, ggufFile, ggufRunMode, maxModelLen, gatewayInfo?.available])
 
   const updateConfig = <K extends keyof DeploymentConfig>(
     key: K,
@@ -1045,15 +1066,33 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
             <summary className="text-sm font-medium cursor-pointer text-muted-foreground hover:text-foreground">
               Advanced Settings
             </summary>
-            <div className="mt-3 space-y-2">
-              <Label htmlFor="namespace">Namespace</Label>
-              <Input
-                id="namespace"
-                value={config.namespace}
-                onChange={(e) => updateConfig('namespace', e.target.value)}
-                placeholder={RUNTIME_INFO[selectedRuntime].defaultNamespace}
-                required
-              />
+            <div className="mt-3 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="namespace">Namespace</Label>
+                <Input
+                  id="namespace"
+                  value={config.namespace}
+                  onChange={(e) => updateConfig('namespace', e.target.value)}
+                  placeholder={RUNTIME_INFO[selectedRuntime].defaultNamespace}
+                  required
+                />
+              </div>
+
+              {gatewayInfo?.available && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="gateway-enabled">Gateway routing</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Route requests to this model through the cluster gateway. Defaults to enabled when a gateway is detected.
+                    </p>
+                  </div>
+                  <Switch
+                    id="gateway-enabled"
+                    checked={config.gatewayEnabled ?? true}
+                    onCheckedChange={(checked) => updateConfig('gatewayEnabled', checked)}
+                  />
+                </div>
+              )}
             </div>
           </details>
         </div>
@@ -1764,7 +1803,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
         {/* Manifest Preview - build config with KAITO-specific fields */}
         {(() => {
           // Build preview config with all necessary fields
-          let previewConfig = { ...config };
+          let previewConfig = normalizeGatewayAvailability(config, gatewayInfo?.available);
 
           if (selectedRuntime === 'kaito') {
             // Always include kaitoResourceType for KAITO deployments

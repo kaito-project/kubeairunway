@@ -68,6 +68,7 @@ export interface DeploymentConfig {
   kaitoResourceType?: KaitoResourceType;
   providerOverrides?: Record<string, unknown>;
   storage?: StorageSpec;
+  gatewayEnabled?: boolean;
 }
 
 export interface ModelSpec {
@@ -137,6 +138,12 @@ export interface SecretSpec {
   custom?: string[];
 }
 
+export interface GatewaySpec {
+  enabled?: boolean;
+  modelName?: string;
+  httpRouteRef?: string;
+}
+
 export interface ModelDeploymentSpec {
   model: ModelSpec;
   provider?: ProviderSpec;
@@ -148,6 +155,7 @@ export interface ModelDeploymentSpec {
   env?: Record<string, string>;
   podTemplate?: PodTemplateSpec;
   secrets?: SecretSpec;
+  gateway?: GatewaySpec;
 }
 
 export interface ReplicaStatus {
@@ -198,9 +206,15 @@ export interface EndpointStatus {
   port?: number;
 }
 
+export interface EngineStatus {
+  selectedReason?: string;
+  type?: string;
+}
+
 export interface ModelDeploymentStatus {
   phase?: DeploymentPhase;
   message?: string;
+  engine?: EngineStatus;
   provider?: ProviderStatus;
   replicas?: ReplicaStatus;
   prefillReplicas?: {
@@ -548,6 +562,12 @@ export function toModelDeploymentSpec(config: DeploymentConfig): ModelDeployment
     };
   }
 
+  if (config.gatewayEnabled !== undefined) {
+    spec.gateway = {
+      enabled: config.gatewayEnabled,
+    };
+  }
+
   return spec;
 }
 
@@ -562,7 +582,7 @@ export function toDeploymentStatus(md: ModelDeployment, pods: PodStatus[] = []):
     namespace: md.metadata.namespace,
     modelId: spec.model.id,
     servedModelName: spec.model.servedName,
-    engine: (spec.engine?.type as Engine) || undefined,
+    engine: (spec.engine?.type as Engine) || (status.engine?.type as Engine) || undefined,
     mode: spec.serving?.mode || 'aggregated',
     phase: resolveDeploymentPhase(spec, status, pods),
     provider: status.provider?.name || spec.provider?.name || 'unknown',

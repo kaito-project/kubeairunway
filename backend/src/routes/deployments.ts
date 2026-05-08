@@ -10,9 +10,13 @@ import { aikitService, GGUF_RUNNER_IMAGE } from '../services/aikit';
 import { handleK8sError } from '../lib/k8s-errors';
 import models from '../data/models.json';
 import logger from '../lib/logger';
-import type { DeploymentStatus, DeploymentConfig } from '@airunway/shared';
 import type { AppEnv } from '../types/hono';
-import { toModelDeploymentManifest } from '@airunway/shared';
+import {
+  parseFrontendService,
+  toModelDeploymentManifest,
+  type DeploymentStatus,
+  type DeploymentConfig,
+} from '@airunway/shared';
 import {
   namespaceSchema,
   resourceNameSchema,
@@ -101,6 +105,7 @@ const createDeploymentSchema = z.object({
   imageRef: z.string().optional(),
   computeType: z.enum(['cpu', 'gpu']).optional(),
   maxModelLen: z.number().int().positive().optional(),
+  gatewayEnabled: z.boolean().optional(),
   storage: storageSchema,
 }).superRefine((data, ctx) => {
   const volumes = data.storage?.volumes;
@@ -600,7 +605,12 @@ const deployments = new Hono<AppEnv>()
         throw new HTTPException(404, { message: 'Deployment not found' });
       }
 
-      const metricsResponse = await metricsService.getDeploymentMetrics(name, resolvedNamespace);
+      const frontendService = parseFrontendService(deployment.frontendService);
+      const metricsResponse = await metricsService.getDeploymentMetrics(name, resolvedNamespace, {
+        providerId: deployment.provider,
+        serviceName: frontendService?.serviceName,
+        port: frontendService?.servicePort,
+      });
       return c.json(metricsResponse);
     }
 )

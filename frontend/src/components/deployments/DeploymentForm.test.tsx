@@ -27,6 +27,13 @@ vi.mock('@/hooks/useAikit', () => ({
   usePremadeModels: () => ({ data: [] }),
 }))
 
+const gatewayMock = vi.hoisted(() => ({ data: { available: false } as { available: boolean } }))
+const manifestViewerMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/hooks/useGateway', () => ({
+  useGatewayStatus: () => gatewayMock,
+}))
+
 vi.mock('@/hooks/useToast', () => ({
   useToast: () => ({ toast }),
 }))
@@ -47,7 +54,10 @@ vi.mock('./AIConfiguratorPanel', () => ({
 }))
 
 vi.mock('./ManifestViewer', () => ({
-  ManifestViewer: () => null,
+  ManifestViewer: (props: unknown) => {
+    manifestViewerMock(props)
+    return null
+  },
 }))
 
 vi.mock('./CostEstimate', () => ({
@@ -100,6 +110,8 @@ describe('DeploymentForm', () => {
   beforeEach(() => {
     mutateAsync.mockReset()
     toast.mockReset()
+    manifestViewerMock.mockReset()
+    gatewayMock.data = { available: false }
   })
 
   it('keeps manual topology edits instead of snapping back to the recommendation', async () => {
@@ -132,5 +144,110 @@ describe('DeploymentForm', () => {
     expect(
       screen.queryByText(/Multi-Node \(2 nodes × 8 GPUs = 16 total\)/i)
     ).not.toBeInTheDocument()
+  })
+
+  it('does not render the gateway routing toggle when no gateway is available', () => {
+    gatewayMock.data = { available: false }
+    render(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel()}
+          detailedCapacity={createCapacity()}
+          runtimes={[createRuntime()]}
+        />
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByLabelText(/Gateway routing/i)).not.toBeInTheDocument()
+  })
+
+  it('clears explicit gateway routing from preview and submit when the gateway becomes unavailable', async () => {
+    gatewayMock.data = { available: true }
+    const { rerender } = render(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel()}
+          detailedCapacity={createCapacity()}
+          runtimes={[createRuntime({ id: 'dynamo' })]}
+        />
+      </MemoryRouter>
+    )
+
+    const summary = await screen.findByText(/Advanced Settings/i)
+    fireEvent.click(summary)
+
+    const toggle = await screen.findByRole('switch', { name: /Gateway routing/i })
+    fireEvent.click(toggle)
+    await waitFor(() => {
+      const lastManifestProps = manifestViewerMock.mock.calls[
+        manifestViewerMock.mock.calls.length - 1
+      ]?.[0] as { config?: { gatewayEnabled?: boolean } } | undefined
+      expect(lastManifestProps?.config?.gatewayEnabled).toBe(false)
+    })
+
+    gatewayMock.data = { available: false }
+    rerender(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel()}
+          detailedCapacity={createCapacity()}
+          runtimes={[createRuntime({ id: 'dynamo' })]}
+        />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      const lastManifestProps = manifestViewerMock.mock.calls[
+        manifestViewerMock.mock.calls.length - 1
+      ]?.[0] as { config?: { gatewayEnabled?: boolean } } | undefined
+      expect(lastManifestProps?.config?.gatewayEnabled).toBeUndefined()
+    })
+    expect(screen.queryByLabelText(/Gateway routing/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Deploy Model/i }))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledTimes(1)
+    })
+    expect(mutateAsync.mock.calls[0][0]).not.toHaveProperty('gatewayEnabled')
+  })
+
+  it('renders the gateway routing toggle as default-on without submitting gateway routing until changed', async () => {
+    gatewayMock.data = { available: true }
+    render(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel()}
+          detailedCapacity={createCapacity()}
+          runtimes={[createRuntime()]}
+        />
+      </MemoryRouter>
+    )
+
+    // Expand the Advanced Settings <details> to make the toggle visible
+    const summary = await screen.findByText(/Advanced Settings/i)
+    fireEvent.click(summary)
+
+    const toggle = await screen.findByRole('switch', { name: /Gateway routing/i })
+    expect(toggle).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+
+    const latestManifestConfig = () => (manifestViewerMock.mock.calls[
+      manifestViewerMock.mock.calls.length - 1
+    ]?.[0] as { config?: { gatewayEnabled?: boolean } } | undefined)?.config
+
+    expect(latestManifestConfig()?.gatewayEnabled).toBeUndefined()
+
+    fireEvent.click(toggle)
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      expect(latestManifestConfig()?.gatewayEnabled).toBe(false)
+    })
+
+    fireEvent.click(toggle)
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute('aria-checked', 'true')
+      expect(latestManifestConfig()?.gatewayEnabled).toBe(true)
+    })
   })
 })
