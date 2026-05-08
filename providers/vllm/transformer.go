@@ -36,6 +36,18 @@ const (
 	// DefaultVLLMPort is the default serving port for vLLM
 	DefaultVLLMPort = int64(8000)
 
+	// DefaultVLLMHost is the address vLLM binds inside the pod.
+	DefaultVLLMHost = "0.0.0.0"
+
+	// DefaultVLLMHealthPath is the vLLM health-check endpoint.
+	DefaultVLLMHealthPath = "/health"
+
+	// DefaultVLLMShmSize is the memory-backed /dev/shm size used for multi-GPU tensor parallelism.
+	DefaultVLLMShmSize = "20Gi"
+
+	// VLLMShmVolumeName is the generated shared-memory volume name.
+	VLLMShmVolumeName = "shm"
+
 	// GPUResourceKey is the Kubernetes resource key for NVIDIA GPUs
 	GPUResourceKey = "nvidia.com/gpu"
 
@@ -210,6 +222,10 @@ func (t *Transformer) buildDeployment(md *airunwayv1alpha1.ModelDeployment, name
 		"containers": []interface{}{container},
 	}
 
+	if requiresSharedMemoryVolume(resources) {
+		podSpec["volumes"] = []interface{}{buildSharedMemoryVolume()}
+	}
+
 	if len(md.Spec.NodeSelector) > 0 {
 		nodeSelector := make(map[string]interface{})
 		for k, v := range md.Spec.NodeSelector {
@@ -313,10 +329,17 @@ func (t *Transformer) buildContainer(md *airunwayv1alpha1.ModelDeployment, image
 	}
 
 	container := map[string]interface{}{
-		"name":  "vllm",
-		"image": image,
-		"args":  argsList,
-		"ports": ports,
+		"name":           "vllm",
+		"image":          image,
+		"args":           argsList,
+		"ports":          ports,
+		"startupProbe":   buildStartupProbe(),
+		"livenessProbe":  buildLivenessProbe(),
+		"readinessProbe": buildReadinessProbe(),
+	}
+
+	if requiresSharedMemoryVolume(resources) {
+		container["volumeMounts"] = []interface{}{buildSharedMemoryVolumeMount()}
 	}
 
 	// Resource limits/requests
@@ -339,6 +362,13 @@ func (t *Transformer) buildContainer(md *airunwayv1alpha1.ModelDeployment, image
 // gpuCount overrides the GPU count used for tensor parallelism (0 means use top-level spec.resources).
 func (t *Transformer) buildVLLMArgs(md *airunwayv1alpha1.ModelDeployment, kvTransferConfig string, gpuCount int32) ([]string, error) {
 	var args []string
+
+	if err := validateReservedVLLMServerArgs(md.Spec.Engine.Args, md.Spec.Engine.ExtraArgs); err != nil {
+		return nil, err
+	}
+
+	// Listen on the same host/port exposed by the generated container, Service, and probes.
+	args = append(args, "--host", DefaultVLLMHost, "--port", fmt.Sprintf("%d", DefaultVLLMPort))
 
 	// Model
 	args = append(args, "--model", md.Spec.Model.ID)
@@ -395,6 +425,96 @@ func (t *Transformer) buildVLLMArgs(md *airunwayv1alpha1.ModelDeployment, kvTran
 	}
 
 	return args, nil
+}
+
+func validateReservedVLLMServerArgs(engineArgs map[string]string, extraArgs []string) error {
+	for key := range engineArgs {
+		if isReservedVLLMServerArg(key) {
+			return fmt.Errorf("engine arg %q conflicts with Direct vLLM generated networking; Direct vLLM currently requires host %s and port %d to keep the container, Service, and probes aligned", key, DefaultVLLMHost, DefaultVLLMPort)
+		}
+	}
+
+	for _, arg := range extraArgs {
+		key, ok := extraArgKey(arg)
+		if ok && isReservedVLLMServerArg(key) {
+			return fmt.Errorf("engine extraArg %q conflicts with Direct vLLM generated networking; Direct vLLM currently requires host %s and port %d to keep the container, Service, and probes aligned", arg, DefaultVLLMHost, DefaultVLLMPort)
+		}
+	}
+
+	return nil
+}
+
+func isReservedVLLMServerArg(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "host", "port":
+		return true
+	default:
+		return false
+	}
+}
+
+func extraArgKey(arg string) (string, bool) {
+	if !strings.HasPrefix(arg, "--") || len(arg) <= 2 {
+		return "", false
+	}
+
+	body := strings.TrimPrefix(arg, "--")
+	if strings.HasPrefix(body, "-") {
+		return "", false
+	}
+	if equalIndex := strings.Index(body, "="); equalIndex >= 0 {
+		body = body[:equalIndex]
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "", false
+	}
+	return body, true
+}
+
+func buildStartupProbe() map[string]interface{} {
+	return buildHTTPProbe(15, 10, 60)
+}
+
+func buildLivenessProbe() map[string]interface{} {
+	return buildHTTPProbe(15, 10, 3)
+}
+
+func buildReadinessProbe() map[string]interface{} {
+	return buildHTTPProbe(15, 5, 3)
+}
+
+func buildHTTPProbe(initialDelaySeconds, periodSeconds, failureThreshold int64) map[string]interface{} {
+	return map[string]interface{}{
+		"initialDelaySeconds": initialDelaySeconds,
+		"periodSeconds":       periodSeconds,
+		"failureThreshold":    failureThreshold,
+		"httpGet": map[string]interface{}{
+			"path": DefaultVLLMHealthPath,
+			"port": DefaultVLLMPort,
+		},
+	}
+}
+
+func requiresSharedMemoryVolume(resources *airunwayv1alpha1.ResourceSpec) bool {
+	return resources != nil && resources.GPU != nil && resources.GPU.Count > 1
+}
+
+func buildSharedMemoryVolumeMount() map[string]interface{} {
+	return map[string]interface{}{
+		"name":      VLLMShmVolumeName,
+		"mountPath": "/dev/shm",
+	}
+}
+
+func buildSharedMemoryVolume() map[string]interface{} {
+	return map[string]interface{}{
+		"name": VLLMShmVolumeName,
+		"emptyDir": map[string]interface{}{
+			"medium":    "Memory",
+			"sizeLimit": DefaultVLLMShmSize,
+		},
+	}
 }
 
 // buildResourceLimits creates resource limits and requests from ResourceSpec.

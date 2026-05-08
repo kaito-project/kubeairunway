@@ -2,6 +2,7 @@ package vllm
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
@@ -549,6 +550,62 @@ func TestTransformAggregatedServicePort(t *testing.T) {
 	}
 }
 
+func TestTransformAggregatedExplicitHostPortArgs(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	args := getContainerArgs(t, resources[0])
+	assertArg(t, args, "--host", DefaultVLLMHost)
+	assertArg(t, args, "--port", "8000")
+}
+
+func TestTransformAggregatedDeploymentProbes(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	container := getContainer(t, resources[0])
+	assertHTTPProbe(t, container, "startupProbe", 15, 10, 60)
+	assertHTTPProbe(t, container, "livenessProbe", 15, 10, 3)
+	assertHTTPProbe(t, container, "readinessProbe", 15, 5, 3)
+}
+
+func TestTransformAggregatedSharedMemoryForTensorParallelism(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 4},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertSharedMemoryPresent(t, resources[0])
+}
+
+func TestTransformAggregatedNoSharedMemoryForSingleGPU(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertSharedMemoryAbsent(t, resources[0])
+}
+
 func TestTransformAggregatedCustomEngineArgs(t *testing.T) {
 	tr := NewTransformer()
 	md := newTestMD("test-model", "default")
@@ -608,6 +665,36 @@ func TestTransformAggregatedInvalidEngineArgKey(t *testing.T) {
 	_, err := tr.Transform(context.Background(), md)
 	if err == nil {
 		t.Fatal("expected error for invalid engine arg key starting with hyphen")
+	}
+}
+
+func TestTransformAggregatedRejectsReservedEngineArgPort(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.Args = map[string]string{
+		"port": "9000",
+	}
+
+	_, err := tr.Transform(context.Background(), md)
+	if err == nil {
+		t.Fatal("expected error for reserved port engine arg")
+	}
+	if !strings.Contains(err.Error(), `engine arg "port" conflicts`) {
+		t.Fatalf("expected reserved port error, got %v", err)
+	}
+}
+
+func TestTransformAggregatedRejectsReservedEngineExtraArgHost(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Engine.ExtraArgs = []string{"--host=127.0.0.1"}
+
+	_, err := tr.Transform(context.Background(), md)
+	if err == nil {
+		t.Fatal("expected error for reserved host extraArg")
+	}
+	if !strings.Contains(err.Error(), `engine extraArg "--host=127.0.0.1" conflicts`) {
+		t.Fatalf("expected reserved host extraArg error, got %v", err)
 	}
 }
 
@@ -899,6 +986,33 @@ func TestTransformDisaggregatedTensorParallelism(t *testing.T) {
 	assertNoArg(t, prefillArgs, "--tensor-parallel-size")
 }
 
+func TestTransformDisaggregatedSharedMemoryPerComponent(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = nil
+	md.Spec.Serving = &airunwayv1alpha1.ServingSpec{
+		Mode: airunwayv1alpha1.ServingModeDisaggregated,
+	}
+	md.Spec.Scaling = &airunwayv1alpha1.ScalingSpec{
+		Prefill: &airunwayv1alpha1.ComponentScalingSpec{
+			Replicas: 4,
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 1},
+		},
+		Decode: &airunwayv1alpha1.ComponentScalingSpec{
+			Replicas: 1,
+			GPU:      &airunwayv1alpha1.GPUSpec{Count: 4},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertSharedMemoryPresent(t, resources[0])
+	assertSharedMemoryAbsent(t, resources[1])
+}
+
 // Test that user-provided labels cannot overwrite selector-critical keys
 func TestTransformUserLabelsCannotClobberSelectors(t *testing.T) {
 	tr := NewTransformer()
@@ -946,12 +1060,90 @@ func assertFlag(t *testing.T, args []string, flag string) {
 	t.Errorf("expected flag %s in %v", flag, args)
 }
 
-func getContainerArgs(t *testing.T, deploy *unstructured.Unstructured) []string {
+func getContainer(t *testing.T, deploy *unstructured.Unstructured) map[string]interface{} {
 	t.Helper()
 	containers, _, _ := unstructured.NestedSlice(deploy.Object, "spec", "template", "spec", "containers")
 	if len(containers) == 0 {
 		t.Fatal("expected at least one container")
 	}
-	container := containers[0].(map[string]interface{})
+	return containers[0].(map[string]interface{})
+}
+
+func getContainerArgs(t *testing.T, deploy *unstructured.Unstructured) []string {
+	t.Helper()
+	container := getContainer(t, deploy)
 	return argsToStrings(container["args"].([]interface{}))
+}
+
+func assertHTTPProbe(t *testing.T, container map[string]interface{}, name string, initialDelaySeconds, periodSeconds, failureThreshold int64) {
+	t.Helper()
+	probe, ok := container[name].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected %s", name)
+	}
+	if probe["initialDelaySeconds"] != initialDelaySeconds {
+		t.Errorf("expected %s initialDelaySeconds %d, got %v", name, initialDelaySeconds, probe["initialDelaySeconds"])
+	}
+	if probe["periodSeconds"] != periodSeconds {
+		t.Errorf("expected %s periodSeconds %d, got %v", name, periodSeconds, probe["periodSeconds"])
+	}
+	if probe["failureThreshold"] != failureThreshold {
+		t.Errorf("expected %s failureThreshold %d, got %v", name, failureThreshold, probe["failureThreshold"])
+	}
+	httpGet, ok := probe["httpGet"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected %s httpGet", name)
+	}
+	if httpGet["path"] != DefaultVLLMHealthPath {
+		t.Errorf("expected %s path %s, got %v", name, DefaultVLLMHealthPath, httpGet["path"])
+	}
+	if httpGet["port"] != DefaultVLLMPort {
+		t.Errorf("expected %s port %d, got %v", name, DefaultVLLMPort, httpGet["port"])
+	}
+}
+
+func assertSharedMemoryPresent(t *testing.T, deploy *unstructured.Unstructured) {
+	t.Helper()
+	container := getContainer(t, deploy)
+	volumeMounts, ok := container["volumeMounts"].([]interface{})
+	if !ok || len(volumeMounts) != 1 {
+		t.Fatalf("expected one volumeMount, got %v", container["volumeMounts"])
+	}
+	volumeMount := volumeMounts[0].(map[string]interface{})
+	if volumeMount["name"] != VLLMShmVolumeName {
+		t.Errorf("expected volumeMount name %s, got %v", VLLMShmVolumeName, volumeMount["name"])
+	}
+	if volumeMount["mountPath"] != "/dev/shm" {
+		t.Errorf("expected volumeMount mountPath /dev/shm, got %v", volumeMount["mountPath"])
+	}
+
+	volumes, found, _ := unstructured.NestedSlice(deploy.Object, "spec", "template", "spec", "volumes")
+	if !found || len(volumes) != 1 {
+		t.Fatalf("expected one volume, got %v (found=%v)", volumes, found)
+	}
+	volume := volumes[0].(map[string]interface{})
+	if volume["name"] != VLLMShmVolumeName {
+		t.Errorf("expected volume name %s, got %v", VLLMShmVolumeName, volume["name"])
+	}
+	emptyDir, ok := volume["emptyDir"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected emptyDir volume, got %v", volume["emptyDir"])
+	}
+	if emptyDir["medium"] != "Memory" {
+		t.Errorf("expected emptyDir medium Memory, got %v", emptyDir["medium"])
+	}
+	if emptyDir["sizeLimit"] != DefaultVLLMShmSize {
+		t.Errorf("expected emptyDir sizeLimit %s, got %v", DefaultVLLMShmSize, emptyDir["sizeLimit"])
+	}
+}
+
+func assertSharedMemoryAbsent(t *testing.T, deploy *unstructured.Unstructured) {
+	t.Helper()
+	container := getContainer(t, deploy)
+	if _, exists := container["volumeMounts"]; exists {
+		t.Fatalf("expected no volumeMounts, got %v", container["volumeMounts"])
+	}
+	if volumes, found, _ := unstructured.NestedSlice(deploy.Object, "spec", "template", "spec", "volumes"); found {
+		t.Fatalf("expected no volumes, got %v", volumes)
+	}
 }
