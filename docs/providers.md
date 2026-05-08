@@ -42,6 +42,9 @@ IF gpu.count > 1 AND engine == "vllm":
 
 IF gpu.count > 0 AND engine == "vllm":
     → Dynamo
+
+IF gpu.count > 0 AND engine == "vllm" AND no higher-priority vLLM provider matches:
+    → Direct vLLM fallback
 ```
 
 **Note:** Provider auto-selection is driven by registered `InferenceProviderConfig.selectionRules`; the core selector does not hard-code KubeRay, llm-d, or Direct vLLM. Providers with empty or no matching rules are explicit-only unless their installed config makes them selectable.
@@ -58,10 +61,10 @@ The selection reason is recorded in `status.provider.selectedReason` for observa
 | sglang engine              | No      | **Yes**       | No                     | No                 | No                             |
 | trtllm engine              | No      | **Yes**       | No                     | No                 | No                             |
 | llamacpp engine            | **Yes** | No            | No                     | No                 | No                             |
-| Disaggregated P/D          | No      | **Yes**       | Yes                    | Yes                | No                             |
+| Disaggregated P/D          | No      | **Yes**       | Yes                    | Yes                | Yes                            |
 | Self-managed InferencePool | No      | **Yes**       | No                     | No                 | No                             |
 | Self-managed EPP           | No      | **Yes**       | No                     | No                 | No                             |
-| Auto-selection             | Yes     | Yes           | Via selection rules    | Explicit/config rules only | Explicit/config rules only |
+| Auto-selection             | Yes     | Yes           | Via selection rules    | Explicit/config rules only | Low-priority fallback or explicit |
 
 ## Provider Abstraction
 
@@ -84,7 +87,7 @@ The Web UI backend reads provider information (capabilities, installation steps,
 | KubeRay       | RayService            | ✅ Available                   | [kuberay.yaml](../providers/kuberay/deploy/kuberay.yaml) | Ray-based distributed inference with autoscaling                               |
 | KAITO         | Workspace             | ✅ Available                   | [kaito.yaml](../providers/kaito/deploy/kaito.yaml) | Flexible inference with vLLM (GPU) or llama.cpp (CPU/GPU)                      |
 | llm-d         | none                  | ✅ Available                   | [llmd.yaml](../providers/llmd/deploy/llmd.yaml) | Flexible inference with vLLM (GPU) with KV-cache routing and disaggregated serving |
-| Direct vLLM   | Deployment            | ✅ Available                   | [vllm.yaml](../providers/vllm/deploy/vllm.yaml) | Direct vLLM OpenAI-compatible server deployments using `spec.engine.image` |
+| Direct vLLM   | Deployment            | ✅ Available                   | [vllm.yaml](../providers/vllm/deploy/vllm.yaml) | Direct vLLM OpenAI-compatible server deployments using `spec.engine.image`; see [Direct vLLM guide](providers/vllm.md) |
 
 ### KAITO Provider
 
