@@ -79,6 +79,13 @@ const SYSTEM_PATHS = ['/dev', '/proc', '/sys', '/etc', '/var/run'];
 const DEFAULT_FRONTEND_SERVICE_PORT = 8000;
 const CHAT_MODEL_DISCOVERY_TIMEOUT_MS = 1000;
 const CHAT_MODEL_DISCOVERY_ACCEPT_HEADER = 'application/json';
+const CHAT_STREAM_HEADERS = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache, no-transform',
+  'Connection': 'keep-alive',
+  'X-Accel-Buffering': 'no',
+  'Content-Encoding': 'identity',
+};
 
 // Matches Kubernetes resource.Quantity: a valid decimal number with optional
 // binary (Ki, Mi, Gi, Ti, Pi, Ei) or decimal (n, u, m, k, M, G, T, P, E) suffix.
@@ -408,7 +415,8 @@ function buildGatewayChatUrl(endpoint: string): string {
 async function proxyGatewayChatPostStream(
   endpoint: string,
   body: unknown,
-  modelName: string
+  modelName: string,
+  signal?: AbortSignal
 ): Promise<Response> {
   return fetch(buildGatewayChatUrl(endpoint), {
     method: 'POST',
@@ -418,6 +426,7 @@ async function proxyGatewayChatPostStream(
       'X-Gateway-Model-Name': modelName,
     },
     body: JSON.stringify(body),
+    signal,
   });
 }
 
@@ -531,6 +540,7 @@ async function handleDeploymentChat(
 ) {
   const resolvedNamespace = namespace || (await configService.getDefaultNamespace());
   const userToken = c.get('token') as string | undefined;
+  const signal = c.req.raw.signal;
 
   const deployment = await kubernetesService.getDeployment(name, resolvedNamespace, userToken);
   if (!deployment) {
@@ -569,7 +579,9 @@ async function handleDeploymentChat(
       ...body,
       model: directModel,
       stream: true,
-    }
+    },
+    {},
+    { signal }
   );
 
   if (!upstreamResponse.ok) {
@@ -589,7 +601,8 @@ async function handleDeploymentChat(
           model: gatewayModel,
           stream: true,
         },
-        gatewayModel
+        gatewayModel,
+        signal
       );
 
       if (gatewayResponse.ok) {
@@ -607,12 +620,7 @@ async function handleDeploymentChat(
 
         return new Response(gatewayResponse.body, {
           status: 200,
-          headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache, no-transform',
-            'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no',
-          },
+          headers: CHAT_STREAM_HEADERS,
         });
       }
 
@@ -655,12 +663,7 @@ async function handleDeploymentChat(
 
   return new Response(upstreamResponse.body, {
     status: 200,
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    },
+    headers: CHAT_STREAM_HEADERS,
   });
 }
 

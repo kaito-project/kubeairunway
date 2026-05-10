@@ -364,10 +364,6 @@ export const deploymentsApi = {
       signal: options?.signal,
     });
 
-    if (response.status === 401) {
-      dispatchUnauthorized();
-    }
-
     return response;
   },
 

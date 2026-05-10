@@ -16,6 +16,19 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 // Shorter timeout for tests that depend on K8s (which may not be available)
 const K8S_TEST_TIMEOUT = 2000;
 
+function expectChatProxyCall(capturedArgs: unknown[] | undefined, expectedArgs: unknown[]): void {
+  expect(capturedArgs?.slice(0, 5)).toEqual(expectedArgs);
+  expect(capturedArgs?.[5]).toEqual({});
+  const chatProxyOptions = capturedArgs?.[6] as { signal?: unknown } | undefined;
+  expect(chatProxyOptions?.signal).toBeInstanceOf(AbortSignal);
+}
+
+function expectSseHeaders(res: Response): void {
+  expect(res.headers.get('Content-Type')).toContain('text/event-stream');
+  expect(res.headers.get('Cache-Control')).toBe('no-cache, no-transform');
+  expect(res.headers.get('Content-Encoding')).toBe('identity');
+}
+
 describe('Hono Routes', () => {
   describe('Health Routes', () => {
     test('GET /api/health returns healthy status', async () => {
@@ -153,8 +166,7 @@ describe('Hono Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(res.headers.get('Content-Type')).toContain('text/event-stream');
-      expect(res.headers.get('Cache-Control')).toBe('no-cache, no-transform');
+      expectSseHeaders(res);
       expect(await res.text()).toBe(upstreamSse);
 
       expect(capturedModelLookupArgs?.slice(0, 4)).toEqual([
@@ -166,7 +178,7 @@ describe('Hono Routes', () => {
       const modelLookupOptions = capturedModelLookupArgs?.[4] as { accept?: string; signal?: unknown } | undefined;
       expect(modelLookupOptions?.accept).toBe('application/json');
       expect(modelLookupOptions?.signal).toBeInstanceOf(AbortSignal);
-      expect(capturedChatProxyArgs).toEqual([
+      expectChatProxyCall(capturedChatProxyArgs, [
         'test-deploy-frontend',
         'default',
         8080,
@@ -218,7 +230,7 @@ describe('Hono Routes', () => {
       expect(res.status).toBe(200);
       expect(await res.text()).toBe(upstreamSse);
       expect(capturedDeploymentArgs).toEqual(['test-deploy', 'custom-ns', undefined]);
-      expect(capturedChatProxyArgs).toEqual([
+      expectChatProxyCall(capturedChatProxyArgs, [
         'test-deploy-frontend',
         'custom-ns',
         8080,
@@ -236,6 +248,7 @@ describe('Hono Routes', () => {
       let capturedDirectProxyArgs: unknown[] | undefined;
       let capturedGatewayBody: Record<string, unknown> | undefined;
       let capturedGatewayHeader: string | null = null;
+      let capturedGatewaySignal: AbortSignal | null | undefined;
       const gatewaySse = 'data: {"choices":[{"delta":{"content":"Hello from gateway"}}]}\n\ndata: [DONE]\n\n';
       const originalFetch = globalThis.fetch;
 
@@ -245,6 +258,7 @@ describe('Hono Routes', () => {
       globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
         capturedGatewayBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
         capturedGatewayHeader = new Headers(init?.headers).get('X-Gateway-Model-Name');
+        capturedGatewaySignal = init?.signal;
         return new Response(gatewaySse, {
           status: 200,
           headers: { 'Content-Type': 'text/event-stream' },
@@ -285,8 +299,9 @@ describe('Hono Routes', () => {
       });
 
       expect(res.status).toBe(200);
+      expectSseHeaders(res);
       expect(await res.text()).toBe(gatewaySse);
-      expect(capturedDirectProxyArgs).toEqual([
+      expectChatProxyCall(capturedDirectProxyArgs, [
         'test-deploy-frontend',
         'default',
         8080,
@@ -303,6 +318,7 @@ describe('Hono Routes', () => {
         stream: true,
       });
       expect(capturedGatewayHeader).toBe('gateway-configured-model');
+      expect(capturedGatewaySignal).toBeInstanceOf(AbortSignal);
     });
 
     test('POST /api/deployments/:name/chat skips KAITO llama.cpp servedModelName and discovers model', async () => {
@@ -360,7 +376,7 @@ describe('Hono Routes', () => {
       const modelLookupOptions = capturedModelLookupArgs?.[4] as { accept?: string; signal?: unknown } | undefined;
       expect(modelLookupOptions?.accept).toBe('application/json');
       expect(modelLookupOptions?.signal).toBeInstanceOf(AbortSignal);
-      expect(capturedChatProxyArgs).toEqual([
+      expectChatProxyCall(capturedChatProxyArgs, [
         'test-deploy-frontend',
         'default',
         8080,
@@ -417,7 +433,7 @@ describe('Hono Routes', () => {
 
       expect(res.status).toBe(200);
       expect(await res.text()).toBe(upstreamSse);
-      expect(capturedChatProxyArgs).toEqual([
+      expectChatProxyCall(capturedChatProxyArgs, [
         'test-deploy-frontend',
         'default',
         8080,
@@ -466,7 +482,7 @@ describe('Hono Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(capturedChatProxyArgs).toEqual([
+      expectChatProxyCall(capturedChatProxyArgs, [
         'legacy-frontend',
         'default',
         8000,
@@ -483,6 +499,7 @@ describe('Hono Routes', () => {
       let capturedGatewayUrl: string | undefined;
       let capturedGatewayBody: unknown;
       let capturedGatewayHeaders: Headers;
+      let capturedGatewaySignal: AbortSignal | null | undefined;
       const originalFetch = globalThis.fetch;
       const missingServiceDetails = JSON.stringify({
         kind: 'Status',
@@ -502,6 +519,7 @@ describe('Hono Routes', () => {
         capturedGatewayUrl = input.toString();
         capturedGatewayBody = init?.body ? JSON.parse(init.body.toString()) : undefined;
         capturedGatewayHeaders = new Headers(init?.headers);
+        capturedGatewaySignal = init?.signal;
         return new Response(gatewaySse, {
           status: 200,
           headers: { 'Content-Type': 'text/event-stream' },
@@ -539,10 +557,11 @@ describe('Hono Routes', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(res.headers.get('Content-Type')).toContain('text/event-stream');
+      expectSseHeaders(res);
       expect(await res.text()).toBe(gatewaySse);
       expect(capturedGatewayUrl).toBe('http://20.92.155.15/v1/chat/completions');
       expect(capturedGatewayHeaders!.get('X-Gateway-Model-Name')).toBe('served-from-gateway');
+      expect(capturedGatewaySignal).toBeInstanceOf(AbortSignal);
       expect(capturedGatewayBody).toEqual({
         messages: [{ role: 'user', content: 'Hello' }],
         model: 'served-from-gateway',

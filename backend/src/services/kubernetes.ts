@@ -2017,7 +2017,8 @@ class KubernetesService {
     port: number,
     path: string,
     body: unknown,
-    headers: Record<string, string> = {}
+    headers: Record<string, string> = {},
+    options: { signal?: AbortSignal } = {}
   ): Promise<Response> {
     return await this.proxyServiceRequest(serviceName, namespace, port, path, {
       method: 'POST',
@@ -2027,6 +2028,7 @@ class KubernetesService {
         ...headers,
       },
       body: JSON.stringify(body),
+      signal: options.signal,
     });
   }
 
