@@ -45,11 +45,21 @@ logger.info(
 // Main App
 // ============================================================================
 
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const DEFAULT_CORS_ORIGIN = 'http://localhost:5173';
+
+// Default cross-origin allowlist for browser-based UIs that talk to this
+// backend. Same-origin clients (the embedded production frontend) don't go
+// through CORS, so this list is only relevant for separately-hosted UIs.
+// Headlamp Desktop / in-cluster Headlamp users must set CORS_ORIGIN to their
+// Headlamp origin explicitly — there's no portable default we can ship.
+const CORS_ORIGIN = process.env.CORS_ORIGIN || DEFAULT_CORS_ORIGIN;
 
 // Parse CORS_ORIGIN into a value the cors middleware can use:
 //   - "*"               → pass through as a string (wildcard)
 //   - "a,b,c"           → array of trimmed, non-empty origins
+//   - malformed/empty   → fall back to the safe default rather than '*' so
+//                         that a misconfigured production env can't silently
+//                         fail open to wildcard CORS.
 // Splitting "*" into ["*"] matches request origins literally, which never
 // equals a real origin and effectively disables CORS — so handle it explicitly.
 function parseCorsOrigin(raw: string): string | string[] {
@@ -59,8 +69,14 @@ function parseCorsOrigin(raw: string): string | string[] {
     .split(',')
     .map((o) => o.trim())
     .filter((o) => o.length > 0);
-  // Fall back to '*' if every entry was empty (e.g. CORS_ORIGIN=",,").
-  return list.length > 0 ? list : '*';
+  if (list.length > 0) return list;
+  // Fail closed: a malformed CORS_ORIGIN (e.g. ",,") should keep the secure
+  // default rather than broaden access to '*'.
+  logger.warn(
+    { rawCorsOrigin: raw },
+    `CORS_ORIGIN is set but parses to no origins; falling back to ${DEFAULT_CORS_ORIGIN}`,
+  );
+  return DEFAULT_CORS_ORIGIN;
 }
 
 const app = new Hono<AppEnv>();
