@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { kubernetesService } from '../services/kubernetes';
 import { helmService } from '../services/helm';
 import logger from '../lib/logger';
+import { getAnnotatedProviderDisplayName, getProviderDisplayName, providerRequiresRuntimeCRD } from '../lib/providers';
 
 interface ProviderHelmChartDetails {
   name: string;
@@ -39,14 +40,18 @@ function parseInstallationAnnotation(config: any): any {
  */
 function extractProviderDetails(config: any) {
   const name = config.metadata?.name || 'unknown';
+  const annotations = config.metadata?.annotations;
+  const displayName = getProviderDisplayName(name, annotations);
+  const annotatedDisplayName = getAnnotatedProviderDisplayName(annotations);
   const installation = parseInstallationAnnotation(config);
   const capabilities = config.spec?.capabilities || {};
 
   return {
     id: name,
-    name: name.charAt(0).toUpperCase() + name.slice(1),
+    name: displayName,
     description: installation.description || '',
     defaultNamespace: installation.defaultNamespace || 'default',
+    requiresCRD: providerRequiresRuntimeCRD(name, capabilities.requiresCRD, annotatedDisplayName),
     crdConfig: {
       apiGroup: capabilities.engines?.length ? '' : '',
     },
@@ -198,11 +203,14 @@ const installation = new Hono()
     const provider = extractProviderDetails(config);
     const charts = normalizeInstallCharts(providerId, provider.helmCharts);
     const hasInstallMetadata = charts.length > 0;
+    const requiresCRD = provider.requiresCRD !== false;
+    const installable = requiresCRD && hasInstallMetadata;
     const status = config.status || {};
     const installationStatus = await kubernetesService.checkProviderInstallationStatus(
       providerId,
       status,
       provider.name,
+      provider.requiresCRD,
     );
 
     return c.json({
@@ -211,13 +219,14 @@ const installation = new Hono()
       installed: installationStatus.installed,
       crdFound: installationStatus.crdFound,
       operatorRunning: installationStatus.operatorRunning,
+      requiresCRD: installationStatus.requiresCRD ?? provider.requiresCRD,
       version: status.version,
-      message: hasInstallMetadata
+      message: hasInstallMetadata || provider.requiresCRD === false
         ? installationStatus.message
         : `No installation metadata found for provider ${providerId}`,
-      installable: hasInstallMetadata,
+      installable,
       installationSteps: provider.installationSteps,
-      helmCommands: helmService.getInstallCommands(provider.helmRepos, charts),
+      helmCommands: installable ? helmService.getInstallCommands(provider.helmRepos, charts) : [],
     });
   })
   .get('/providers/:providerId/commands', async (c) => {
@@ -230,11 +239,12 @@ const installation = new Hono()
 
     const provider = extractProviderDetails(config);
     const charts = normalizeInstallCharts(providerId, provider.helmCharts);
+    const installable = provider.requiresCRD !== false && charts.length > 0;
 
     return c.json({
       providerId: provider.id,
       providerName: provider.name,
-      commands: helmService.getInstallCommands(provider.helmRepos, charts),
+      commands: installable ? helmService.getInstallCommands(provider.helmRepos, charts) : [],
       steps: provider.installationSteps,
     });
   })
@@ -248,6 +258,12 @@ const installation = new Hono()
 
     const provider = extractProviderDetails(config);
     const charts = normalizeInstallCharts(providerId, provider.helmCharts);
+
+    if (provider.requiresCRD === false) {
+      throw new HTTPException(400, {
+        message: `${provider.name} is managed by provider registration and cannot be installed from this page.`,
+      });
+    }
 
     if (charts.length === 0) {
       throw new HTTPException(400, {
@@ -297,6 +313,12 @@ const installation = new Hono()
     }
 
     const provider = extractProviderDetails(config);
+
+    if (provider.requiresCRD === false) {
+      throw new HTTPException(400, {
+        message: `${provider.name} is managed by provider registration and cannot be uninstalled from this page.`,
+      });
+    }
 
     const helmStatus = await helmService.checkHelmAvailable();
     if (!helmStatus.available) {

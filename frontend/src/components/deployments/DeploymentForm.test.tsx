@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DetailedClusterCapacity, Model, RuntimeStatus } from '@/lib/api'
@@ -16,6 +16,7 @@ vi.mock('@/hooks/useDeployments', () => ({
     status: 'idle',
     reset: vi.fn(),
   }),
+  usePVCs: () => ({ data: undefined }),
 }))
 
 vi.mock('@/hooks/useHuggingFace', () => ({
@@ -112,6 +113,77 @@ describe('DeploymentForm', () => {
     toast.mockReset()
     manifestViewerMock.mockReset()
     gatewayMock.data = { available: false }
+  })
+
+  it('renders native vLLM as a compatible registered runtime for vLLM models', () => {
+    render(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel({ supportedEngines: ['vllm'] })}
+          detailedCapacity={createCapacity()}
+          runtimes={[
+            createRuntime({ id: 'dynamo', name: 'Dynamo', installed: true, healthy: true }),
+            createRuntime({
+              id: 'vllm',
+              name: 'vLLM',
+              installed: true,
+              healthy: true,
+              requiresCRD: false,
+            }),
+          ]}
+        />
+      </MemoryRouter>
+    )
+
+    const vllmCard = screen
+      .getByText('High-throughput inference with the native vLLM provider')
+      .closest('[role="radio"]') as HTMLElement
+
+    expect(vllmCard).toBeInTheDocument()
+    expect(within(vllmCard).getByText('Registered')).toBeInTheDocument()
+    expect(within(vllmCard).queryByText('Not Installed')).not.toBeInTheDocument()
+
+    fireEvent.click(vllmCard)
+
+    expect(vllmCard).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('button', { name: /Deploy Model/i })).toBeEnabled()
+  })
+
+  it('treats a CRD-less vLLM provider that is not ready as registered but unavailable', async () => {
+    render(
+      <MemoryRouter>
+        <DeploymentForm
+          model={createModel({ supportedEngines: ['vllm'] })}
+          detailedCapacity={createCapacity()}
+          runtimes={[
+            createRuntime({
+              id: 'vllm',
+              name: 'vLLM',
+              installed: false,
+              healthy: false,
+              requiresCRD: false,
+            }),
+          ]}
+        />
+      </MemoryRouter>
+    )
+
+    const vllmCard = screen
+      .getByText('High-throughput inference with the native vLLM provider')
+      .closest('[role="radio"]') as HTMLElement
+
+    expect(vllmCard).toBeInTheDocument()
+    expect(within(vllmCard).getByText('Not Ready')).toBeInTheDocument()
+    expect(within(vllmCard).queryByText('Not Installed')).not.toBeInTheDocument()
+
+    fireEvent.click(vllmCard)
+
+    await waitFor(() => {
+      expect(vllmCard).toHaveAttribute('aria-checked', 'true')
+    })
+    expect(screen.getByText('Provider is registered but not ready yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /install vllm/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Runtime Not Ready/i })).toBeDisabled()
   })
 
   it('keeps manual topology edits instead of snapping back to the recommendation', async () => {

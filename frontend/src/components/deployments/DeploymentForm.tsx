@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfetti } from '@/components/ui/confetti'
-import { useCreateDeployment, type DeploymentConfig } from '@/hooks/useDeployments'
+import { useCreateDeployment, usePVCs, type DeploymentConfig } from '@/hooks/useDeployments'
 import { useHuggingFaceStatus, useGgufFiles } from '@/hooks/useHuggingFace'
 import { usePremadeModels } from '@/hooks/useAikit'
 import { useGatewayStatus } from '@/hooks/useGateway'
@@ -90,7 +90,7 @@ interface DeploymentFormProps {
 type TraditionalEngine = 'vllm' | 'sglang' | 'trtllm'
 type RouterMode = 'default' | 'kv' | 'round-robin'
 type DeploymentMode = 'aggregated' | 'disaggregated'
-type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd'
+type RuntimeId = 'dynamo' | 'kuberay' | 'kaito' | 'llmd' | 'vllm'
 type KaitoComputeType = 'cpu' | 'gpu'
 type GgufRunMode = 'build' | 'direct'
 
@@ -119,6 +119,11 @@ const RUNTIME_INFO: Record<RuntimeId, { name: string; description: string; defau
     description: 'GPU-accelerated vLLM inference with disaggregated prefill/decode support',
     defaultNamespace: 'default',
   },
+  vllm: {
+    name: 'vLLM',
+    description: 'High-throughput inference with the native vLLM provider',
+    defaultNamespace: 'default',
+  },
 }
 
 // Engine support by runtime (only traditional GPU engines, not llamacpp)
@@ -127,6 +132,7 @@ const RUNTIME_ENGINES: Record<RuntimeId, TraditionalEngine[]> = {
   kuberay: ['vllm'], // KubeRay only supports vLLM currently
   kaito: ['vllm'], // KAITO exposes vLLM in the engine picker; single-engine llama.cpp models bypass it
   llmd: ['vllm'], // llm-d uses vLLM exclusively
+  vllm: ['vllm'], // Native vLLM provider uses vLLM exclusively
 }
 
 function normalizeGatewayAvailability(
@@ -223,30 +229,33 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
   const getDefaultRuntime = (): RuntimeId => {
     if (!runtimes || runtimes.length === 0) {
       // Fallback based on model engines
-      return model.supportedEngines.includes('llamacpp') ? 'kaito' : 'dynamo';
+      return model.supportedEngines.includes('llamacpp') ? 'kaito' : 'dynamo'
     }
 
     // Find first compatible and installed runtime
-    const compatibleRuntimes: RuntimeId[] = ['dynamo', 'kuberay', 'kaito', 'llmd'];
+    const compatibleRuntimes: RuntimeId[] = ['dynamo', 'kuberay', 'kaito', 'llmd', 'vllm']
     for (const rtId of compatibleRuntimes) {
-      const rt = runtimes.find(r => r.id === rtId);
+      const rt = runtimes.find(r => r.id === rtId)
       if (rt?.installed && isRuntimeCompatible(rtId, model.supportedEngines)) {
-        return rtId;
+        return rtId
       }
     }
 
-    // If no compatible installed runtime, return first compatible one
+    // If no compatible installed runtime, return the first compatible runtime that is available to select
     for (const rtId of compatibleRuntimes) {
-      if (isRuntimeCompatible(rtId, model.supportedEngines)) {
-        return rtId;
+      const rt = runtimes.find(r => r.id === rtId)
+      if (rt && isRuntimeCompatible(rtId, model.supportedEngines)) {
+        return rtId
       }
     }
 
-    return 'dynamo';
+    return 'dynamo'
   }
 
   const [selectedRuntime, setSelectedRuntime] = useState<RuntimeId>(getDefaultRuntime)
   const selectedRuntimeStatus = runtimes?.find(r => r.id === selectedRuntime)
+  const isSelectedCrdLessRuntime = selectedRuntimeStatus?.requiresCRD === false
+  const isSelectedCrdLessRuntimeNotReady = isSelectedCrdLessRuntime && !selectedRuntimeStatus?.installed
   const isRuntimeInstalled = selectedRuntimeStatus?.installed ?? false
 
   // AI Configurator state - tracks supported backends and recommended mode
@@ -351,6 +360,11 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
       gpu: 0, // Will be set from recommendation
     },
   })
+
+  // Fetch PVCs for the selected namespace (for existing disk selection)
+  const { data: availablePVCs } = usePVCs(
+    selectedRuntime === 'dynamo' ? config.namespace : undefined
+  )
 
   // Calculate GPU recommendation based on model characteristics
   const gpuRecommendation = calculateGpuRecommendation(model, detailedCapacity)
@@ -852,7 +866,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
     }
 
     if (!isRuntimeInstalled) {
-      return 'Runtime Not Installed'
+      return isSelectedCrdLessRuntimeNotReady ? 'Runtime Not Ready' : 'Runtime Not Installed'
     }
 
     if (selectedRuntime === 'kaito' && !isHuggingFaceGgufModel && !isVllmModel && !selectedPremadeModel) {
@@ -935,6 +949,8 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
 
               const isCompatible = isRuntimeCompatible(runtime.id as RuntimeId, model.supportedEngines)
               const isSelected = selectedRuntime === runtime.id
+              const isCrdLessRuntime = runtime.requiresCRD === false
+              const isCrdLessRuntimeNotReady = isCrdLessRuntime && !runtime.installed
 
               return (
                 <div
@@ -993,7 +1009,12 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                       ) : runtime.installed ? (
                         <Badge variant="outline" className="text-green-400 border-green-500/50 bg-green-500/10 text-xs">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
-                          Installed
+                          {isCrdLessRuntime ? 'Registered' : 'Installed'}
+                        </Badge>
+                      ) : isCrdLessRuntimeNotReady ? (
+                        <Badge variant="outline" className="text-yellow-400 border-yellow-500/50 bg-yellow-500/10 text-xs">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Not Ready
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-yellow-400 border-yellow-500/50 bg-yellow-500/10 text-xs">
@@ -1012,10 +1033,16 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
                     )}
                     {isCompatible && !runtime.installed && isSelected && (
                       <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
-                        <Link to="/installation" className="underline hover:no-underline">
-                          Install {info.name}
-                        </Link>{' '}
-                        before deploying.
+                        {isCrdLessRuntime ? (
+                          'Provider is registered but not ready yet.'
+                        ) : (
+                          <>
+                            <Link to="/installation" className="underline hover:no-underline">
+                              Install {info.name}
+                            </Link>{' '}
+                            before deploying.
+                          </>
+                        )}
                       </p>
                     )}
                   </div>
@@ -1687,6 +1714,7 @@ export function DeploymentForm({ model, detailedCapacity, autoscaler, runtimes }
               }))
             }}
             deploymentName={config.name}
+            availablePVCs={availablePVCs}
           />
         </div>
       )}
