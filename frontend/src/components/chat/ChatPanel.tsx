@@ -87,6 +87,9 @@ export function ChatPanel({ deploymentName, namespace, className, style }: ChatP
   const [error, setError] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const mountedRef = useRef(false)
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const shouldAutoScrollRef = useRef(true)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -99,8 +102,23 @@ export function ChatPanel({ deploymentName, namespace, className, style }: ChatP
     }
   }, [])
 
+  useEffect(() => {
+    if (!shouldAutoScrollRef.current) return
+
+    messagesEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, isStreaming])
+
+  const handleMessagesScroll = () => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    shouldAutoScrollRef.current = distanceFromBottom < 80
+  }
+
   const clearConversation = () => {
     if (isStreaming) return
+    shouldAutoScrollRef.current = true
     setMessages([])
     setInput('')
     setError(null)
@@ -131,6 +149,7 @@ export function ChatPanel({ deploymentName, namespace, className, style }: ChatP
     const abortController = new AbortController()
     abortControllerRef.current = abortController
 
+    shouldAutoScrollRef.current = true
     setInput('')
     setError(null)
     setIsStreaming(true)
@@ -255,8 +274,10 @@ export function ChatPanel({ deploymentName, namespace, className, style }: ChatP
       </p>
 
       <div
+        ref={messagesContainerRef}
         aria-live="polite"
         className="mb-4 max-h-80 space-y-3 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3"
+        onScroll={handleMessagesScroll}
       >
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -282,6 +303,7 @@ export function ChatPanel({ deploymentName, namespace, className, style }: ChatP
             </div>
           ))
         )}
+        <div ref={messagesEndRef} aria-hidden="true" />
       </div>
 
       {error && (

@@ -151,7 +151,11 @@ describe('DeploymentDetailsPage chat panel', () => {
     expect(screen.queryByText(/\{"error"/)).not.toBeInTheDocument()
   })
 
-  it('sends the prompt and renders streamed assistant responses', async () => {
+  it('sends the prompt, renders streamed assistant responses, and keeps the chat scrolled', async () => {
+    const scrollIntoViewMock = vi
+      .spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+
     chatMock.mockResolvedValue(streamResponse([
       'data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n',
       'data: {"choices":[{"delta":{"content":"from model"}}]}\n\n',
@@ -159,6 +163,7 @@ describe('DeploymentDetailsPage chat panel', () => {
     ]))
 
     renderDetailsPage()
+    scrollIntoViewMock.mockClear()
 
     await userEvent.type(screen.getByLabelText('Message'), 'Hello')
     await userEvent.click(screen.getByRole('button', { name: /send/i }))
@@ -174,5 +179,10 @@ describe('DeploymentDetailsPage chat panel', () => {
       )
     })
     expect(await screen.findByText('Hello from model')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'end' })
+    })
+
+    scrollIntoViewMock.mockRestore()
   })
 })
