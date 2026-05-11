@@ -193,6 +193,99 @@ describe('Provider Installation Flow', () => {
     expect(statusRes3.status).toBe(404);
   });
 
+  test('GET /providers/llmd/status reports no runtime CRD requirement as installed and not installable', async () => {
+    const llmdProviderConfig = {
+      ...mockInferenceProviderConfig,
+      metadata: {
+        ...mockInferenceProviderConfig.metadata,
+        name: 'llmd',
+        annotations: {
+          'airunway.io/provider-name': 'LLM-D',
+        },
+      },
+      spec: {
+        ...mockInferenceProviderConfig.spec,
+        capabilities: {
+          ...mockInferenceProviderConfig.spec.capabilities,
+          requiresCRD: false,
+        },
+      },
+      status: {
+        ready: true,
+        version: '0.1.0',
+      },
+    };
+
+    restores.push(
+      mockServiceMethod(
+        kubernetesService,
+        'getInferenceProviderConfig',
+        (async (name: string) => name === 'llmd' ? llmdProviderConfig : null) as typeof kubernetesService.getInferenceProviderConfig,
+      ),
+    );
+
+    const response = await app.request('/api/installation/providers/llmd/status');
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.providerId).toBe('llmd');
+    expect(body.providerName).toBe('LLM-D');
+    expect(body.installed).toBe(true);
+    expect(body.crdFound).toBe(true);
+    expect(body.operatorRunning).toBe(true);
+    expect(body.requiresCRD).toBe(false);
+    expect(body.installable).toBe(false);
+    expect(body.installationSteps).toEqual([]);
+    expect(body.helmCommands).toEqual([]);
+    expect(body.message).toBe('Runtime is ready to use.');
+  });
+
+  test('GET /providers/llmd/status honors provider readiness even without runtime CRD requirement', async () => {
+    const llmdProviderConfig = {
+      ...mockInferenceProviderConfig,
+      metadata: {
+        ...mockInferenceProviderConfig.metadata,
+        name: 'llmd',
+        annotations: {
+          'airunway.io/provider-name': 'LLM-D',
+        },
+      },
+      spec: {
+        ...mockInferenceProviderConfig.spec,
+        capabilities: {
+          ...mockInferenceProviderConfig.spec.capabilities,
+          requiresCRD: false,
+        },
+      },
+      status: {
+        ready: false,
+        version: '0.1.0',
+      },
+    };
+
+    restores.push(
+      mockServiceMethod(
+        kubernetesService,
+        'getInferenceProviderConfig',
+        (async (name: string) => name === 'llmd' ? llmdProviderConfig : null) as typeof kubernetesService.getInferenceProviderConfig,
+      ),
+    );
+
+    const response = await app.request('/api/installation/providers/llmd/status');
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.providerId).toBe('llmd');
+    expect(body.providerName).toBe('LLM-D');
+    expect(body.installed).toBe(false);
+    expect(body.crdFound).toBe(true);
+    expect(body.operatorRunning).toBe(false);
+    expect(body.requiresCRD).toBe(false);
+    expect(body.installable).toBe(false);
+    expect(body.helmCommands).toEqual([]);
+    expect(body.message).toBe('Provider is registered but not ready yet.');
+  });
+
   // ==========================================================================
   // Edge cases
   // ==========================================================================

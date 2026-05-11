@@ -5,6 +5,7 @@ import { toModelDeploymentManifest, toDeploymentStatus, INFERENCE_GATEWAY_LABEL 
 import { withRetry } from '../lib/retry';
 import { loadKubeConfig } from '../lib/kubeconfig';
 import logger from '../lib/logger';
+import { getAnnotatedProviderDisplayName, getProviderDisplayName, providerRequiresRuntimeCRD } from '../lib/providers';
 
 // ModelDeployment CRD configuration
 const MODEL_DEPLOYMENT_CRD = {
@@ -109,6 +110,7 @@ export interface InstallationStatus {
   installed: boolean;
   crdFound?: boolean;
   operatorRunning?: boolean;
+  requiresCRD?: boolean;
   version?: string;
   message?: string;
 }
@@ -525,15 +527,28 @@ class KubernetesService {
 
   async getDeploymentPods(name: string, namespace: string): Promise<PodStatus[]> {
     const coreApi = this.coreV1Api;
-    // Try multiple label selectors since different providers use different labels
-    const labelSelectors = [
-      `app.kubernetes.io/instance=${name}`,  // Standard K8s label (Dynamo, KubeRay)
-      `airunway.ai/deployment=${name}`,  // AIRunway label
-      `kaito.sh/workspace=${name}`,          // KAITO workspace label
-      `app=${name}`,                         // Common fallback
+    const podsByName = new Map<string, k8s.V1Pod>();
+    const addPods = (pods: k8s.V1Pod[]) => {
+      for (const pod of pods) {
+        const podName = pod.metadata?.name;
+        if (podName && !podsByName.has(podName)) {
+          podsByName.set(podName, pod);
+        }
+      }
+    };
+
+    // Try multiple exact label selectors since different providers use different labels.
+    // Some deployment stacks create related components with different labels, so
+    // aggregate across all exact matches instead of stopping at the first selector.
+    const exactLabelSelectors = [
+      `app.kubernetes.io/instance=${name}`,      // Standard K8s label (Dynamo)
+      `airunway.ai/deployment=${name}`,          // AIRunway label
+      `airunway.ai/model-deployment=${name}`,    // Pod-template label used by KubeRay
+      `nvidia.com/dynamo-graph-deployment-name=${name}`, // Runtime label used by Dynamo/Grove pods
+      `kaito.sh/workspace=${name}`,              // KAITO workspace label
     ];
 
-    for (const labelSelector of labelSelectors) {
+    const listPodsByLabelSelector = async (labelSelector: string, operationName = 'getDeploymentPods'): Promise<k8s.V1Pod[]> => {
       try {
         const response = await withRetry(
           () => coreApi.listNamespacedPod(
@@ -544,22 +559,29 @@ class KubernetesService {
             undefined,
             labelSelector
           ),
-          { operationName: 'getDeploymentPods', maxRetries: 1 }
+          { operationName, maxRetries: 1 }
         );
 
         if (response.body.items.length > 0) {
           logger.debug({ name, namespace, labelSelector, podCount: response.body.items.length }, 'Found pods with selector');
-          return response.body.items.map((pod) => toPodStatus(pod));
         }
+        return response.body.items;
       } catch (error) {
         logger.debug({ error, name, namespace, labelSelector }, 'Error trying label selector');
-        // Continue to next selector
+        return [];
       }
-    }
+    };
 
-    // KubeRay creates pods with ray.io/cluster label set to a generated RayCluster name
-    // The RayCluster name is the RayService name with a random suffix, so we need to
-    // find pods where the ray.io/cluster label starts with the deployment name
+    const exactSelectorResults = await Promise.all(
+      exactLabelSelectors.map(labelSelector => listPodsByLabelSelector(labelSelector))
+    );
+    exactSelectorResults.forEach(addPods);
+
+    // KubeRay creates pods with ray.io/cluster label set to a generated RayCluster name.
+    // Modern Airunway KubeRay pods carry airunway.ai/model-deployment (handled above),
+    // but keep this as a backwards-compatible fallback. Only accept an exact name or
+    // the RayService-generated "<deployment>-raycluster..." form so deployments like
+    // "demo" do not match unrelated clusters like "demo2" or "demo-extra".
     try {
       const response = await withRetry(
         () => coreApi.listNamespacedPod(
@@ -573,22 +595,41 @@ class KubernetesService {
         { operationName: 'getDeploymentPods:kuberay', maxRetries: 1 }
       );
 
-      // Filter pods where ray.io/cluster label starts with the deployment name
       const matchingPods = response.body.items.filter(pod => {
         const clusterLabel = pod.metadata?.labels?.['ray.io/cluster'] || '';
-        return clusterLabel.startsWith(name);
+        return clusterLabel === name || clusterLabel.startsWith(`${name}-raycluster`);
       });
 
       if (matchingPods.length > 0) {
         logger.debug({ name, namespace, podCount: matchingPods.length }, 'Found KubeRay pods by cluster label prefix');
-        return matchingPods.map((pod) => toPodStatus(pod));
+        addPods(matchingPods);
       }
     } catch (error) {
       logger.debug({ error, name, namespace }, 'Error trying KubeRay cluster label selector');
     }
 
-    logger.debug({ name, namespace }, 'No pods found with any label selector');
-    return [];
+    if (podsByName.size === 0) {
+      // Last-resort fallback for older or third-party manifests that only set app=<name>.
+      // Avoid aggregating this broad label with canonical matches because unrelated pods
+      // can legitimately share the same app label in a namespace.
+      try {
+        const labelSelector = `app=${name}`;
+        const pods = await listPodsByLabelSelector(labelSelector, 'getDeploymentPods:fallbackApp');
+        addPods(pods);
+      } catch (error) {
+        logger.debug({ error, name, namespace }, 'Error trying fallback app label selector');
+      }
+    }
+
+    const pods = Array.from(podsByName.values())
+      .sort((a, b) => (a.metadata?.name || '').localeCompare(b.metadata?.name || ''));
+    if (pods.length === 0) {
+      logger.debug({ name, namespace }, 'No pods found with any label selector');
+      return [];
+    }
+
+    logger.debug({ name, namespace, podCount: pods.length }, 'Found deployment pods');
+    return pods.map((pod) => toPodStatus(pod));
   }
 
   /**
@@ -695,8 +736,11 @@ class KubernetesService {
           items.map(async (item: any): Promise<RuntimeStatus> => {
             const name = item.metadata?.name || 'unknown';
             const status = item.status || {};
-            const displayName = name.charAt(0).toUpperCase() + name.slice(1);
-            const runtimeStatus = await this.checkProviderInstallationStatus(name, status, displayName);
+            const annotations = item.metadata?.annotations;
+            const displayName = getProviderDisplayName(name, annotations);
+            const annotatedDisplayName = getAnnotatedProviderDisplayName(annotations);
+            const requiresCRD = providerRequiresRuntimeCRD(name, item.spec?.capabilities?.requiresCRD, annotatedDisplayName);
+            const runtimeStatus = await this.checkProviderInstallationStatus(name, status, displayName, requiresCRD);
 
             return {
               id: name,
@@ -705,6 +749,7 @@ class KubernetesService {
               healthy: runtimeStatus.operatorRunning ?? false,
               crdFound: runtimeStatus.crdFound ?? runtimeStatus.installed,
               operatorRunning: runtimeStatus.operatorRunning ?? false,
+              requiresCRD: runtimeStatus.requiresCRD ?? requiresCRD,
               version: status.version,
               message: runtimeStatus.message,
             };
@@ -886,8 +931,22 @@ class KubernetesService {
   async checkProviderInstallationStatus(
     providerId: string,
     status?: { ready?: boolean },
-    providerName?: string,
+    _providerName?: string,
+    requiresCRD = true,
   ): Promise<InstallationStatus> {
+    if (!requiresCRD) {
+      const ready = status?.ready === true;
+      return {
+        installed: ready,
+        crdFound: true,
+        operatorRunning: ready,
+        requiresCRD: false,
+        message: ready
+          ? 'Runtime is ready to use.'
+          : 'Provider is registered but not ready yet.',
+      };
+    }
+
     switch (providerId) {
       case 'kaito':
         return this.checkKaitoInstallationStatus();
@@ -897,11 +956,12 @@ class KubernetesService {
         return this.checkKubeRayInstallationStatus();
       default: {
         const installed = status?.ready === true;
-        const displayName = providerName || providerId.charAt(0).toUpperCase() + providerId.slice(1);
+        const displayName = _providerName || getProviderDisplayName(providerId);
         return {
           installed,
           crdFound: installed,
           operatorRunning: installed,
+          requiresCRD: true,
           message: installed
             ? `${displayName} is installed and running`
             : `${displayName} is registered but not ready`,
@@ -944,6 +1004,7 @@ class KubernetesService {
       installed,
       crdFound,
       operatorRunning,
+      requiresCRD: true,
       message,
     };
   }
@@ -1601,6 +1662,47 @@ class KubernetesService {
     }
   }
 
+  private selectLogContainer(pod: k8s.V1Pod): string | undefined {
+    const containers = pod.spec?.containers || [];
+    if (containers.length === 0) {
+      return undefined;
+    }
+
+    const statuses = new Map((pod.status?.containerStatuses || []).map(status => [status.name, status]));
+    const preferredNames = ['main', 'vllm', 'model', 'ray-head', 'ray-worker', 'inference', 'worker', 'server', 'frontend'];
+
+    for (const name of preferredNames) {
+      if (containers.some(container => container.name === name)) {
+        return name;
+      }
+    }
+
+    const readyContainer = containers.find(container => statuses.get(container.name)?.ready);
+    return readyContainer?.name || containers[0].name;
+  }
+
+  private async resolveLogContainer(podName: string, namespace: string, requestedContainer?: string): Promise<string | undefined> {
+    if (requestedContainer) {
+      return requestedContainer;
+    }
+
+    const response = await withRetry(
+      () => this.coreV1Api.listNamespacedPod(
+        namespace,
+        undefined,
+        undefined,
+        undefined,
+        `metadata.name=${podName}`,
+        undefined,
+        1
+      ),
+      { operationName: 'getPodLogs:listPodByName', maxRetries: 1 }
+    );
+
+    const pod = response.body.items[0];
+    return pod ? this.selectLogContainer(pod) : undefined;
+  }
+
   /**
    * Get logs from a pod
    */
@@ -1615,11 +1717,12 @@ class KubernetesService {
   ): Promise<string> {
     try {
       const coreApi = this.coreV1Api;
+      const container = await this.resolveLogContainer(podName, namespace, options?.container);
       const response = await withRetry(
         () => coreApi.readNamespacedPodLog(
           podName,
           namespace,
-          options?.container,         // container
+          container,                  // container
           undefined,                  // follow (not supported in this API)
           undefined,                  // insecureSkipTLSVerifyBackend
           undefined,                  // limitBytes

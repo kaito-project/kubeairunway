@@ -121,6 +121,70 @@ describe('Installation Provider Routes', () => {
     },
   };
 
+  function createNoCrdProviderConfigWithHelmMetadata() {
+    const baseInstallation = JSON.parse(mockInferenceProviderConfig.metadata.annotations['airunway.ai/installation']);
+    return {
+      ...mockInferenceProviderConfig,
+      metadata: {
+        ...mockInferenceProviderConfig.metadata,
+        name: 'llmd',
+        annotations: {
+          ...mockInferenceProviderConfig.metadata.annotations,
+          'airunway.io/provider-name': 'LLM-D',
+          'airunway.ai/installation': JSON.stringify(baseInstallation),
+        },
+      },
+      spec: {
+        ...mockInferenceProviderConfig.spec,
+        capabilities: {
+          ...mockInferenceProviderConfig.spec.capabilities,
+          requiresCRD: false,
+        },
+      },
+      status: {
+        ready: true,
+        version: '0.1.0',
+      },
+    };
+  }
+
+  function createLegacyNoCrdProviderConfigWithHelmMetadata() {
+    const config = createNoCrdProviderConfigWithHelmMetadata();
+    const capabilities = { ...config.spec.capabilities };
+    delete (capabilities as Record<string, unknown>).requiresCRD;
+
+    return {
+      ...config,
+      spec: {
+        ...config.spec,
+        capabilities,
+      },
+    };
+  }
+
+  function createCustomNamedNoCrdProviderConfigWithExplicitRequiresCrd() {
+    const config = createNoCrdProviderConfigWithHelmMetadata();
+
+    return {
+      ...config,
+      metadata: {
+        ...config.metadata,
+        name: 'custom-llmd-registration',
+        annotations: {
+          ...config.metadata.annotations,
+          'airunway.io/provider-name': 'LLM-D',
+        },
+      },
+      spec: {
+        ...config.spec,
+        capabilities: {
+          ...config.spec.capabilities,
+          requiresCRD: true,
+        },
+      },
+    };
+  }
+
   const restores: Array<() => void> = [];
 
   afterEach(() => {
@@ -154,7 +218,7 @@ describe('Installation Provider Routes', () => {
 
       const data = await res.json();
       expect(data.providerId).toBe('kaito');
-      expect(data.providerName).toBe('Kaito');
+      expect(data.providerName).toBe('KAITO');
       expect(kaitoStatusChecks).toBe(1);
       expect(data.installed).toBe(false);
       expect(data.crdFound).toBe(true);
@@ -242,6 +306,64 @@ describe('Installation Provider Routes', () => {
       expect(data.message).toBe('No installation metadata found for provider kaito');
     });
 
+    test('treats legacy LLM-D configs without requiresCRD as CRD-less', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => createLegacyNoCrdProviderConfigWithHelmMetadata()),
+      );
+
+      const res = await app.request('/api/installation/providers/llmd/status');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.providerId).toBe('llmd');
+      expect(data.providerName).toBe('LLM-D');
+      expect(data.installed).toBe(true);
+      expect(data.requiresCRD).toBe(false);
+      expect(data.installable).toBe(false);
+      expect(data.helmCommands).toHaveLength(0);
+      expect(data.message).toBe('Runtime is ready to use.');
+    });
+
+    test('does not mark CRD-less providers installable even if Helm metadata exists', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => createNoCrdProviderConfigWithHelmMetadata()),
+      );
+
+      const res = await app.request('/api/installation/providers/llmd/status');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.providerId).toBe('llmd');
+      expect(data.providerName).toBe('LLM-D');
+      expect(data.installed).toBe(true);
+      expect(data.requiresCRD).toBe(false);
+      expect(data.installable).toBe(false);
+      expect(data.helmCommands).toHaveLength(0);
+      expect(data.message).toBe('Runtime is ready to use.');
+    });
+
+    test('honors explicit requiresCRD metadata for custom-named CRD-less providers', async () => {
+      restores.push(
+        mockServiceMethod(
+          kubernetesService,
+          'getInferenceProviderConfig',
+          async () => createCustomNamedNoCrdProviderConfigWithExplicitRequiresCrd(),
+        ),
+      );
+
+      const res = await app.request('/api/installation/providers/custom-llmd-registration/status');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.providerId).toBe('custom-llmd-registration');
+      expect(data.providerName).toBe('LLM-D');
+      expect(data.installed).toBe(true);
+      expect(data.requiresCRD).toBe(true);
+      expect(data.installable).toBe(true);
+      expect(data.helmCommands.length).toBeGreaterThan(0);
+      expect(data.message).toBe('LLM-D is installed and running');
+    });
+
     test('returns 404 for unknown provider', async () => {
       restores.push(
         mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => null),
@@ -267,7 +389,7 @@ describe('Installation Provider Routes', () => {
 
       const data = await res.json();
       expect(data.providerId).toBe('kaito');
-      expect(data.providerName).toBe('Kaito');
+      expect(data.providerName).toBe('KAITO');
       expect(data.commands).toBeDefined();
       expect(data.commands.some((command: string) => command.includes('helm pull kaito/workspace'))).toBe(true);
       expect(data.commands.some((command: string) => command.includes('kubectl apply --server-side --force-conflicts -f "$crd"'))).toBe(true);
@@ -329,6 +451,21 @@ describe('Installation Provider Routes', () => {
       expect(data.commands.some((command: string) => command.includes('global.grove.install=true'))).toBe(true);
     });
 
+    test('does not generate Helm install commands for CRD-less providers', async () => {
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => createNoCrdProviderConfigWithHelmMetadata()),
+      );
+
+      const res = await app.request('/api/installation/providers/llmd/commands');
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.providerId).toBe('llmd');
+      expect(data.providerName).toBe('LLM-D');
+      expect(data.commands).toHaveLength(0);
+      expect(data.steps).toBeDefined();
+    });
+
     test('returns 404 for unknown provider', async () => {
       restores.push(
         mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => null),
@@ -361,6 +498,62 @@ describe('Installation Provider Routes', () => {
 
       const res = await app.request('/api/installation/providers/kaito/install', { method: 'POST' });
       expect(res.status).toBe(400);
+    });
+
+    test('rejects legacy LLM-D installs before checking helm when requiresCRD is missing', async () => {
+      let helmChecks = 0;
+      let installAttempts = 0;
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => createLegacyNoCrdProviderConfigWithHelmMetadata()),
+        mockServiceMethod(helmService, 'checkHelmAvailable', async () => {
+          helmChecks += 1;
+          return { available: true, version: '3.14.0' };
+        }),
+        mockServiceMethod(helmService, 'installProvider', async () => {
+          installAttempts += 1;
+          return {
+            success: true,
+            results: [{ step: 'install', result: { success: true, stdout: 'ok', stderr: '' } }],
+          };
+        }),
+      );
+
+      const res = await app.request('/api/installation/providers/llmd/install', { method: 'POST' });
+      expect(res.status).toBe(400);
+
+      const data = await res.json();
+      expect(data.error.message).toContain('LLM-D is managed by provider registration and cannot be installed from this page.');
+      expect(helmChecks).toBe(0);
+      expect(installAttempts).toBe(0);
+    });
+
+    test('rejects CRD-less provider installs before checking helm', async () => {
+      let helmChecks = 0;
+      let installAttempts = 0;
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => createNoCrdProviderConfigWithHelmMetadata()),
+        mockServiceMethod(helmService, 'checkHelmAvailable', async () => {
+          helmChecks += 1;
+          return { available: true, version: '3.14.0' };
+        }),
+        mockServiceMethod(helmService, 'installProvider', async () => {
+          installAttempts += 1;
+          return {
+            success: true,
+            results: [{ step: 'install', result: { success: true, stdout: 'ok', stderr: '' } }],
+          };
+        }),
+      );
+
+      const res = await app.request('/api/installation/providers/llmd/install', { method: 'POST' });
+      expect(res.status).toBe(400);
+
+      const data = await res.json();
+      expect(data.error.message).toContain('LLM-D is managed by provider registration and cannot be installed from this page.');
+      expect(helmChecks).toBe(0);
+      expect(installAttempts).toBe(0);
     });
 
     test('rejects providers without installation metadata before checking helm', async () => {
@@ -496,7 +689,6 @@ describe('Installation Provider Routes', () => {
       expect(data.error.message).toContain('optional dashboard installer permissions manifest');
     });
 
-
     test('does not show installer RBAC guidance for unrelated errors mentioning bind', async () => {
       restores.push(
         mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig),
@@ -551,6 +743,31 @@ describe('Installation Provider Routes', () => {
 
       const data = await res.json();
       expect(data.success).toBe(true);
+    });
+
+    test('rejects CRD-less provider uninstalls before checking helm', async () => {
+      let helmChecks = 0;
+      let uninstallAttempts = 0;
+
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => createNoCrdProviderConfigWithHelmMetadata()),
+        mockServiceMethod(helmService, 'checkHelmAvailable', async () => {
+          helmChecks += 1;
+          return { available: true, version: '3.14.0' };
+        }),
+        mockServiceMethod(helmService, 'uninstall', async () => {
+          uninstallAttempts += 1;
+          return { success: true, stdout: 'ok', stderr: '' };
+        }),
+      );
+
+      const res = await app.request('/api/installation/providers/llmd/uninstall', { method: 'POST' });
+      expect(res.status).toBe(400);
+
+      const data = await res.json();
+      expect(data.error.message).toContain('LLM-D is managed by provider registration and cannot be uninstalled from this page.');
+      expect(helmChecks).toBe(0);
+      expect(uninstallAttempts).toBe(0);
     });
   });
 

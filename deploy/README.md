@@ -96,17 +96,19 @@ The following environment variables can be configured on the **dashboard** deplo
 |----------|---------|-------------|
 | `PORT` | `3001` | Server port |
 | `LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
-| `AUTH_ENABLED` | `false` | Enable authentication |
+| `AUTH_ENABLED` | `true` | Enable authentication |
 
-### Enable Authentication
+### Authentication
 
-Uncomment the `AUTH_ENABLED` environment variable in the dashboard deployment:
+Authentication is enabled by default in `dashboard.yaml`:
 
 ```yaml
 env:
   - name: AUTH_ENABLED
     value: "true"
 ```
+
+To intentionally disable authentication (not recommended), remove this variable or set it to `"false"`.
 
 ## Verify Deployment
 

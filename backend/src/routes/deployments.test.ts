@@ -2,7 +2,9 @@ import { describe, test, expect, afterEach } from 'bun:test';
 import app from '../hono-app';
 import { kubernetesService } from '../services/kubernetes';
 import { configService } from '../services/config';
+import { metricsService } from '../services/metrics';
 import { mockServiceMethod } from '../test/helpers';
+import type { MetricsResponse } from '@airunway/shared';
 import {
   mockDeployment,
   mockDeploymentWithPendingPod,
@@ -207,6 +209,54 @@ describe('Deployment Routes', () => {
       const data = await res.json();
       expect(data.resources[0].manifest.spec.resources).toBeUndefined();
       expect(data.resources[0].manifest.spec.engine.type).toBe('llamacpp');
+    });
+
+    test('omits spec.gateway when gatewayEnabled is not set', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validDeploymentBody),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.gateway).toBeUndefined();
+    });
+
+    test('emits spec.gateway.enabled=true when gatewayEnabled is true', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validDeploymentBody, gatewayEnabled: true }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.gateway).toEqual({ enabled: true });
+    });
+
+    test('emits spec.gateway.enabled=false when gatewayEnabled is false', async () => {
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+
+      const res = await app.request('/api/deployments/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validDeploymentBody, gatewayEnabled: false }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.resources[0].manifest.spec.gateway).toEqual({ enabled: false });
     });
   });
 
@@ -610,6 +660,46 @@ describe('Deployment Routes', () => {
 
       const res = await app.request('/api/deployments/test-deploy/manifest');
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('GET /api/deployments/:name/metrics', () => {
+    test('passes frontend service endpoint details to the metrics service', async () => {
+      let capturedArgs: Parameters<typeof metricsService.getDeploymentMetrics> | undefined;
+
+      restores.push(
+        mockServiceMethod(configService, 'getDefaultNamespace', async () => 'default'),
+      );
+      restores.push(
+        mockServiceMethod(kubernetesService, 'getDeployment', async () => ({
+          ...mockDeployment,
+          provider: 'dynamo',
+          frontendService: 'test-deploy-frontend:8080',
+        })),
+      );
+      restores.push(
+        mockServiceMethod(metricsService, 'getDeploymentMetrics', async (...args) => {
+          capturedArgs = args;
+          return {
+            available: true,
+            timestamp: '2026-05-01T00:00:00.000Z',
+            metrics: [],
+          } satisfies MetricsResponse;
+        }),
+      );
+
+      const res = await app.request('/api/deployments/test-deploy/metrics');
+      expect(res.status).toBe(200);
+
+      expect(capturedArgs).toEqual([
+        'test-deploy',
+        'default',
+        {
+          providerId: 'dynamo',
+          serviceName: 'test-deploy-frontend',
+          port: 8080,
+        },
+      ]);
     });
   });
 
