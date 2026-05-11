@@ -711,7 +711,7 @@ describe('Installation Provider Routes', () => {
       expect(res.status).toBe(500);
 
       const data = await res.json();
-      expect(data.error.message).toContain('release bind-test failed');
+      expect(data.error.message).toBe('Internal Server Error');
       expect(data.error.message).not.toContain('Automatic installation requires elevated installer permissions');
     });
 
