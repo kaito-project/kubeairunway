@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import app from './hono-app';
+import app, { parseCorsOrigin } from './hono-app';
 import { HTTPException } from 'hono/http-exception';
 
 // Helper to add timeout to async operations for K8s-dependent tests
@@ -53,6 +53,20 @@ describe('Hono Routes', () => {
         headers: { Origin: 'https://example.com' },
       });
       expect(externalRes.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    });
+
+    test('empty CORS_ORIGIN falls back to loopback origins', () => {
+      const origin = parseCorsOrigin(' , ');
+      expect(typeof origin).toBe('function');
+
+      if (typeof origin !== 'function') {
+        throw new Error('expected empty CORS_ORIGIN fallback to be a function');
+      }
+
+      expect(origin('http://localhost:4466', {} as never)).toBe('http://localhost:4466');
+      expect(origin('http://127.0.0.1:4466', {} as never)).toBe('http://127.0.0.1:4466');
+      expect(origin('http://[::1]:4466', {} as never)).toBe('http://[::1]:4466');
+      expect(origin('https://example.com', {} as never)).toBeNull();
     });
   });
 

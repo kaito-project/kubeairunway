@@ -45,9 +45,8 @@ logger.info(
 // Main App
 // ============================================================================
 
-const DEFAULT_CORS_ORIGINS = ['http://localhost:5173'];
-const DEFAULT_CORS_ORIGIN = DEFAULT_CORS_ORIGINS.join(',');
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+type CorsOriginOption = NonNullable<Parameters<typeof cors>[0]>['origin'];
 
 // Default cross-origin policy for browser-based UIs that talk to this backend.
 // Same-origin clients (the embedded production frontend) don't go through CORS.
@@ -65,7 +64,7 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN;
 //                           fail open to wildcard CORS.
 // Splitting "*" into ["*"] matches request origins literally, which never
 // equals a real origin and effectively disables CORS — so handle it explicitly.
-function parseCorsOrigin(raw: string): string | string[] {
+export function parseCorsOrigin(raw: string): CorsOriginOption {
   const trimmed = raw.trim();
   if (trimmed === '*') return '*';
   const list = trimmed
@@ -77,9 +76,9 @@ function parseCorsOrigin(raw: string): string | string[] {
   // default rather than broaden access to '*'.
   logger.warn(
     { rawCorsOrigin: raw },
-    `CORS_ORIGIN is set but parses to no origins; falling back to ${DEFAULT_CORS_ORIGIN}`,
+    'CORS_ORIGIN is set but parses to no origins; falling back to loopback origins',
   );
-  return DEFAULT_CORS_ORIGINS;
+  return defaultCorsOrigin;
 }
 
 function isLoopbackOrigin(origin: string): boolean {
@@ -98,7 +97,7 @@ function defaultCorsOrigin(origin: string): string | null {
   if (isLoopbackOrigin(origin)) {
     return origin;
   }
-  return DEFAULT_CORS_ORIGINS.includes(origin) ? origin : null;
+  return null;
 }
 
 const app = new Hono<AppEnv>();
