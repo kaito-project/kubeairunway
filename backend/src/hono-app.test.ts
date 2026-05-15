@@ -33,16 +33,21 @@ describe('Hono Routes', () => {
   });
 
   describe('CORS', () => {
-    test('default CORS allows loopback origins and rejects non-loopback origins', async () => {
-      if (process.env.CORS_ORIGIN !== undefined) {
-        return;
-      }
+    const defaultCorsTest = process.env.CORS_ORIGIN === undefined ? test : test.skip;
 
-      const loopbackOrigin = 'http://localhost:4466';
-      const loopbackRes = await app.request('/api/health', {
-        headers: { Origin: loopbackOrigin },
-      });
-      expect(loopbackRes.headers.get('Access-Control-Allow-Origin')).toBe(loopbackOrigin);
+    defaultCorsTest('default CORS allows loopback origins and rejects non-loopback origins', async () => {
+      const loopbackOrigins = [
+        'http://localhost:4466',
+        'http://127.0.0.1:4466',
+        'http://[::1]:4466',
+      ];
+
+      for (const loopbackOrigin of loopbackOrigins) {
+        const loopbackRes = await app.request('/api/health', {
+          headers: { Origin: loopbackOrigin },
+        });
+        expect(loopbackRes.headers.get('Access-Control-Allow-Origin')).toBe(loopbackOrigin);
+      }
 
       const externalRes = await app.request('/api/health', {
         headers: { Origin: 'https://example.com' },

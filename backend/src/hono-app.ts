@@ -47,7 +47,7 @@ logger.info(
 
 const DEFAULT_CORS_ORIGINS = ['http://localhost:5173'];
 const DEFAULT_CORS_ORIGIN = DEFAULT_CORS_ORIGINS.join(',');
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 // Default cross-origin policy for browser-based UIs that talk to this backend.
 // Same-origin clients (the embedded production frontend) don't go through CORS.
@@ -85,7 +85,10 @@ function parseCorsOrigin(raw: string): string | string[] {
 function isLoopbackOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
-    return (url.protocol === 'http:' || url.protocol === 'https:') && LOOPBACK_HOSTS.has(url.hostname);
+    const hostname = url.hostname.startsWith('[') && url.hostname.endsWith(']')
+      ? url.hostname.slice(1, -1)
+      : url.hostname;
+    return (url.protocol === 'http:' || url.protocol === 'https:') && LOOPBACK_HOSTS.has(hostname);
   } catch {
     return false;
   }
