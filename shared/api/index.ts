@@ -23,6 +23,14 @@ import { createHuggingFaceApi, type HuggingFaceApi } from './huggingface';
 import { createAikitApi, type AikitApi } from './aikit';
 import { createAIConfiguratorApi, type AIConfiguratorApi } from './aiconfigurator';
 import { createMetricsApi, type MetricsApi } from './metrics';
+import { createGatewayApi, type GatewayApi } from './gateway';
+import {
+  createCostsApi,
+  type CostsApi,
+  type NodePoolCostsResponse,
+  type GpuModelsResponse,
+  type CostsNormalizeGpuResponse,
+} from './costs';
 
 // Re-export API types
 export type { ModelsApi } from './models';
@@ -64,6 +72,13 @@ export type {
 } from './aikit';
 export type { AIConfiguratorApi, NormalizeGpuResponse } from './aiconfigurator';
 export type { MetricsApi } from './metrics';
+export type { GatewayApi } from './gateway';
+export type {
+  CostsApi,
+  NodePoolCostsResponse,
+  GpuModelsResponse,
+  CostsNormalizeGpuResponse,
+} from './costs';
 
 /**
  * Complete API client with all endpoints
@@ -81,6 +96,8 @@ export interface ApiClient {
   aikit: AikitApi;
   aiConfigurator: AIConfiguratorApi;
   metrics: MetricsApi;
+  gateway: GatewayApi;
+  costs: CostsApi;
 }
 
 /**
@@ -124,5 +141,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     aikit: createAikitApi(request),
     aiConfigurator: createAIConfiguratorApi(request),
     metrics: createMetricsApi(request),
+    gateway: createGatewayApi(request),
+    costs: createCostsApi(request),
   };
 }

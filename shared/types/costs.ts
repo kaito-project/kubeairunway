@@ -130,3 +130,15 @@ export interface CostEstimateResponse {
   /** Error message if unsuccessful */
   error?: string;
 }
+
+/**
+ * Public summary of a supported GPU model returned by /costs/gpu-models
+ */
+export interface GpuModelSummary {
+  /** GPU model identifier (e.g., "A100", "H100") */
+  model: string;
+  /** GPU memory in GB */
+  memoryGb: number;
+  /** GPU architecture generation (e.g., "ampere", "hopper") */
+  generation: string;
+}

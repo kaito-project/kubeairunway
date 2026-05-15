@@ -19,7 +19,7 @@
     "build:backend": "bun run --filter '@airunway/backend' build",
     "compile": "bun run build:frontend && bun run --filter '@airunway/backend' compile",
     "lint": "bun run --filter '@airunway/frontend' lint && bun run --filter '@airunway/backend' lint",
-    "test": "bun run --filter '@airunway/frontend' test && bun run --filter '@airunway/backend' test",
+    "test": "bun run --filter '@airunway/shared' test && bun run --filter '@airunway/frontend' test && bun run --filter '@airunway/backend' test",
     "test:e2e": "bun run --filter '@airunway/frontend' test:e2e"
   },
   "keywords": [
