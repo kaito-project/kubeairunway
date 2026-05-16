@@ -54,7 +54,7 @@ var (
 	DeploymentReplicas = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "airunway_deployment_replicas",
-			Help: "Number of deployment replicas by state (ready, total).",
+			Help: "Number of deployment replicas by state (desired, ready, available).",
 		},
 		[]string{"name", "namespace", "state"},
 	)
