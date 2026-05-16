@@ -258,7 +258,7 @@ export function CreateDeployment() {
       engineArgs: engineArgs.length > 0
         ? Object.fromEntries(engineArgs.filter(a => a.key).map(a => [a.key, a.value]))
         : undefined,
-      routerMode: 'none',
+      routerMode: 'default',
       replicas,
       hfTokenSecret: hfSecretConfigured ? 'hf-token-secret' : undefined,
       enforceEager,

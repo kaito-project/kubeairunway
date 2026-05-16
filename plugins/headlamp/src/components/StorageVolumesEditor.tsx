@@ -5,7 +5,7 @@
  * (model cache, compilation cache, custom) for deployments.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import { Icon } from '@iconify/react';
@@ -71,6 +71,20 @@ export function StorageVolumesEditor({ volumes, onChange }: StorageVolumesEditor
     volumes.length > 0 ? 0 : null
   );
 
+  // Stable React keys keyed by volume object identity. Survives reorders and
+  // removals so input focus / expanded state don't jump to the wrong row.
+  const keyMap = useRef(new WeakMap<StorageVolume, string>());
+  const nextKey = useRef(0);
+  function getVolumeKey(vol: StorageVolume): string {
+    let key = keyMap.current.get(vol);
+    if (!key) {
+      nextKey.current += 1;
+      key = `vol-${nextKey.current}`;
+      keyMap.current.set(vol, key);
+    }
+    return key;
+  }
+
   // Determine which singleton purposes are already taken
   const usedSingletonPurposes = new Set<VolumePurpose>();
   for (const vol of volumes) {
@@ -97,9 +111,14 @@ export function StorageVolumesEditor({ volumes, onChange }: StorageVolumesEditor
   }
 
   function handleUpdate(index: number, updates: Partial<StorageVolume>) {
-    const newVolumes = volumes.map((vol, i) =>
-      i === index ? { ...vol, ...updates } : vol
-    );
+    const newVolumes = volumes.map((vol, i) => {
+      if (i !== index) return vol;
+      const updated = { ...vol, ...updates };
+      // Preserve the stable React key across the object replacement.
+      const existing = keyMap.current.get(vol);
+      if (existing) keyMap.current.set(updated, existing);
+      return updated;
+    });
     onChange(newVolumes);
   }
 
@@ -116,7 +135,7 @@ export function StorageVolumesEditor({ volumes, onChange }: StorageVolumesEditor
 
         return (
           <div
-            key={index}
+            key={getVolumeKey(volume)}
             style={{
               border: '1px solid rgba(128, 128, 128, 0.3)',
               borderRadius: '8px',

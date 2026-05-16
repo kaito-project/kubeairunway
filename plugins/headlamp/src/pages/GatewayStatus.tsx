@@ -28,10 +28,15 @@ export function GatewayStatus() {
   const [gatewayInfo, setGatewayInfo] = useState<GatewayInfo | null>(null);
   const [models, setModels] = useState<GatewayModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (isInitial = false) => {
+    if (isInitial) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
 
     try {
@@ -45,19 +50,22 @@ export function GatewayStatus() {
       setError(err instanceof Error ? err.message : 'Failed to fetch gateway status');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [api]);
 
   // Initial fetch
   useEffect(() => {
-    fetchData();
+    fetchData(true);
   }, [fetchData]);
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(() => fetchData(false), 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleManualRefresh = useCallback(() => fetchData(false), [fetchData]);
 
   if (loading) {
     return <Loader title="Loading gateway status..." />;
@@ -66,7 +74,7 @@ export function GatewayStatus() {
   if (error) {
     return (
       <SectionBox title="Gateway">
-        <ConnectionError error={error} onRetry={fetchData} />
+        <ConnectionError error={error} onRetry={handleManualRefresh} />
       </SectionBox>
     );
   }
@@ -82,10 +90,12 @@ export function GatewayStatus() {
         title="Gateway Status"
         headerProps={{
           actions: [
-            <Tooltip key="refresh" title="Refresh">
-              <IconButton onClick={fetchData} size="small">
-                <Icon icon="mdi:refresh" />
-              </IconButton>
+            <Tooltip key="refresh" title={refreshing ? 'Refreshing…' : 'Refresh'}>
+              <span>
+                <IconButton onClick={handleManualRefresh} size="small" disabled={refreshing}>
+                  <Icon icon="mdi:refresh" />
+                </IconButton>
+              </span>
             </Tooltip>,
           ],
         }}
