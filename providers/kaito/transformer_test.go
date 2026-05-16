@@ -411,6 +411,34 @@ func TestTransformWithPodTemplateLabels(t *testing.T) {
 	}
 }
 
+func TestTransformWithPodTemplateAnnotationsCopiesMap(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.PodTemplate = &airunwayv1alpha1.PodTemplateSpec{
+		Metadata: &airunwayv1alpha1.PodTemplateMetadata{
+			Annotations: map[string]string{
+				"custom-annotation": "custom-value",
+			},
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	md.Spec.PodTemplate.Metadata.Annotations["custom-annotation"] = "mutated"
+	md.Spec.PodTemplate.Metadata.Annotations["new-annotation"] = "new-value"
+
+	annotations := resources[0].GetAnnotations()
+	if annotations["custom-annotation"] != "custom-value" {
+		t.Fatalf("expected Workspace annotations to be isolated from podTemplate mutations, got %v", annotations)
+	}
+	if _, ok := annotations["new-annotation"]; ok {
+		t.Fatalf("expected Workspace annotations not to alias podTemplate annotations, got %v", annotations)
+	}
+}
+
 func TestBuildResourceRequests(t *testing.T) {
 	tr := NewTransformer()
 
@@ -678,7 +706,9 @@ func TestTransformNoGPUOmitsNvidiaLabel(t *testing.T) {
 	md := newTestMD("test-model", "default")
 	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Image = "my-image:latest"
-	md.Spec.Resources = nil
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 0},
+	}
 
 	resources, err := tr.Transform(context.Background(), md)
 	if err != nil {
@@ -714,6 +744,47 @@ func TestTransformGPULabelWinsOverNodeSelector(t *testing.T) {
 	matchLabels, _, _ := unstructured.NestedStringMap(ws.Object, "resource", "labelSelector", "matchLabels")
 	if matchLabels["nvidia.com/gpu.present"] != "true" {
 		t.Errorf("expected nvidia.com/gpu.present=true (forced) to win over user nodeSelector, got %q", matchLabels["nvidia.com/gpu.present"])
+	}
+}
+
+func TestTransformOverrideCanDeleteNvidiaGPULabel(t *testing.T) {
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
+	}
+	md.Spec.Provider = &airunwayv1alpha1.ProviderSpec{
+		Overrides: &runtime.RawExtension{
+			Raw: []byte(`{
+				"resource": {
+					"labelSelector": {
+						"matchLabels": {
+							"nvidia.com/gpu.present": null,
+							"accelerator.vendor": "example.com/custom"
+						}
+					}
+				}
+			}`),
+		},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	matchLabels, found, _ := unstructured.NestedStringMap(resources[0].Object, "resource", "labelSelector", "matchLabels")
+	if !found {
+		t.Fatal("expected matchLabels")
+	}
+	if _, ok := matchLabels["nvidia.com/gpu.present"]; ok {
+		t.Fatalf("expected provider override null to delete nvidia GPU label, got %v", matchLabels)
+	}
+	if matchLabels["accelerator.vendor"] != "example.com/custom" {
+		t.Fatalf("expected provider override to add replacement GPU selector, got %v", matchLabels)
+	}
+	if matchLabels["kubernetes.io/os"] != "linux" {
+		t.Fatalf("expected deep merge to preserve default OS selector, got %v", matchLabels)
 	}
 }
 

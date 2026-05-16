@@ -87,7 +87,7 @@ func (t *Transformer) Transform(ctx context.Context, md *airunwayv1alpha1.ModelD
 
 	// Merge podTemplate annotations onto the Workspace
 	if md.Spec.PodTemplate != nil && md.Spec.PodTemplate.Metadata != nil && len(md.Spec.PodTemplate.Metadata.Annotations) > 0 {
-		ws.SetAnnotations(md.Spec.PodTemplate.Metadata.Annotations)
+		ws.SetAnnotations(copyStringMap(md.Spec.PodTemplate.Metadata.Annotations))
 	}
 
 	// Build resource spec
@@ -107,7 +107,8 @@ func (t *Transformer) Transform(ctx context.Context, md *airunwayv1alpha1.ModelD
 		return nil, fmt.Errorf("failed to set inference: %w", err)
 	}
 
-	// Apply escape hatch overrides last so they can override any field
+	// Apply escape hatch overrides last so they can override any field.
+	// Setting an override value to null deletes that field from the generated Workspace.
 	if err := applyOverrides(ws, md); err != nil {
 		return nil, fmt.Errorf("failed to apply provider overrides: %w", err)
 	}
@@ -143,8 +144,8 @@ func (t *Transformer) buildResource(md *airunwayv1alpha1.ModelDeployment) map[st
 	// (typically provided by NFD / gpu-feature-discovery). The default airunway
 	// KAITO install disables those sub-charts (see config.go install command),
 	// so operators using mixed CPU/GPU pools must either enable NFD or label
-	// their GPU nodes manually. Users with a different GPU-presence label
-	// can override via spec.provider.overrides.
+	// their GPU nodes manually. Users with a different GPU-presence label can use
+	// spec.provider.overrides to delete this key and add their own selector.
 	if md.Spec.Resources != nil && md.Spec.Resources.GPU != nil && md.Spec.Resources.GPU.Count > 0 {
 		matchLabels["nvidia.com/gpu.present"] = "true"
 	}
@@ -360,9 +361,14 @@ func applyOverrides(obj *unstructured.Unstructured, md *airunwayv1alpha1.ModelDe
 }
 
 // deepMerge recursively merges src into dst.
-// For maps, values are merged recursively. For all other types, src overwrites dst.
+// For maps, values are merged recursively. A nil src value deletes the field.
+// For all other types, src overwrites dst.
 func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
 	for key, srcVal := range src {
+		if srcVal == nil {
+			delete(dst, key)
+			continue
+		}
 		if dstVal, exists := dst[key]; exists {
 			srcMap, srcOk := srcVal.(map[string]interface{})
 			dstMap, dstOk := dstVal.(map[string]interface{})

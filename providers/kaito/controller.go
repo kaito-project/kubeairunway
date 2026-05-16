@@ -50,7 +50,7 @@ const (
 	// FieldManager is the server-side apply field manager name
 	FieldManager = "kaito-provider"
 
-	// lastAppliedWorkspaceAnnotation stores the resource/inference fields last written by this controller.
+	// lastAppliedWorkspaceAnnotation stores the Workspace fields last written by this controller.
 	lastAppliedWorkspaceAnnotation = "airunway.ai/kaito-last-applied"
 
 	// RequeueInterval is the default requeue interval for periodic reconciliation
@@ -276,35 +276,46 @@ func (r *KaitoProviderReconciler) createOrUpdateResource(ctx context.Context, re
 	newResource, _, _ := unstructured.NestedMap(resource.Object, "resource")
 	existingInference, _, _ := unstructured.NestedMap(existing.Object, "inference")
 	newInference, _, _ := unstructured.NestedMap(resource.Object, "inference")
-	lastAppliedResource, lastAppliedInference := lastAppliedManagedFields(existing)
+	lastAppliedResource, lastAppliedInference, lastAppliedLabels, lastAppliedAnnotations := lastAppliedManagedFields(existing)
 
 	resourceMatches := managedFieldsMatch(newResource, existingResource, lastAppliedResource, "resource")
 	inferenceMatches := managedFieldsMatch(newInference, existingInference, lastAppliedInference, "inference")
-	metadataMatches := desiredMetadataMatches(resource, existing)
+	metadataMatches := desiredMetadataMatches(resource, existing, lastAppliedLabels, lastAppliedAnnotations)
 	if !resourceMatches || !inferenceMatches || !metadataMatches {
 		logger.Info("Updating resource", "kind", resource.GetKind(), "name", resource.GetName())
-		return r.updateManagedWorkspaceFields(ctx, existing, resource, lastAppliedResource, lastAppliedInference)
+		return r.updateManagedWorkspaceFields(ctx, existing, resource, lastAppliedResource, lastAppliedInference, lastAppliedLabels, lastAppliedAnnotations)
 	}
 
 	return nil
 }
 
-func desiredMetadataMatches(desired, existing *unstructured.Unstructured) bool {
-	return stringMapContains(existing.GetLabels(), desired.GetLabels()) &&
-		stringMapContains(existing.GetAnnotations(), desired.GetAnnotations())
+func desiredMetadataMatches(desired, existing *unstructured.Unstructured, lastAppliedLabels, lastAppliedAnnotations map[string]string) bool {
+	return managedStringMapMatches(desired.GetLabels(), existing.GetLabels(), lastAppliedLabels) &&
+		managedStringMapMatches(managedAnnotations(desired.GetAnnotations()), managedAnnotations(existing.GetAnnotations()), lastAppliedAnnotations) &&
+		existing.GetAnnotations()[lastAppliedWorkspaceAnnotation] == desired.GetAnnotations()[lastAppliedWorkspaceAnnotation]
 }
 
-func stringMapContains(base, desired map[string]string) bool {
+func managedStringMapMatches(desired, existing, lastApplied map[string]string) bool {
 	for key, desiredValue := range desired {
-		baseValue, found := base[key]
-		if !found || baseValue != desiredValue {
+		existingValue, found := existing[key]
+		if !found || existingValue != desiredValue {
 			return false
 		}
 	}
+
+	for key := range existing {
+		if _, desiredHasKey := desired[key]; desiredHasKey {
+			continue
+		}
+		if lastAppliedStringMapHasKey(lastApplied, key) {
+			return false
+		}
+	}
+
 	return true
 }
 
-func (r *KaitoProviderReconciler) updateManagedWorkspaceFields(ctx context.Context, existing, desired *unstructured.Unstructured, lastAppliedResource, lastAppliedInference map[string]interface{}) error {
+func (r *KaitoProviderReconciler) updateManagedWorkspaceFields(ctx context.Context, existing, desired *unstructured.Unstructured, lastAppliedResource, lastAppliedInference map[string]interface{}, lastAppliedLabels, lastAppliedAnnotations map[string]string) error {
 	base := existing.DeepCopy()
 	updated := existing.DeepCopy()
 
@@ -314,7 +325,7 @@ func (r *KaitoProviderReconciler) updateManagedWorkspaceFields(ctx context.Conte
 	if err := mergeManagedTopLevelMap(updated, desired, lastAppliedInference, "inference"); err != nil {
 		return err
 	}
-	mergeDesiredMetadata(updated, desired)
+	mergeManagedMetadata(updated, desired, lastAppliedLabels, lastAppliedAnnotations)
 
 	return r.Patch(ctx, updated, client.MergeFrom(base))
 }
@@ -383,24 +394,68 @@ func mergeManagedMap(existing, desired, lastApplied map[string]interface{}, path
 	return merged
 }
 
-func mergeDesiredMetadata(target, desired *unstructured.Unstructured) {
-	target.SetLabels(mergeStringMap(target.GetLabels(), desired.GetLabels()))
-	target.SetAnnotations(mergeStringMap(target.GetAnnotations(), desired.GetAnnotations()))
+func mergeManagedMetadata(target, desired *unstructured.Unstructured, lastAppliedLabels, lastAppliedAnnotations map[string]string) {
+	target.SetLabels(mergeManagedStringMap(target.GetLabels(), desired.GetLabels(), lastAppliedLabels))
+
+	annotations := mergeManagedStringMap(managedAnnotations(target.GetAnnotations()), managedAnnotations(desired.GetAnnotations()), lastAppliedAnnotations)
+	if lastApplied := desired.GetAnnotations()[lastAppliedWorkspaceAnnotation]; lastApplied != "" {
+		if annotations == nil {
+			annotations = map[string]string{}
+		}
+		annotations[lastAppliedWorkspaceAnnotation] = lastApplied
+	}
+	target.SetAnnotations(annotations)
 }
 
-func mergeStringMap(base, overlay map[string]string) map[string]string {
-	if len(base) == 0 && len(overlay) == 0 {
+func mergeManagedStringMap(existing, desired, lastApplied map[string]string) map[string]string {
+	if len(existing) == 0 && len(desired) == 0 {
 		return nil
 	}
 
-	merged := make(map[string]string, len(base)+len(overlay))
-	for key, value := range base {
+	merged := make(map[string]string, len(existing)+len(desired))
+	for key, value := range existing {
 		merged[key] = value
 	}
-	for key, value := range overlay {
+	for key, value := range desired {
 		merged[key] = value
+	}
+	for key := range merged {
+		if _, desiredHasKey := desired[key]; desiredHasKey {
+			continue
+		}
+		if lastAppliedStringMapHasKey(lastApplied, key) {
+			delete(merged, key)
+		}
+	}
+	if len(merged) == 0 {
+		return nil
 	}
 	return merged
+}
+
+func managedAnnotations(annotations map[string]string) map[string]string {
+	if len(annotations) == 0 {
+		return nil
+	}
+	managed := make(map[string]string, len(annotations))
+	for key, value := range annotations {
+		if key == lastAppliedWorkspaceAnnotation {
+			continue
+		}
+		managed[key] = value
+	}
+	if len(managed) == 0 {
+		return nil
+	}
+	return managed
+}
+
+func lastAppliedStringMapHasKey(lastApplied map[string]string, key string) bool {
+	if lastApplied == nil {
+		return false
+	}
+	_, ok := lastApplied[key]
+	return ok
 }
 
 // setLastAppliedManagedFields records the desired Workspace fields that Airunway owns.
@@ -408,7 +463,10 @@ func mergeStringMap(base, overlay map[string]string) map[string]string {
 // fields that Airunway wrote previously and must delete when they disappear from the
 // desired ModelDeployment-derived Workspace.
 func setLastAppliedManagedFields(resource *unstructured.Unstructured) error {
-	managedFields := map[string]interface{}{}
+	managedFields := map[string]interface{}{
+		"labels":      copyStringMap(resource.GetLabels()),
+		"annotations": copyStringMap(managedAnnotations(resource.GetAnnotations())),
+	}
 	if resourceSpec, found, _ := unstructured.NestedMap(resource.Object, "resource"); found {
 		managedFields["resource"] = resourceSpec
 	}
@@ -421,33 +479,59 @@ func setLastAppliedManagedFields(resource *unstructured.Unstructured) error {
 		return fmt.Errorf("failed to marshal last-applied Workspace fields: %w", err)
 	}
 
-	annotations := resource.GetAnnotations()
-	if annotations == nil {
-		annotations = map[string]string{}
-	}
+	annotations := copyStringMap(resource.GetAnnotations())
 	annotations[lastAppliedWorkspaceAnnotation] = string(data)
 	resource.SetAnnotations(annotations)
 	return nil
 }
 
-// lastAppliedManagedFields returns the resource and inference maps that this
-// controller wrote on its previous create/update. A missing or malformed annotation
-// means the resource predates the annotation scheme, so callers fall back to a
+// lastAppliedManagedFields returns the Workspace fields that this controller
+// wrote on its previous create/update. A missing or malformed annotation means
+// the resource predates the annotation scheme, so callers fall back to a
 // conservative comparison for known Airunway-owned maps.
-func lastAppliedManagedFields(existing *unstructured.Unstructured) (map[string]interface{}, map[string]interface{}) {
+func lastAppliedManagedFields(existing *unstructured.Unstructured) (map[string]interface{}, map[string]interface{}, map[string]string, map[string]string) {
 	annotation := existing.GetAnnotations()[lastAppliedWorkspaceAnnotation]
 	if annotation == "" {
-		return nil, nil
+		return nil, nil, nil, nil
 	}
 
 	var managedFields map[string]interface{}
 	if err := json.Unmarshal([]byte(annotation), &managedFields); err != nil {
-		return nil, nil
+		return nil, nil, nil, nil
 	}
 
 	resourceSpec, _ := managedFields["resource"].(map[string]interface{})
 	inference, _ := managedFields["inference"].(map[string]interface{})
-	return resourceSpec, inference
+	labels := stringMapFromInterface(managedFields["labels"])
+	annotations := stringMapFromInterface(managedFields["annotations"])
+	return resourceSpec, inference, labels, annotations
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return map[string]string{}
+	}
+	copied := make(map[string]string, len(values))
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
+}
+
+func stringMapFromInterface(value interface{}) map[string]string {
+	values, ok := value.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		stringValue, ok := value.(string)
+		if !ok {
+			return nil
+		}
+		result[key] = stringValue
+	}
+	return result
 }
 
 // managedFieldsMatch returns true when existing still matches the desired fields
