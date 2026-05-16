@@ -199,6 +199,19 @@ function isRunningAndReadyPod(pod: k8s.V1Pod): boolean {
     && containerStatuses.every((status) => status.ready);
 }
 
+type ProxyServiceOptions = {
+  signal?: AbortSignal;
+  userToken?: string;
+};
+
+type ProxyServiceGetOptions = ProxyServiceOptions & {
+  accept?: string;
+};
+
+type ProxyServiceRequestInit = RequestInit & {
+  userToken?: string;
+};
+
 class KubernetesService {
   private kc: k8s.KubeConfig;
   private customObjectsApi: k8s.CustomObjectsApi;
@@ -2107,8 +2120,64 @@ class KubernetesService {
    * This allows fetching service endpoints (e.g. /metrics) even when running off-cluster.
    * Uses raw fetch instead of the generated client to support text/plain responses.
    */
-  async proxyServiceGet(serviceName: string, namespace: string, port: number, path: string): Promise<string> {
-    const cluster = this.kc.getCurrentCluster();
+  async proxyServiceGet(
+    serviceName: string,
+    namespace: string,
+    port: number,
+    path: string,
+    options: ProxyServiceGetOptions = {},
+  ): Promise<string> {
+    const response = await this.proxyServiceRequest(serviceName, namespace, port, path, {
+      method: 'GET',
+      headers: {
+        'Accept': options.accept ?? 'text/plain',
+      },
+      signal: options.signal,
+      userToken: options.userToken,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return await response.text();
+  }
+
+  /**
+   * Proxy a POST request to a Kubernetes service and return the raw response.
+   * Used for streaming OpenAI-compatible responses where the route must pipe bytes.
+   */
+  async proxyServicePostStream(
+    serviceName: string,
+    namespace: string,
+    port: number,
+    path: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+    options: ProxyServiceOptions = {}
+  ): Promise<Response> {
+    return await this.proxyServiceRequest(serviceName, namespace, port, path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+        ...headers,
+      },
+      body: JSON.stringify(body),
+      signal: options.signal,
+      userToken: options.userToken,
+    });
+  }
+
+  private async proxyServiceRequest(
+    serviceName: string,
+    namespace: string,
+    port: number,
+    path: string,
+    init: ProxyServiceRequestInit
+  ): Promise<Response> {
+    const { userToken, ...requestInit } = init;
+    const kubeConfig = userToken ? this.createUserKubeConfig(userToken) : this.kc;
+    const cluster = kubeConfig.getCurrentCluster();
     if (!cluster) {
       throw new Error('No active Kubernetes cluster configured');
     }
@@ -2118,11 +2187,11 @@ class KubernetesService {
 
     // Extract auth headers from KubeConfig
     const reqOpts: { headers: Record<string, string>; strictSSL?: boolean } = { headers: {} };
-    await this.kc.applyToRequest(reqOpts as any);
+    await kubeConfig.applyToRequest(reqOpts as any);
 
     // Extract TLS options (CA cert, client cert/key) from KubeConfig
     const httpsOpts: { ca?: Buffer; cert?: Buffer; key?: Buffer; rejectUnauthorized?: boolean } = {};
-    this.kc.applyToHTTPSOptions(httpsOpts as any);
+    kubeConfig.applyToHTTPSOptions(httpsOpts as any);
 
     const tlsOpts: Record<string, any> = {};
     if (httpsOpts.ca) tlsOpts.ca = httpsOpts.ca;
@@ -2132,23 +2201,21 @@ class KubernetesService {
       tlsOpts.rejectUnauthorized = false;
     }
 
+    const headers = new Headers(reqOpts.headers);
+    if (requestInit.headers) {
+      new Headers(requestInit.headers).forEach((value, key) => headers.set(key, value));
+    }
+
     const fetchOpts: RequestInit & { tls?: Record<string, any> } = {
-      method: 'GET',
-      headers: {
-        ...reqOpts.headers,
-        'Accept': 'text/plain',
-      },
+      ...requestInit,
+      headers,
     };
 
     if (Object.keys(tlsOpts).length > 0) {
       fetchOpts.tls = tlsOpts;
     }
 
-    const response = await fetch(proxyUrl, fetchOpts);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    return await response.text();
+    return await fetch(proxyUrl, fetchOpts);
   }
 
   /**

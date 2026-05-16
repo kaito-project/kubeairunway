@@ -46,6 +46,7 @@ logger.info(
 // ============================================================================
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+const AIRUNWAY_AUTH_ERROR_HEADER = 'X-Airunway-Auth-Error';
 
 const app = new Hono<AppEnv>();
 
@@ -55,6 +56,7 @@ app.use(
   '*',
   cors({
     origin: CORS_ORIGIN,
+    exposeHeaders: [AIRUNWAY_AUTH_ERROR_HEADER],
   })
 );
 
@@ -92,6 +94,7 @@ app.use('/api/*', async (c, next) => {
   // Extract bearer token
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    c.header(AIRUNWAY_AUTH_ERROR_HEADER, 'true');
     return c.json(
       { error: { message: 'Authentication required', statusCode: 401 } },
       401
@@ -105,6 +108,7 @@ app.use('/api/*', async (c, next) => {
 
   if (!result.valid) {
     logger.warn({ error: result.error }, 'Token validation failed');
+    c.header(AIRUNWAY_AUTH_ERROR_HEADER, 'true');
     return c.json(
       { error: { message: result.error || 'Invalid token', statusCode: 401 } },
       401
