@@ -32,10 +32,7 @@ spec:
         - sourceLabels:
             [__meta_kubernetes_pod_label_nvidia_com_dynamo_component]
           targetLabel: dynamo_component
-        - sourceLabels:
-            [
-              __meta_kubernetes_pod_label_nvidia_com_dynamo_graph_deployment_name,
-            ]
+        - sourceLabels: [__meta_kubernetes_pod_label_nvidia_com_dynamo_graph_deployment_name]
           targetLabel: model_deployment
         - action: replace
           targetLabel: provider
@@ -56,10 +53,7 @@ spec:
         - sourceLabels:
             [__meta_kubernetes_pod_label_nvidia_com_dynamo_sub_component_type]
           targetLabel: dynamo_role
-        - sourceLabels:
-            [
-              __meta_kubernetes_pod_label_nvidia_com_dynamo_graph_deployment_name,
-            ]
+        - sourceLabels: [__meta_kubernetes_pod_label_nvidia_com_dynamo_graph_deployment_name]
           targetLabel: model_deployment
         - action: replace
           targetLabel: provider
