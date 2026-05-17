@@ -17,8 +17,6 @@ metadata:
     app.kubernetes.io/part-of: airunway
 spec:
   selector:
-    matchLabels:
-      airunway.ai/managed-by: airunway
     matchExpressions:
       - key: airunway.ai/deployment
         operator: Exists
