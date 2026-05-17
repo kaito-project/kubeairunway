@@ -722,13 +722,16 @@ func (r *ModelDeploymentReconciler) recordMetrics(md *airunwayv1alpha1.ModelDepl
 		entry.DeployingTimestamp = time.Now()
 	}
 
-	// Record one-time Running metrics: lead time and provision duration.
-	// These are recorded exactly once per deployment lifecycle when the deployment
-	// first reaches Running. This also handles the controller-restart case: if the
-	// controller restarts while a deployment is Running, the cache is empty so
-	// RunningMetricsRecorded is false and metrics are recorded on the next reconcile.
-	if currentPhase == airunwayv1alpha1.DeploymentPhaseRunning && !previous.RunningMetricsRecorded {
-		// Lead time: wall-clock time from CR creation to Running
+	// Record one-time Running metrics only when we observe an actual phase
+	// transition into Running. This avoids duplicate/inflated lead-time samples
+	// after controller restarts, where the in-memory cache is empty and the
+	// previous phase is unknown.
+	transitionedToRunning := currentPhase == airunwayv1alpha1.DeploymentPhaseRunning &&
+		previous.Phase != "" &&
+		previous.Phase != airunwayv1alpha1.DeploymentPhaseRunning
+	if transitionedToRunning && !previous.RunningMetricsRecorded {
+		// Lead time: wall-clock time from CR creation to first observed transition
+		// into Running.
 		leadTime := time.Since(md.CreationTimestamp.Time).Seconds()
 		airmetrics.ReadyDurationSeconds.WithLabelValues(providerName).Observe(leadTime)
 
