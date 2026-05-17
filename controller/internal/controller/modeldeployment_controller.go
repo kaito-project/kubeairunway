@@ -110,7 +110,7 @@ type phaseEntry struct {
 //
 // Provider controllers (out-of-tree) watch for ModelDeployments where status.provider.name
 // matches their name and handle the actual resource creation.
-func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
 	reconcileStart := time.Now()
 	logger := log.FromContext(ctx)
 
@@ -140,11 +140,13 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	previousEntry := r.phaseCache[req.NamespacedName]
 	r.phaseCacheMu.RUnlock()
 
-	// Record metrics on all exit paths (after MD is fetched).
-	// The closure captures &md by reference, so it sees the fully-mutated state
-	// at return time. previousEntry is captured by value and retains the pre-reconcile state.
+	// Record metrics only when the status Patch succeeds. If the Patch fails,
+	// the status wasn't persisted and the retry will re-reconcile from the old
+	// state, so recording now would double-count phase transitions and skew gauges.
 	defer func() {
-		r.recordMetrics(&md, previousEntry)
+		if retErr == nil {
+			r.recordMetrics(&md, previousEntry)
+		}
 	}()
 
 	// Save a deep copy as the patch base so we only send changed status fields.
