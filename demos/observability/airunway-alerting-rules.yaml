@@ -25,7 +25,7 @@ spec:
               More than 10% of reconciliations are failing over the last 10 minutes.
               ModelDeployments may not be progressing. Check the Reconciliation
               Performance section in the AI Runway dashboard.
-            dashboard: "/d/airunway-platform-overview/ai-runway-platform-overview?viewPanel=10"
+            dashboard: "/d/airunway-platform-overview/ai-runway-platform-overview?viewPanel=12"
 
         - alert: AirunwayReconciliationLatencyHigh
           expr: |
@@ -40,7 +40,7 @@ spec:
             description: >-
               The 95th percentile reconciliation duration has exceeded 10 seconds
               for more than 5 minutes. This delays all ModelDeployment state changes.
-            dashboard: "/d/airunway-platform-overview/ai-runway-platform-overview?viewPanel=9"
+            dashboard: "/d/airunway-platform-overview/ai-runway-platform-overview?viewPanel=10"
 
         - alert: AirunwayDeploymentStuck
           expr: |
@@ -89,4 +89,4 @@ spec:
               More than 25% of deployments are transitioning to Failed over
               the last hour. Review the DORA Metrics section in the AI Runway
               dashboard for trends.
-            dashboard: "/d/airunway-platform-overview/ai-runway-platform-overview?viewPanel=13"
+            dashboard: "/d/airunway-platform-overview/ai-runway-platform-overview?viewPanel=15"
