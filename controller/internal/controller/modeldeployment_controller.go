@@ -682,7 +682,7 @@ func (r *ModelDeploymentReconciler) recordMetrics(md *airunwayv1alpha1.ModelDepl
 	currentPhase := md.Status.Phase
 	key := k8stypes.NamespacedName{Name: md.Name, Namespace: md.Namespace}
 
-	// Update deployment phase gauge (set 1 for current phase, 0 for others)
+	// Recompute aggregate deployment phase gauge values from the phase cache for all known phases.
 	phases := []string{"Pending", "Deploying", "Running", "Failed", "Terminating"}
 
 	// Build the updated phase entry. Start from the previous entry to preserve timestamps.
