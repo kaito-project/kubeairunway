@@ -131,3 +131,18 @@ jobs:
             exit 1
           fi
           echo "✅ ldflags injection landed: DefaultGAIEVersion=${GAIE_VERSION}"
+
+      - name: Build dynamo provider and assert ldflags injection
+        # Mirrors the controller assertion above. providers/dynamo/Makefile
+        # injects -X .../providers/dynamo.DynamoVersion=$(DYNAMO_VERSION).
+        # Note the binary is bin/provider, not bin/manager.
+        run: |
+          set -euo pipefail
+          source versions.env
+          cd providers/dynamo && make build && cd -
+          if ! go version -m providers/dynamo/bin/provider \
+            | grep -F -- "-X github.com/kaito-project/airunway/providers/dynamo.DynamoVersion=${DYNAMO_VERSION}"; then
+            echo "❌ ldflags injection of DynamoVersion=${DYNAMO_VERSION} did not land in providers/dynamo/bin/provider"
+            exit 1
+          fi
+          echo "✅ ldflags injection landed: DynamoVersion=${DYNAMO_VERSION}"
