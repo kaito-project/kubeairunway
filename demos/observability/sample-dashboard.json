@@ -111,7 +111,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(airunway_deployment_phase == 1) or vector(0)",
+          "expr": "sum(airunway_deployment_status) or vector(0)",
           "legendFormat": "Total",
           "refId": "A"
         }
@@ -147,7 +147,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(airunway_deployment_phase{phase=\"Running\"} == 1) or vector(0)",
+          "expr": "sum(airunway_deployment_status{phase=\"Running\"}) or vector(0)",
           "legendFormat": "Running",
           "refId": "A"
         }
@@ -183,7 +183,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(airunway_deployment_phase{phase=\"Deploying\"} == 1) or vector(0)",
+          "expr": "sum(airunway_deployment_status{phase=\"Deploying\"}) or vector(0)",
           "legendFormat": "Deploying",
           "refId": "A"
         }
@@ -219,7 +219,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(airunway_deployment_phase{phase=\"Pending\"} == 1) or vector(0)",
+          "expr": "sum(airunway_deployment_status{phase=\"Pending\"}) or vector(0)",
           "legendFormat": "Pending",
           "refId": "A"
         }
@@ -255,7 +255,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(airunway_deployment_phase{phase=\"Failed\"} == 1) or vector(0)",
+          "expr": "sum(airunway_deployment_status{phase=\"Failed\"}) or vector(0)",
           "legendFormat": "Failed",
           "refId": "A"
         }
@@ -301,7 +301,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count by (phase) (airunway_deployment_phase == 1)",
+          "expr": "sum by (phase) (airunway_deployment_status)",
           "legendFormat": "{{phase}}",
           "refId": "A"
         }
@@ -324,7 +324,7 @@
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "tooltip": { "mode": "single", "sort": "none" }
       },
-      "title": "Deployments by Provider",
+      "title": "Provider Selections",
       "type": "piechart",
       "targets": [
         {
@@ -701,7 +701,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "count(airunway_deployment_phase{phase=\"Failed\"} == 1) or vector(0)",
+          "expr": "sum(airunway_deployment_status{phase=\"Failed\"}) or vector(0)",
           "legendFormat": "Failed",
           "refId": "A"
         }
@@ -927,7 +927,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "airunway_deployment_phase == 1",
+          "expr": "airunway_deployment_status",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -938,8 +938,8 @@
         {
           "id": "organize",
           "options": {
-            "excludeByName": { "Time": true, "Value": true, "__name__": true, "container": true, "endpoint": true, "instance": true, "job": true, "pod": true, "service": true },
-            "renameByName": { "name": "Deployment", "namespace": "Namespace", "phase": "Phase" }
+            "excludeByName": { "Time": true, "__name__": true, "container": true, "endpoint": true, "instance": true, "job": true, "pod": true, "service": true },
+            "renameByName": { "provider": "Provider", "phase": "Phase", "Value": "Count" }
           }
         }
       ]

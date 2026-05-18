@@ -105,7 +105,7 @@ kubectl apply -f ./demos/observability/sample-modeldeployment.yaml
 Verify metrics are being emitted (with the port-forward from step 5 still running):
 
 ```bash
-curl -s http://localhost:9090/api/v1/query?query=airunway_deployment_phase | python3 -m json.tool | head -20
+curl -s http://localhost:9090/api/v1/query?query=airunway_deployment_status | python3 -m json.tool | head -20
 ```
 
 Clean up when done:
@@ -176,6 +176,30 @@ The dashboard includes panels for key controller and provider metrics, as well a
 > [!TIP]
 > The DORA Metrics section uses a **Deployment Frequency Window** dropdown (top of the dashboard) that controls the time range for deployment frequency, lead time, and provision duration queries. The default is **7 days**. Choose a shorter window (1h, 6h) during active development or a longer one (30d) for monthly reviews.
 
+> [!NOTE]
+> This dashboard is a starting point to get you up and running quickly. In production, consider splitting it into separate dashboards: an **operational** dashboard (Deployment Status, Reconciliation, Provider Activity) for on-call engineers answering "what's broken?" and a **platform engineering** dashboard (DORA Metrics, Inference Engine) for tracking trends over time.
+
+## 9. Deploy alerting rules (optional)
+
+Sample alerting rules are provided following Prometheus best practices: symptom-based alerts for paging, cause-based alerts for troubleshooting dashboards.
+
+```bash
+kubectl apply -f ./demos/observability/airunway-alerting-rules.yaml
+```
+
+The rules include:
+
+| Alert                                  | Severity | What it detects                                         |
+| -------------------------------------- | -------- | ------------------------------------------------------- |
+| `AirunwayReconciliationErrorRateHigh`  | warning  | Error rate above 10% for 5+ minutes                     |
+| `AirunwayReconciliationLatencyHigh`    | warning  | p95 reconciliation latency above 10s for 5+ minutes     |
+| `AirunwayDeploymentStuck`              | warning  | Deployments stuck in Pending/Deploying for 1+ hour      |
+| `AirunwayProviderReconciliationErrors` | info     | Sustained errors by provider and type (cause-based)     |
+| `AirunwayChangeFailureRateHigh`        | info     | Change failure rate above 25% over 1 hour (cause-based) |
+
+> [!NOTE]
+> The `warning` alerts are symptom-based and suitable for paging. The `info` alerts are cause-based and intended for dashboards or ticket queues, not pagers. Tune thresholds and `for` durations to match your environment.
+
 ## Cleanup
 
 Delete the Kind cluster when done:
@@ -190,18 +214,18 @@ The AI Runway controller exposes the following Prometheus metrics:
 
 ### Operational
 
-| Metric                                     | Type      | Labels                   | Description                                                                      |
-| ------------------------------------------ | --------- | ------------------------ | -------------------------------------------------------------------------------- |
-| `airunway_reconciliation_duration_seconds` | Histogram | `provider`               | Duration of each reconciliation loop                                             |
-| `airunway_reconciliation_errors_total`     | Counter   | `provider`, `error_type` | Reconciliation errors by type (validation, engine_selection, provider_selection) |
-| `airunway_provider_selection_total`        | Counter   | `provider`, `reason`     | Provider auto-selection events                                                   |
+| Metric                                     | Type      | Labels                   | Description                                                                               |
+| ------------------------------------------ | --------- | ------------------------ | ----------------------------------------------------------------------------------------- |
+| `airunway_reconciliation_duration_seconds` | Histogram | `provider`               | Duration of each reconciliation loop                                                      |
+| `airunway_reconciliation_errors_total`     | Counter   | `provider`, `error_type` | Reconciliation errors by type (validation, engine_selection, provider_selection, gateway) |
+| `airunway_provider_selection_total`        | Counter   | `provider`, `reason`     | Provider selection events (reason: `manual` or `auto`)                                    |
 
 ### Deployment state
 
-| Metric                         | Type  | Labels                       | Description                                                      |
-| ------------------------------ | ----- | ---------------------------- | ---------------------------------------------------------------- |
-| `airunway_deployment_phase`    | Gauge | `name`, `namespace`, `phase` | Current phase of each ModelDeployment (1 = active, 0 = inactive) |
-| `airunway_deployment_replicas` | Gauge | `name`, `namespace`, `state` | Replica counts (desired, ready, available)                       |
+| Metric                         | Type  | Labels              | Description                                                                     |
+| ------------------------------ | ----- | ------------------- | ------------------------------------------------------------------------------- |
+| `airunway_deployment_status`   | Gauge | `provider`, `phase` | Number of ModelDeployments by provider and phase                                |
+| `airunway_deployment_replicas` | Gauge | `provider`, `state` | Aggregate replica count across all ModelDeployments (desired, ready, available) |
 
 ### Platform engineering
 
@@ -215,10 +239,10 @@ The AI Runway controller exposes the following Prometheus metrics:
 
 ```promql
 # Total deployments
-count(airunway_deployment_phase == 1)
+sum(airunway_deployment_status)
 
 # Deployments by phase
-count by (phase) (airunway_deployment_phase == 1)
+sum by (phase) (airunway_deployment_status)
 
 # Deployment frequency (last 24h)
 sum(increase(airunway_deployment_phase_transitions_total{to_phase="Deploying"}[24h]))
@@ -228,7 +252,7 @@ histogram_quantile(0.95, sum by (le) (rate(airunway_deployment_ready_duration_se
 
 # Change failure rate
 sum(rate(airunway_deployment_phase_transitions_total{to_phase="Failed"}[1h]))
-  / sum(rate(airunway_deployment_phase_transitions_total{to_phase="Deploying"}[1h]))
+  / clamp_min(sum(rate(airunway_deployment_phase_transitions_total{to_phase="Deploying"}[1h])), 1e-9)
 
 # Provision duration p95 by provider
 histogram_quantile(0.95, sum by (le, provider) (rate(airunway_deployment_provision_duration_seconds_bucket[1h])))

@@ -67,7 +67,10 @@ type ModelDeploymentReconciler struct {
 	phaseCache   map[k8stypes.NamespacedName]phaseEntry
 }
 
-// phaseEntry tracks per-deployment phase state for metrics recording.
+// phaseEntry holds per-deployment metrics state that the K8s API cannot
+// provide: previous phase, wall-clock timestamps, one-shot guards, and
+// aggregate gauge data. Volatile on restart; transitions are skipped
+// until each deployment reconciles again.
 type phaseEntry struct {
 	// Phase is the last observed deployment phase.
 	Phase airunwayv1alpha1.DeploymentPhase
@@ -164,6 +167,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if !md.DeletionTimestamp.IsZero() {
 		if err := r.cleanupGatewayResources(ctx, &md); err != nil {
 			logger.Error(err, "Failed to clean up gateway resources on deletion")
+			r.recordReconcileError(&md, "gateway")
 		}
 		return ctrl.Result{}, nil
 	}
@@ -233,6 +237,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				Name:           md.Spec.Provider.Name,
 				SelectedReason: "explicit provider selection",
 			}
+			airmetrics.ProviderSelection.WithLabelValues(md.Spec.Provider.Name, "manual").Inc()
 			r.setCondition(&md, airunwayv1alpha1.ConditionTypeProviderSelected, metav1.ConditionTrue, "ExplicitSelection", "Provider explicitly specified in spec")
 		} else if !r.EnableProviderSelector {
 			// No provider specified and selector disabled
@@ -260,10 +265,12 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			// Gateway explicitly disabled — clean up any existing resources
 			if err := r.cleanupGatewayResources(ctx, &md); err != nil {
 				logger.Error(err, "Failed to clean up gateway resources")
+				r.recordReconcileError(&md, "gateway")
 			}
 		} else {
 			if err := r.reconcileGateway(ctx, &md); err != nil {
 				logger.Error(err, "Gateway reconciliation failed", "name", md.Name)
+				r.recordReconcileError(&md, "gateway")
 				// If the error suggests CRDs were removed, refresh the detection cache
 				if isNoMatchError(err) && r.GatewayDetector != nil {
 					logger.Info("Gateway CRDs may have been removed, refreshing detection cache")
@@ -528,7 +535,7 @@ func (r *ModelDeploymentReconciler) selectProvider(ctx context.Context, md *airu
 
 	logger.Info("Provider selected", "provider", selectedProvider, "reason", reason)
 
-	airmetrics.ProviderSelection.WithLabelValues(selectedProvider, reason).Inc()
+	airmetrics.ProviderSelection.WithLabelValues(selectedProvider, "auto").Inc()
 
 	md.Status.Provider = &airunwayv1alpha1.ProviderStatus{
 		Name:           selectedProvider,
@@ -689,13 +696,18 @@ func (r *ModelDeploymentReconciler) recordMetrics(md *airunwayv1alpha1.ModelDepl
 	}
 	entry.Provider = providerName
 
-	// Pre-initialize DORA metric label combinations so Prometheus has a zero
-	// baseline before any real observations. Without this, metrics created
-	// after the first Prometheus scrape appear with their initial value as
-	// the baseline, causing increase() to report 0.
+	// Zero-initialize all known label combinations so that increase() and
+	// rate() work correctly from the first scrape.
 	if providerName != "" && !previous.MetricsInitialized {
 		airmetrics.ReadyDurationSeconds.WithLabelValues(providerName)
 		airmetrics.ProvisionDurationSeconds.WithLabelValues(providerName)
+		airmetrics.ReconciliationDurationSeconds.WithLabelValues(providerName)
+		for _, errType := range []string{"validation", "engine_selection", "provider_selection", "gateway"} {
+			airmetrics.ReconciliationErrorsTotal.WithLabelValues(providerName, errType)
+		}
+		for _, reason := range []string{"manual", "auto"} {
+			airmetrics.ProviderSelection.WithLabelValues(providerName, reason)
+		}
 		for _, from := range phases {
 			for _, to := range phases {
 				if from != to {

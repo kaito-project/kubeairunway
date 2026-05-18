@@ -17,6 +17,8 @@ limitations under the License.
 package metrics
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -25,9 +27,12 @@ var (
 	// ReconciliationDurationSeconds tracks how long reconciliations take by provider.
 	ReconciliationDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "airunway_reconciliation_duration_seconds",
-			Help:    "Duration of ModelDeployment reconciliation in seconds.",
-			Buckets: prometheus.DefBuckets,
+			Name:                            "airunway_reconciliation_duration_seconds",
+			Help:                            "Duration of ModelDeployment reconciliation in seconds.",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  160,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		},
 		[]string{"provider"},
 	)
@@ -80,9 +85,12 @@ var (
 	// ReadyDurationSeconds measures lead time from CR creation to Running phase.
 	ReadyDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "airunway_deployment_ready_duration_seconds",
-			Help:    "Duration from ModelDeployment creation to Running phase in seconds.",
-			Buckets: []float64{10, 30, 60, 120, 300, 600, 1200, 1800, 3600},
+			Name:                            "airunway_deployment_ready_duration_seconds",
+			Help:                            "Duration from ModelDeployment creation to Running phase in seconds.",
+			Buckets:                         []float64{10, 30, 60, 120, 300, 600, 1200, 1800, 3600},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  160,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		},
 		[]string{"provider"},
 	)
@@ -90,9 +98,12 @@ var (
 	// ProvisionDurationSeconds measures infrastructure provisioning time (Deploying to Running phase).
 	ProvisionDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "airunway_deployment_provision_duration_seconds",
-			Help:    "Time from Deploying phase to Running phase in seconds (provider infrastructure provisioning).",
-			Buckets: []float64{10, 30, 60, 120, 300, 600, 1200, 1800, 3600},
+			Name:                            "airunway_deployment_provision_duration_seconds",
+			Help:                            "Time from Deploying phase to Running phase in seconds (provider infrastructure provisioning).",
+			Buckets:                         []float64{10, 30, 60, 120, 300, 600, 1200, 1800, 3600},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  160,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		},
 		[]string{"provider"},
 	)
