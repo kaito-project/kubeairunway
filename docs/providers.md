@@ -97,6 +97,21 @@ The KAITO provider enables flexible inference with multiple backends:
 | Pre-made GGUF    | llama.cpp | CPU/GPU | Ready-to-deploy quantized models |
 | HuggingFace GGUF | llama.cpp | CPU/GPU | Run any HuggingFace GGUF model   |
 
+#### Scheduling and node selection
+
+By default, Airunway runs KAITO in BYO-node mode and emits a `resource.labelSelector` on each KAITO Workspace. GPU deployments include `nvidia.com/gpu.present=true` so KAITO does not try to validate or schedule them against CPU-only nodes. If your GPU nodes use a different label, configure the KAITO provider Deployment with:
+
+- `AIRUNWAY_KAITO_GPU_LABEL_KEY` — GPU node label key (default: `nvidia.com/gpu.present`)
+- `AIRUNWAY_KAITO_GPU_LABEL_VALUE` — GPU node label value (default: `true`)
+
+Per-deployment `spec.provider.overrides` can also delete the generated GPU label by setting it to `null` and then add a replacement selector.
+
+For KAITO node auto-provisioning, set these environment variables on the KAITO provider Deployment so Airunway emits `resource.instanceType`:
+
+- `AIRUNWAY_KAITO_NODE_AUTO_PROVISIONING=true`
+- `AIRUNWAY_KAITO_CPU_INSTANCE_TYPE` — instance type for CPU-only deployments
+- `AIRUNWAY_KAITO_GPU_INSTANCE_TYPE` — instance type for GPU deployments
+
 #### Build Infrastructure
 
 For HuggingFace GGUF models, KAITO uses in-cluster image building:

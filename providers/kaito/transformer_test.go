@@ -15,7 +15,7 @@ import (
 
 func TestMain(m *testing.M) {
 	previousEnv := map[string]*string{}
-	for _, key := range []string{nodeAutoProvisioningEnv, cpuInstanceTypeEnv, gpuInstanceTypeEnv} {
+	for _, key := range []string{nodeAutoProvisioningEnv, cpuInstanceTypeEnv, gpuInstanceTypeEnv, gpuLabelKeyEnv, gpuLabelValueEnv} {
 		if value, ok := os.LookupEnv(key); ok {
 			valueCopy := value
 			previousEnv[key] = &valueCopy
@@ -900,6 +900,33 @@ func TestTransformGPULabelWinsOverNodeSelector(t *testing.T) {
 	matchLabels, _, _ := unstructured.NestedStringMap(ws.Object, "resource", "labelSelector", "matchLabels")
 	if matchLabels["nvidia.com/gpu.present"] != "true" {
 		t.Errorf("expected nvidia.com/gpu.present=true (forced) to win over user nodeSelector, got %q", matchLabels["nvidia.com/gpu.present"])
+	}
+}
+
+func TestTransformGPUUsesConfiguredLabel(t *testing.T) {
+	t.Setenv(gpuLabelKeyEnv, "accelerator.example.com/gpu")
+	t.Setenv(gpuLabelValueEnv, "present")
+
+	tr := NewTransformer()
+	md := newTestMD("test-model", "default")
+	md.Spec.Resources = &airunwayv1alpha1.ResourceSpec{
+		GPU: &airunwayv1alpha1.GPUSpec{Count: 1},
+	}
+
+	resources, err := tr.Transform(context.Background(), md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	matchLabels, found, _ := unstructured.NestedStringMap(resources[0].Object, "resource", "labelSelector", "matchLabels")
+	if !found {
+		t.Fatal("expected matchLabels")
+	}
+	if matchLabels["accelerator.example.com/gpu"] != "present" {
+		t.Fatalf("expected configured GPU label, got %v", matchLabels)
+	}
+	if _, ok := matchLabels["nvidia.com/gpu.present"]; ok {
+		t.Fatalf("did not expect default NVIDIA GPU label when configured label is set, got %v", matchLabels)
 	}
 }
 

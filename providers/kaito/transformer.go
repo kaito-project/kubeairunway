@@ -47,6 +47,13 @@ const (
 	cpuInstanceTypeEnv = "AIRUNWAY_KAITO_CPU_INSTANCE_TYPE"
 	// gpuInstanceTypeEnv supplies the KAITO instanceType for GPU deployments.
 	gpuInstanceTypeEnv = "AIRUNWAY_KAITO_GPU_INSTANCE_TYPE"
+	// gpuLabelKeyEnv supplies the node label key used to identify GPU nodes.
+	gpuLabelKeyEnv = "AIRUNWAY_KAITO_GPU_LABEL_KEY"
+	// gpuLabelValueEnv supplies the node label value used to identify GPU nodes.
+	gpuLabelValueEnv = "AIRUNWAY_KAITO_GPU_LABEL_VALUE"
+
+	defaultGPULabelKey   = "nvidia.com/gpu.present"
+	defaultGPULabelValue = "true"
 )
 
 // Transformer handles transformation of ModelDeployment to KAITO Workspace
@@ -165,9 +172,12 @@ func (t *Transformer) buildResource(md *airunwayv1alpha1.ModelDeployment) map[st
 	// KAITO install disables those sub-charts (see config.go install command),
 	// so operators using mixed CPU/GPU pools must either enable NFD or label
 	// their GPU nodes manually. Users with a different GPU-presence label can use
-	// spec.provider.overrides to delete this key and add their own selector.
+	// AIRUNWAY_KAITO_GPU_LABEL_KEY/AIRUNWAY_KAITO_GPU_LABEL_VALUE to configure
+	// the provider-wide default, or spec.provider.overrides to delete this key
+	// and add their own per-deployment selector.
 	if kaitoHasGPU(md) {
-		matchLabels["nvidia.com/gpu.present"] = "true"
+		labelKey, labelValue := kaitoGPULabel()
+		matchLabels[labelKey] = labelValue
 	}
 	resource["labelSelector"] = map[string]interface{}{
 		"matchLabels": matchLabels,
@@ -196,6 +206,18 @@ func kaitoInstanceTypeForMD(md *airunwayv1alpha1.ModelDeployment) string {
 		return strings.TrimSpace(os.Getenv(gpuInstanceTypeEnv))
 	}
 	return strings.TrimSpace(os.Getenv(cpuInstanceTypeEnv))
+}
+
+func kaitoGPULabel() (string, string) {
+	key := strings.TrimSpace(os.Getenv(gpuLabelKeyEnv))
+	if key == "" {
+		key = defaultGPULabelKey
+	}
+	value := strings.TrimSpace(os.Getenv(gpuLabelValueEnv))
+	if value == "" {
+		value = defaultGPULabelValue
+	}
+	return key, value
 }
 
 // buildInference creates the inference section of the Workspace spec

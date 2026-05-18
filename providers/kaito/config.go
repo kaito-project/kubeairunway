@@ -113,9 +113,11 @@ func GetInstallationInfo() *airunwayv1alpha1.InstallationInfo {
 				Description: "Update local Helm repository cache.",
 			},
 			{
-				Title:       "Install KAITO Workspace Operator",
-				Command:     "helm upgrade --install kaito-workspace kaito/workspace --version 0.10.0 -n kaito-workspace --create-namespace --set featureGates.disableNodeAutoProvisioning=true --set nvidiaDevicePlugin.enabled=false --set localCSIDriver.useLocalCSIDriver=false --set gpu-feature-discovery.gfd.enabled=false --set gpu-feature-discovery.nfd.master.deploy=false --set gpu-feature-discovery.nfd.worker.deploy=false --wait",
-				Description: "Install the KAITO workspace operator v0.10.0 with Node Auto-Provisioning disabled (BYO nodes mode), and sub-chart dependencies disabled.",
+				Title:   "Install KAITO Workspace Operator",
+				Command: "helm upgrade --install kaito-workspace kaito/workspace --version 0.10.0 -n kaito-workspace --create-namespace --set featureGates.disableNodeAutoProvisioning=true --set nvidiaDevicePlugin.enabled=false --set localCSIDriver.useLocalCSIDriver=false --set gpu-feature-discovery.gfd.enabled=false --set gpu-feature-discovery.nfd.master.deploy=false --set gpu-feature-discovery.nfd.worker.deploy=false --wait",
+				Description: "Install the KAITO workspace operator v0.10.0 with Node Auto-Provisioning disabled (BYO nodes mode), and sub-chart dependencies disabled. " +
+					"By default Airunway targets GPU workloads with node label nvidia.com/gpu.present=true; set AIRUNWAY_KAITO_GPU_LABEL_KEY and AIRUNWAY_KAITO_GPU_LABEL_VALUE on the kaito-provider Deployment if your GPU nodes use a different label. " +
+					"To emit KAITO resource.instanceType values for node auto-provisioning, set AIRUNWAY_KAITO_NODE_AUTO_PROVISIONING=true and configure AIRUNWAY_KAITO_CPU_INSTANCE_TYPE and/or AIRUNWAY_KAITO_GPU_INSTANCE_TYPE on the kaito-provider Deployment.",
 			},
 		},
 	}

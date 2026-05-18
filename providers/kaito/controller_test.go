@@ -2,6 +2,7 @@ package kaito
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -803,7 +804,7 @@ func TestCreateOrUpdateResourceBackfillsLastAppliedForLegacyWorkspace(t *testing
 	}
 	_, backfilledInference, _, _ := lastAppliedManagedFields(backfilled)
 	preset, ok := backfilledInference["preset"].(map[string]interface{})
-	if !ok || preset["accessMode"] != "private" {
+	if !ok || !lastAppliedHasKey(preset, "accessMode") {
 		t.Fatalf("expected backfilled last-applied annotation to track managed accessMode, got %v", backfilledInference)
 	}
 
@@ -831,6 +832,116 @@ func TestCreateOrUpdateResourceBackfillsLastAppliedForLegacyWorkspace(t *testing
 	presetOptions, found, _ = unstructured.NestedSlice(updated.Object, "inference", "preset", "presetOptions")
 	if !found || len(presetOptions) != 1 || presetOptions[0] != "operator-default" {
 		t.Fatalf("expected deletion update to preserve operator defaults, got %v (found=%v)", presetOptions, found)
+	}
+}
+
+func TestCreateOrUpdateResourceRemovesLegacyStaleInferenceOverride(t *testing.T) {
+	scheme := newScheme()
+
+	existing := &unstructured.Unstructured{}
+	setWorkspaceGVK(existing)
+	existing.SetName("test")
+	existing.SetNamespace("default")
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
+	existing.Object["resource"] = map[string]interface{}{"count": int64(1)}
+	existing.Object["inference"] = map[string]interface{}{
+		"preset": map[string]interface{}{
+			"name":          "test",
+			"accessMode":    "private",
+			"presetOptions": []interface{}{"operator-default"},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	r := NewKaitoProviderReconciler(c, scheme)
+
+	md := &airunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
+
+	desired := &unstructured.Unstructured{}
+	setWorkspaceGVK(desired)
+	desired.SetName("test")
+	desired.SetNamespace("default")
+	desired.Object["resource"] = map[string]interface{}{"count": int64(1)}
+	desired.Object["inference"] = map[string]interface{}{
+		"preset": map[string]interface{}{"name": "test"},
+	}
+
+	if err := r.createOrUpdateResource(context.Background(), desired, md); err != nil {
+		t.Fatalf("unexpected error removing legacy override: %v", err)
+	}
+
+	updated := &unstructured.Unstructured{}
+	setWorkspaceGVK(updated)
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, updated); err != nil {
+		t.Fatalf("expected resource to exist: %v", err)
+	}
+	if _, found, _ := unstructured.NestedString(updated.Object, "inference", "preset", "accessMode"); found {
+		t.Fatalf("expected stale legacy accessMode override to be removed, got %v", updated.Object["inference"])
+	}
+	presetOptions, found, _ := unstructured.NestedSlice(updated.Object, "inference", "preset", "presetOptions")
+	if !found || len(presetOptions) != 1 || presetOptions[0] != "operator-default" {
+		t.Fatalf("expected unmanaged operator default presetOptions to remain, got %v (found=%v)", presetOptions, found)
+	}
+}
+
+func TestCreateOrUpdateResourceRemovesLegacyStaleInferenceShape(t *testing.T) {
+	scheme := newScheme()
+
+	existing := &unstructured.Unstructured{}
+	setWorkspaceGVK(existing)
+	existing.SetName("test")
+	existing.SetNamespace("default")
+	existing.SetOwnerReferences([]metav1.OwnerReference{
+		{UID: "test-uid", APIVersion: "airunway.ai/v1alpha1", Kind: "ModelDeployment", Name: "test"},
+	})
+	existing.Object["resource"] = map[string]interface{}{"count": int64(1)}
+	existing.Object["inference"] = map[string]interface{}{
+		"template": map[string]interface{}{
+			"spec": map[string]interface{}{
+				"containers": []interface{}{
+					map[string]interface{}{"name": "model", "image": "llamacpp:old"},
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	r := NewKaitoProviderReconciler(c, scheme)
+
+	md := &airunwayv1alpha1.ModelDeployment{}
+	md.Name = "test"
+	md.Namespace = "default"
+	md.UID = "test-uid"
+
+	desired := &unstructured.Unstructured{}
+	setWorkspaceGVK(desired)
+	desired.SetName("test")
+	desired.SetNamespace("default")
+	desired.Object["resource"] = map[string]interface{}{"count": int64(1)}
+	desired.Object["inference"] = map[string]interface{}{
+		"preset": map[string]interface{}{"name": "test"},
+	}
+
+	if err := r.createOrUpdateResource(context.Background(), desired, md); err != nil {
+		t.Fatalf("unexpected error removing legacy inference shape: %v", err)
+	}
+
+	updated := &unstructured.Unstructured{}
+	setWorkspaceGVK(updated)
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "test", Namespace: "default"}, updated); err != nil {
+		t.Fatalf("expected resource to exist: %v", err)
+	}
+	if _, found, _ := unstructured.NestedMap(updated.Object, "inference", "template"); found {
+		t.Fatalf("expected stale legacy template inference to be removed, got %v", updated.Object["inference"])
+	}
+	presetName, found, _ := unstructured.NestedString(updated.Object, "inference", "preset", "name")
+	if !found || presetName != "test" {
+		t.Fatalf("expected desired preset inference to remain, got %v", updated.Object["inference"])
 	}
 }
 
@@ -1186,6 +1297,41 @@ func TestCreateOrUpdateResourceRemovesDeletedManagedInferenceOverride(t *testing
 	}
 	if updated.GetAnnotations()["operator.example.com/defaulted"] != "true" {
 		t.Fatalf("expected update to preserve operator annotations, got %v", updated.GetAnnotations())
+	}
+}
+
+func TestSetLastAppliedManagedFieldsStoresCompactFieldShape(t *testing.T) {
+	ws := &unstructured.Unstructured{}
+	ws.SetName("test")
+	ws.SetAnnotations(map[string]string{"airunway.example.com/large": strings.Repeat("x", 1024)})
+	ws.Object["inference"] = map[string]interface{}{
+		"template": map[string]interface{}{
+			"spec": map[string]interface{}{
+				"containers": []interface{}{
+					map[string]interface{}{
+						"name":  "model",
+						"image": "example.com/very-large-image:" + strings.Repeat("a", 1024),
+					},
+				},
+			},
+		},
+	}
+
+	if err := setLastAppliedManagedFields(ws); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	lastApplied := ws.GetAnnotations()[lastAppliedWorkspaceAnnotation]
+	if strings.Contains(lastApplied, strings.Repeat("x", 128)) || strings.Contains(lastApplied, strings.Repeat("a", 128)) {
+		t.Fatalf("expected last-applied annotation to store compact field ownership, got %q", lastApplied)
+	}
+	_, inference, _, annotations := lastAppliedManagedFields(ws)
+	if !lastAppliedStringMapHasKey(annotations, "airunway.example.com/large") {
+		t.Fatalf("expected compact annotation ownership to keep annotation key, got %v", annotations)
+	}
+	template, ok := inference["template"].(map[string]interface{})
+	if !ok || !lastAppliedHasKey(template, "spec") {
+		t.Fatalf("expected compact annotation ownership to keep nested field paths, got %v", inference)
 	}
 }
 

@@ -464,14 +464,14 @@ func lastAppliedStringMapHasKey(lastApplied map[string]string, key string) bool 
 // desired ModelDeployment-derived Workspace.
 func setLastAppliedManagedFields(resource *unstructured.Unstructured) error {
 	managedFields := map[string]interface{}{
-		"labels":      copyStringMap(resource.GetLabels()),
-		"annotations": copyStringMap(managedAnnotations(resource.GetAnnotations())),
+		"labels":      managedStringMapShape(resource.GetLabels()),
+		"annotations": managedStringMapShape(managedAnnotations(resource.GetAnnotations())),
 	}
 	if resourceSpec, found, _ := unstructured.NestedMap(resource.Object, "resource"); found {
-		managedFields["resource"] = resourceSpec
+		managedFields["resource"] = managedFieldMapShape(resourceSpec)
 	}
 	if inference, found, _ := unstructured.NestedMap(resource.Object, "inference"); found {
-		managedFields["inference"] = inference
+		managedFields["inference"] = managedFieldMapShape(inference)
 	}
 
 	data, err := json.Marshal(managedFields)
@@ -525,13 +525,39 @@ func stringMapFromInterface(value interface{}) map[string]string {
 	}
 	result := make(map[string]string, len(values))
 	for key, value := range values {
-		stringValue, ok := value.(string)
-		if !ok {
-			return nil
+		if stringValue, ok := value.(string); ok {
+			result[key] = stringValue
+			continue
 		}
-		result[key] = stringValue
+		result[key] = ""
 	}
 	return result
+}
+
+func managedFieldMapShape(values map[string]interface{}) map[string]interface{} {
+	shape := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		shape[key] = managedFieldShape(value)
+	}
+	return shape
+}
+
+func managedFieldShape(value interface{}) interface{} {
+	if nested, ok := value.(map[string]interface{}); ok {
+		return managedFieldMapShape(nested)
+	}
+	return true
+}
+
+func managedStringMapShape(values map[string]string) map[string]interface{} {
+	if len(values) == 0 {
+		return map[string]interface{}{}
+	}
+	shape := make(map[string]interface{}, len(values))
+	for key := range values {
+		shape[key] = true
+	}
+	return shape
 }
 
 // managedFieldsMatch returns true when existing still matches the desired fields
@@ -599,7 +625,11 @@ func lastAppliedHasKey(lastApplied map[string]interface{}, key string) bool {
 }
 
 func treatsUnknownExtraAsManaged(path []string, key string) bool {
-	return pathMatches(path, "resource", "labelSelector") || pathMatches(path, "resource", "labelSelector", "matchLabels")
+	return pathMatches(path, "resource", "labelSelector") ||
+		pathMatches(path, "resource", "labelSelector", "matchLabels") ||
+		(pathMatches(path, "resource") && key == "instanceType") ||
+		(pathMatches(path, "inference") && (key == "preset" || key == "template")) ||
+		(pathMatches(path, "inference", "preset") && key == "accessMode")
 }
 
 func pathMatches(path []string, segments ...string) bool {
