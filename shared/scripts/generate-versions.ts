@@ -13,7 +13,16 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..');
 const versionsPath = join(repoRoot, 'versions.env');
-const outPath = join(here, '..', 'types', 'versions.generated.ts');
+
+// Optional `--out <path>` overrides the default destination. Used by the
+// Makefile `verify-versions` target so it can generate to a temp file and
+// compare against the working-tree copy without mutating it.
+const argv = process.argv.slice(2);
+const outIdx = argv.indexOf('--out');
+const outPath =
+  outIdx !== -1 && argv[outIdx + 1]
+    ? argv[outIdx + 1]
+    : join(here, '..', 'types', 'versions.generated.ts');
 
 const env = readFileSync(versionsPath, 'utf8');
 

@@ -221,20 +221,24 @@ verify-versions:
 	@# 3. controller/internal/gateway/detection.go fallback literal must match GAIE_VERSION
 	@grep -qE '^var DefaultGAIEVersion = "$(GAIE_VERSION_RE)"$$' controller/internal/gateway/detection.go || \
 	  { echo "❌ controller/internal/gateway/detection.go DefaultGAIEVersion fallback != $(GAIE_VERSION) (from versions.env)"; exit 1; }
-	@# 4. generated TS must be up to date with versions.env.
-	@#    NOTE: this regenerates shared/types/versions.generated.ts in-place
-	@#    and then diffs against HEAD. The target intentionally mutates the
-	@#    working tree; on CI this is a no-op, locally it overwrites any
-	@#    uncommitted edits to the generated file (which is the desired
-	@#    behavior — the file is generated, not hand-edited).
-	@cd shared && if command -v bun >/dev/null 2>&1; then \
-	  bun run generate-versions >/dev/null; \
-	else \
-	  echo "❌ bun not found. Install bun (https://bun.sh) — it is the project standard."; \
-	  exit 1; \
-	fi
-	@git diff --exit-code HEAD -- shared/types/versions.generated.ts >/dev/null || \
-	  { echo "❌ shared/types/versions.generated.ts is stale — commit the regenerated file"; exit 1; }
+	@# 4. generated TS must be in sync with versions.env.
+	@#    Generate to a temp file and diff against the working-tree copy so
+	@#    that synced uncommitted edits pass (the local-dev case) while
+	@#    stale committed files still fail (the CI case — CI's working
+	@#    tree equals HEAD). Crucially this does NOT mutate the working
+	@#    tree, unlike a regenerate-in-place + `git diff HEAD` approach.
+	@set -e; \
+	  if ! command -v bun >/dev/null 2>&1; then \
+	    echo "❌ bun not found. Install bun (https://bun.sh) — it is the project standard."; \
+	    exit 1; \
+	  fi; \
+	  tmp=$$(mktemp 2>/dev/null) || { echo "❌ failed to create temp file"; exit 1; }; \
+	  trap 'rm -f "$$tmp"' EXIT; \
+	  (cd shared && bun run scripts/generate-versions.ts --out "$$tmp" >/dev/null); \
+	  diff -u shared/types/versions.generated.ts "$$tmp" >/dev/null || { \
+	    echo "❌ shared/types/versions.generated.ts is stale — run 'cd shared && bun run generate-versions' and commit the result"; \
+	    exit 1; \
+	  }
 	@echo "✅ versions in sync (GAIE_VERSION=$(GAIE_VERSION), DYNAMO_VERSION=$(DYNAMO_VERSION))"
 
 # Test the verify-versions guard itself by deliberately breaking each

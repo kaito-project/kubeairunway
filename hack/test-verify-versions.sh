@@ -19,18 +19,13 @@ cd "${REPO_ROOT}"
 GO_MOD="controller/go.mod"
 DYNAMO_CONFIG="providers/dynamo/config.go"
 GATEWAY_DETECTION="controller/internal/gateway/detection.go"
-
-# Note: we do NOT mutate shared/types/versions.generated.ts here.
-# `verify-versions` regenerates that file in place from versions.env and
-# diffs against HEAD, so any mutation we make is overwritten before the
-# diff runs. Simulating drift would require either rewriting HEAD or
-# rewriting versions.env (which would trip the other grep guards first).
-# The other three checks below exercise the same code paths.
+VERSIONS_TS="shared/types/versions.generated.ts"
 
 BACKUPS=(
     "${GO_MOD}.bak"
     "${DYNAMO_CONFIG}.bak"
     "${GATEWAY_DETECTION}.bak"
+    "${VERSIONS_TS}.bak"
 )
 
 restore() {
@@ -73,6 +68,15 @@ echo "== Mutating ${GATEWAY_DETECTION} =="
 sed -i.bak -E 's|^var DefaultGAIEVersion = "[^"]*"$|var DefaultGAIEVersion = "v0.0.0-bogus"|' "${GATEWAY_DETECTION}"
 expect_fail "${GATEWAY_DETECTION}"
 mv -f "${GATEWAY_DETECTION}.bak" "${GATEWAY_DETECTION}"
+
+echo "== Mutating ${VERSIONS_TS} =="
+# Now that verify-versions diffs a temp regen against the working-tree
+# file (instead of regenerating in place + diffing HEAD), mutating the
+# working-tree file is a faithful drift simulation.
+cp "${VERSIONS_TS}" "${VERSIONS_TS}.bak"
+printf '\n// drift-test: bogus extra line\n' >>"${VERSIONS_TS}"
+expect_fail "${VERSIONS_TS}"
+mv -f "${VERSIONS_TS}.bak" "${VERSIONS_TS}"
 
 echo ""
 echo "🎉 All verify-versions guard checks behaved as expected."
