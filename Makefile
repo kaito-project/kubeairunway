@@ -207,7 +207,7 @@ model-downloader-docker-build:
 # the moment it is introduced.
 verify-versions:
 	@# 1. controller/go.mod must pin GAIE_VERSION
-	@grep -q "gateway-api-inference-extension $(GAIE_VERSION)" controller/go.mod || \
+	@grep -qE "gateway-api-inference-extension v?$(GAIE_VERSION)([[:space:]]|$$)" controller/go.mod || \
 	  { echo "❌ controller/go.mod GAIE version != $(GAIE_VERSION) (from versions.env)"; exit 1; }
 	@# 2. generated TS must be up to date with versions.env
 	@cd shared && (command -v bun >/dev/null 2>&1 && bun run generate-versions || node --experimental-strip-types scripts/generate-versions.ts) >/dev/null
