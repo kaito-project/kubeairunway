@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loader2, ArrowLeft, Cpu, HardDrive, Layers, ExternalLink } from 'lucide-react'
 import { GpuFitIndicator } from '@/components/models/GpuFitIndicator'
+import { getEngineDisplayName } from '@/lib/deploymentDisplay'
 import { getGpuFitCapacityDisplay } from '@/lib/gpu-fit-capacity'
 
 export function DeployPage() {
@@ -128,7 +129,7 @@ export function DeployPage() {
         <div className="flex flex-wrap gap-2 mt-4">
           {model.supportedEngines.map((engine) => (
             <Badge key={engine} variant="secondary" className="bg-white/[0.06] border-white/10">
-              {engine.toUpperCase()}
+              {getEngineDisplayName(engine)}
             </Badge>
           ))}
         </div>

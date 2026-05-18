@@ -13,24 +13,6 @@ spec:
   model:
     id: "Qwen/Qwen3-0.6B"       # HuggingFace model ID
     source: huggingface          # huggingface or custom
-  engine:
-    type: vllm                   # vllm, sglang, trtllm, llamacpp (optional, auto-selected)
-    contextLength: 32768
-    trustRemoteCode: false
-  provider:
-    name: ""                     # Optional: explicit provider selection
-  serving:
-    mode: aggregated             # aggregated or disaggregated
-  resources:
-    gpu:
-      count: 1
-      type: "nvidia.com/gpu"
-  scaling:
-    replicas: 1
-  gateway:
-    enabled: true                # Optional: defaults to true when Gateway detected
-    modelName: ""                # Optional: override model name for routing
-  model:
     storage:
       volumes:
         - name: model-cache      # DNS label, unique per deployment
@@ -43,9 +25,66 @@ spec:
           # storageClassName: azurelustre-static   # omit to use cluster default
           # accessMode: ReadWriteMany              # default when size is set
           mountPath: /model-cache  # required when purpose is custom; defaults for cache purposes
+  engine:
+    type: vllm                   # vllm, sglang, trtllm, llamacpp (optional, auto-selected)
+    image: ""                    # Engine-specific image override; preferred for Direct vLLM/custom vLLM images
+    contextLength: 32768
+    trustRemoteCode: false
+    enablePrefixCaching: true
+    enforceEager: false
+    args: {}                     # Engine-specific named flags, passed through by providers
+    extraArgs: []                # Additional raw engine flags
+  provider:
+    name: ""                     # Optional: explicit provider selection
+  serving:
+    mode: aggregated             # aggregated or disaggregated
+  resources:
+    gpu:
+      count: 1
+      type: "nvidia.com/gpu"
+  scaling:
+    replicas: 1
+  image: ""                      # Legacy provider-level image override; prefer spec.engine.image for Direct vLLM
+  gateway:
+    enabled: true                # Optional: defaults to true when Gateway detected
+    modelName: ""                # Optional: override model name for routing
 ```
 
 > **Note:** If `gateway.enabled` is explicitly set to `true` but the Gateway API Inference Extension CRDs are not installed, the controller sets a `GatewayReady=False` condition with reason `CRDsNotAvailable`. This surfaces as a status warning on the `ModelDeployment`.
+
+### spec.engine
+
+`spec.engine` defines the model-server runtime and engine-level launch settings.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string | no | Engine type: `vllm`, `sglang`, `trtllm`, or `llamacpp`. If omitted, the controller auto-selects from provider capabilities. |
+| `image` | string | no | Engine-specific container image override. This is the preferred field for Direct vLLM and custom vLLM OpenAI-compatible server images. |
+| `contextLength` | int | no | Maximum context length. Providers map this to engine-specific flags such as vLLM `--max-model-len`. |
+| `trustRemoteCode` | bool | no | Allows remote HuggingFace model code execution when supported by the engine. |
+| `enablePrefixCaching` | bool | no | Enables prefix caching when supported by the engine. |
+| `enforceEager` | bool | no | Forces eager execution when supported by the engine. |
+| `args` | map[string]string | no | Engine-specific named arguments. Providers pass these through to the engine; for boolean-style flags, use an empty string value when supported by the provider. |
+| `extraArgs` | []string | no | Additional raw engine flags for arguments that do not have a structured field or map representation yet. |
+
+### spec.image (legacy)
+
+Top-level `spec.image` remains supported for backward compatibility as a provider-level custom image override. For Direct vLLM and custom vLLM launch images, prefer `spec.engine.image`.
+
+### Direct vLLM image example
+
+Use explicit provider/runtime selection and put the vLLM server image under `spec.engine.image`:
+
+```yaml
+spec:
+  provider:
+    name: vllm
+  engine:
+    type: vllm
+    image: vllm/vllm-openai:cu130-nightly
+    args:
+      trust-remote-code: ""
+```
 
 ### spec.model.storage.volumes[]
 

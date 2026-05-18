@@ -148,6 +148,7 @@ function getK8sErrorMessage(error: any): string {
   return error?.body?.message || error?.response?.body?.message || error?.message || String(error);
 }
 
+
 const RUNTIME_INSTALLATION_PROBES: Record<string, RuntimeInstallationProbe> = {
   kaito: {
     providerName: 'KAITO',

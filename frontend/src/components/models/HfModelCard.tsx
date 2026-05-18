@@ -5,6 +5,7 @@ import { GpuFitIndicator } from './GpuFitIndicator';
 import type { HfModelSearchResult } from '@airunway/shared';
 import { Download, Heart, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getEngineDisplayName } from '@/lib/deploymentDisplay'
 
 interface HfModelCardProps {
   model: HfModelSearchResult;
@@ -87,7 +88,7 @@ export function HfModelCard({ model, gpuCapacityGb, gpuCount, gpuCapacityLabel }
         <div className="flex flex-wrap gap-1">
           {model.supportedEngines.map((engine) => (
             <Badge key={engine} variant="secondary" className="text-xs rounded-full">
-              {engine.toUpperCase()}
+              {getEngineDisplayName(engine)}
             </Badge>
           ))}
         </div>
