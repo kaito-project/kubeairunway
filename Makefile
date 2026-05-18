@@ -1,4 +1,4 @@
-.PHONY: install dev dev-frontend dev-backend build compile lint test clean help providers-test verify-versions
+.PHONY: install dev dev-frontend dev-backend build compile lint test clean help providers-test verify-versions test-verify-versions
 .PHONY: controller-build controller-docker-build controller-install controller-deploy controller-generate generate-deploy-manifests
 .PHONY: model-downloader-docker-build
 
@@ -236,3 +236,8 @@ verify-versions:
 	@git diff --exit-code HEAD -- shared/types/versions.generated.ts >/dev/null || \
 	  { echo "❌ shared/types/versions.generated.ts is stale — commit the regenerated file"; exit 1; }
 	@echo "✅ versions in sync (GAIE_VERSION=$(GAIE_VERSION), DYNAMO_VERSION=$(DYNAMO_VERSION))"
+
+# Test the verify-versions guard itself by deliberately breaking each
+# input it inspects and asserting the target exits non-zero.
+test-verify-versions:
+	@bash hack/test-verify-versions.sh

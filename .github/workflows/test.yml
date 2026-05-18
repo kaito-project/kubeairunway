@@ -112,3 +112,22 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           go tool cover -func=cover.out | tail -1 >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Test verify-versions guard
+        run: make test-verify-versions
+
+      - name: Build controller and assert ldflags injection
+        # `make controller-build` delegates to controller/Makefile, which
+        # injects -X .../gateway.DefaultGAIEVersion=$(GAIE_VERSION) via
+        # ldflags. Read it back from the binary build info to confirm
+        # the injection actually landed (commit 83c53f8).
+        run: |
+          set -euo pipefail
+          source versions.env
+          make controller-build
+          if ! go version -m controller/bin/manager \
+            | grep -F -- "-X github.com/kaito-project/airunway/controller/internal/gateway.DefaultGAIEVersion=${GAIE_VERSION}"; then
+            echo "❌ ldflags injection of DefaultGAIEVersion=${GAIE_VERSION} did not land in controller/bin/manager"
+            exit 1
+          fi
+          echo "✅ ldflags injection landed: DefaultGAIEVersion=${GAIE_VERSION}"
