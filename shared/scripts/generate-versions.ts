@@ -45,8 +45,8 @@ const body = entries
   .join('\n');
 
 const header = `// Auto-generated from /versions.env. Do not edit by hand.
-// Run \`bun run generate-versions\` (or \`make verify-versions\` from the repo root)
-// to regenerate after changing /versions.env.
+// After editing /versions.env, regenerate with \`cd shared && bun run generate-versions\`,
+// then run \`make verify-versions\` from the repo root to confirm it is in sync.
 `;
 
 writeFileSync(outPath, `${header}\n${body}\n`);
