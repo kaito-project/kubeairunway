@@ -3,7 +3,12 @@ import app from '../hono-app';
 import { kubernetesService } from '../services/kubernetes';
 import { helmService } from '../services/helm';
 import { mockServiceMethod } from '../test/helpers';
-import { mockInferenceProviderConfig } from '../test/fixtures';
+import {
+  mockInferenceProviderConfig,
+  mockKaitoCROldShim,
+  mockKaitoCRNewShimHealthy,
+  mockEnoStorageClass,
+} from '../test/fixtures';
 
 describe('Installation Provider Routes', () => {
   function createDynamoInstallation(values: Record<string, unknown>) {
@@ -202,6 +207,7 @@ describe('Installation Provider Routes', () => {
 
       restores.push(
         mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig),
+        mockServiceMethod(kubernetesService, 'getStorageClass', async () => null),
         mockServiceMethod(kubernetesService, 'checkKaitoInstallationStatus', async () => {
           kaitoStatusChecks += 1;
           return {
@@ -590,6 +596,7 @@ describe('Installation Provider Routes', () => {
       restores.push(
         mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig),
         mockServiceMethod(helmService, 'checkHelmAvailable', async () => ({ available: true, version: '3.14.0' })),
+        mockServiceMethod(kubernetesService, 'getStorageClass', async () => null),
         mockServiceMethod(helmService, 'installProvider', async (_repos, charts) => {
           installCharts = charts as any[];
           return {
@@ -715,6 +722,78 @@ describe('Installation Provider Routes', () => {
       expect(data.error.message).not.toContain('Automatic installation requires elevated installer permissions');
     });
 
+  });
+
+  // ==========================================================================
+  // GET /api/installation/providers/:providerId/status (health-aware)
+  // ==========================================================================
+
+  describe('GET /api/installation/providers/:providerId/status (health-aware)', () => {
+    test('returns installed=false with Eno-suspected message for old-shim KAITO', async () => {
+      restores.push(mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockKaitoCROldShim));
+      restores.push(mockServiceMethod(kubernetesService, 'getStorageClass', async () => mockEnoStorageClass));
+
+      const res = await app.request('/api/installation/providers/kaito/status');
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.installed).toBe(false);
+      expect(data.operatorRunning).toBe(false);
+      expect(data.managedBy).toBe('Eno');
+      expect(data.message).toContain('--enable-ai-toolchain-operator');
+    });
+
+    test('returns installed=true for healthy new-shim KAITO', async () => {
+      restores.push(mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockKaitoCRNewShimHealthy));
+      restores.push(mockServiceMethod(kubernetesService, 'getStorageClass', async () => null));
+      // Merged route now also runs the live installation check; mock it
+      // to a known-good state so the assertions below stay deterministic.
+      restores.push(mockServiceMethod(kubernetesService, 'checkKaitoInstallationStatus', async () => ({
+        installed: true,
+        crdFound: true,
+        operatorRunning: true,
+        message: 'KAITO workspace operator is installed and running',
+      })));
+
+      const res = await app.request('/api/installation/providers/kaito/status');
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.installed).toBe(true);
+      expect(data.operatorRunning).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // POST /api/installation/providers/:providerId/install pre-flight
+  // ==========================================================================
+
+  describe('POST /api/installation/providers/:providerId/install pre-flight', () => {
+    test('returns 409 with structured conflict when Eno owns StorageClass', async () => {
+      restores.push(mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig));
+      restores.push(mockServiceMethod(helmService, 'checkHelmAvailable', async () => ({ available: true })));
+      restores.push(mockServiceMethod(kubernetesService, 'getStorageClass', async () => mockEnoStorageClass));
+      let installCalled = 0;
+      restores.push(mockServiceMethod(helmService, 'installProvider', async () => { installCalled++; return { success: true, results: [] }; }));
+
+      const res = await app.request('/api/installation/providers/kaito/install', { method: 'POST' });
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error).toBe('InstallConflict');
+      expect(body.conflict.source).toBe('eno');
+      expect(body.conflict.resource.name).toBe('kaito-local-nvme-disk');
+      expect(installCalled).toBe(0);
+    });
+
+    test('proceeds with helm install when no conflict (happy path)', async () => {
+      restores.push(mockServiceMethod(kubernetesService, 'getInferenceProviderConfig', async () => mockInferenceProviderConfig));
+      restores.push(mockServiceMethod(helmService, 'checkHelmAvailable', async () => ({ available: true })));
+      restores.push(mockServiceMethod(kubernetesService, 'getStorageClass', async () => null));
+      let installCalled = 0;
+      restores.push(mockServiceMethod(helmService, 'installProvider', async () => { installCalled++; return { success: true, results: [] }; }));
+
+      const res = await app.request('/api/installation/providers/kaito/install', { method: 'POST' });
+      expect(res.status).toBe(200);
+      expect(installCalled).toBe(1);
+    });
   });
 
   // ==========================================================================

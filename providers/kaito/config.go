@@ -47,13 +47,15 @@ const (
 
 // ProviderConfigManager handles registration and heartbeat for the KAITO provider
 type ProviderConfigManager struct {
-	client client.Client
+	client       client.Client
+	directClient client.Client
 }
 
 // NewProviderConfigManager creates a new provider config manager
-func NewProviderConfigManager(c client.Client) *ProviderConfigManager {
+func NewProviderConfigManager(c client.Client, direct client.Client) *ProviderConfigManager {
 	return &ProviderConfigManager{
-		client: c,
+		client:       c,
+		directClient: direct,
 	}
 }
 
@@ -165,7 +167,9 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	// Update status — retry briefly after create to allow cache to sync
 	var statusErr error
 	for i := 0; i < 5; i++ {
-		statusErr = m.UpdateStatus(ctx, true)
+		probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		statusErr = m.UpdateStatusFromProbe(probeCtx)
+		cancel()
 		if statusErr == nil {
 			break
 		}
@@ -174,25 +178,74 @@ func (m *ProviderConfigManager) Register(ctx context.Context) error {
 	return statusErr
 }
 
-// UpdateStatus updates the status of the InferenceProviderConfig
-func (m *ProviderConfigManager) UpdateStatus(ctx context.Context, ready bool) error {
+// UpdateStatusFromProbe runs probeUpstreamController and writes the result into
+// InferenceProviderConfig.status.
+func (m *ProviderConfigManager) UpdateStatusFromProbe(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+
+	probe := probeUpstreamController(ctx, m.directClient)
+	if probe.Reason == ReasonProbeFailed {
+		logger.Info("upstream probe failed", "reason", probe.Reason, "message", probe.Message)
+	}
+
 	config := &airunwayv1alpha1.InferenceProviderConfig{}
 	if err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, config); err != nil {
 		return fmt.Errorf("failed to get InferenceProviderConfig: %w", err)
 	}
 
 	now := metav1.Now()
-	config.Status = airunwayv1alpha1.InferenceProviderConfigStatus{
-		Ready:              ready,
-		Version:            ProviderVersion,
-		LastHeartbeat:      &now,
-		UpstreamCRDVersion: "kaito.sh/v1beta1",
+	config.Status.Ready = probe.Healthy
+	config.Status.Version = ProviderVersion
+	config.Status.LastHeartbeat = &now
+	config.Status.UpstreamCRDVersion = "kaito.sh/v1beta1"
+
+	upsertCondition(&config.Status.Conditions, metav1.Condition{
+		Type:               "UpstreamReady",
+		Status:             boolToConditionStatus(probe.Healthy),
+		Reason:             probe.Reason,
+		Message:            probe.Message,
+		LastTransitionTime: now,
+	})
+
+	if probe.ManagedBy == managedByEno {
+		upsertCondition(&config.Status.Conditions, metav1.Condition{
+			Type:               "UpstreamManagedBy",
+			Status:             metav1.ConditionTrue,
+			Reason:             managedByEno,
+			Message:            "Upstream KAITO resources are managed by the AKS AI toolchain operator (Eno).",
+			LastTransitionTime: now,
+		})
+	} else {
+		removeCondition(&config.Status.Conditions, "UpstreamManagedBy")
 	}
 
 	if err := m.client.Status().Update(ctx, config); err != nil {
 		return fmt.Errorf("failed to update InferenceProviderConfig status: %w", err)
 	}
+	return nil
+}
 
+// MarkUnregistered sets status.ready=false unconditionally. Used by shim shutdown.
+func (m *ProviderConfigManager) MarkUnregistered(ctx context.Context) error {
+	config := &airunwayv1alpha1.InferenceProviderConfig{}
+	if err := m.client.Get(ctx, types.NamespacedName{Name: ProviderConfigName}, config); err != nil {
+		return fmt.Errorf("failed to get InferenceProviderConfig: %w", err)
+	}
+
+	now := metav1.Now()
+	config.Status.Ready = false
+	config.Status.LastHeartbeat = &now
+	upsertCondition(&config.Status.Conditions, metav1.Condition{
+		Type:               "UpstreamReady",
+		Status:             metav1.ConditionFalse,
+		Reason:             ReasonUnregistered,
+		Message:            "Shim is shutting down.",
+		LastTransitionTime: now,
+	})
+
+	if err := m.client.Status().Update(ctx, config); err != nil {
+		return fmt.Errorf("failed to update InferenceProviderConfig status: %w", err)
+	}
 	return nil
 }
 
@@ -210,9 +263,11 @@ func (m *ProviderConfigManager) StartHeartbeat(ctx context.Context) {
 				logger.Info("Stopping heartbeat goroutine")
 				return
 			case <-ticker.C:
-				if err := m.UpdateStatus(ctx, true); err != nil {
+				tickCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				if err := m.UpdateStatusFromProbe(tickCtx); err != nil {
 					logger.Error(err, "Failed to update heartbeat")
 				}
+				cancel()
 			}
 		}
 	}()
@@ -220,7 +275,34 @@ func (m *ProviderConfigManager) StartHeartbeat(ctx context.Context) {
 
 // Unregister marks the provider as not ready
 func (m *ProviderConfigManager) Unregister(ctx context.Context) error {
-	return m.UpdateStatus(ctx, false)
+	return m.MarkUnregistered(ctx)
+}
+
+func upsertCondition(conditions *[]metav1.Condition, c metav1.Condition) {
+	for i := range *conditions {
+		if (*conditions)[i].Type == c.Type {
+			(*conditions)[i] = c
+			return
+		}
+	}
+	*conditions = append(*conditions, c)
+}
+
+func removeCondition(conditions *[]metav1.Condition, t string) {
+	out := (*conditions)[:0]
+	for _, c := range *conditions {
+		if c.Type != t {
+			out = append(out, c)
+		}
+	}
+	*conditions = out
+}
+
+func boolToConditionStatus(b bool) metav1.ConditionStatus {
+	if b {
+		return metav1.ConditionTrue
+	}
+	return metav1.ConditionFalse
 }
 
 func buildAnnotations() (map[string]string, error) {

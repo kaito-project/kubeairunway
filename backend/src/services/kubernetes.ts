@@ -204,6 +204,7 @@ class KubernetesService {
   private customObjectsApi: k8s.CustomObjectsApi;
   private coreV1Api: k8s.CoreV1Api;
   private apiExtensionsApi: k8s.ApiextensionsV1Api;
+  private storageV1Api: k8s.StorageV1Api;
   private defaultNamespace: string;
 
   constructor() {
@@ -211,6 +212,7 @@ class KubernetesService {
     this.customObjectsApi = this.kc.makeApiClient(k8s.CustomObjectsApi);
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
     this.apiExtensionsApi = this.kc.makeApiClient(k8s.ApiextensionsV1Api);
+    this.storageV1Api = this.kc.makeApiClient(k8s.StorageV1Api);
     this.defaultNamespace = process.env.DEFAULT_NAMESPACE || 'airunway-system';
   }
 
@@ -760,16 +762,36 @@ class KubernetesService {
             const requiresCRD = providerRequiresRuntimeCRD(name, item.spec?.capabilities?.requiresCRD, annotatedDisplayName);
             const runtimeStatus = await this.checkProviderInstallationStatus(name, status, displayName, requiresCRD);
 
+            // providerHealth contributes managedBy enrichment and overrides
+            // health/message when the shim reports an Eno-related reason.
+            // Structural fields below remain runtimeStatus-driven.
+            let healthy = runtimeStatus.operatorRunning ?? false;
+            let message: string | undefined = runtimeStatus.message;
+            let managedBy: string | undefined;
+            try {
+              // Lazy import to avoid circular dependency (providerHealth imports kubernetesService).
+              const { getProviderHealth } = await import('./providerHealth');
+              const health = await getProviderHealth(name);
+              managedBy = health.managedBy;
+              if (health.reason === 'EnoPartialInstall' || health.reason === 'EnoPartialInstallSuspected') {
+                healthy = false;
+                message = health.message;
+              }
+            } catch (err) {
+              logger.warn({ error: (err as Error)?.message, providerId: name }, 'getProviderHealth failed, falling back to runtimeStatus');
+            }
+
             return {
               id: name,
               name: displayName,
               installed: runtimeStatus.installed,
-              healthy: runtimeStatus.operatorRunning ?? false,
+              healthy,
               crdFound: runtimeStatus.crdFound ?? runtimeStatus.installed,
               operatorRunning: runtimeStatus.operatorRunning ?? false,
               requiresCRD: runtimeStatus.requiresCRD ?? requiresCRD,
               version: status.version,
-              message: runtimeStatus.message,
+              message,
+              managedBy,
             };
           })
         );
@@ -803,6 +825,27 @@ class KubernetesService {
       return (response as any).body || response;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Get a StorageClass by name from the cluster.
+   * Returns null if the StorageClass is not found (404).
+   * Throws on other errors.
+   */
+  async getStorageClass(name: string): Promise<any | null> {
+    try {
+      const response = await withRetry(
+        () => this.storageV1Api.readStorageClass(name),
+        { operationName: `getStorageClass:${name}`, maxRetries: 1 }
+      );
+      return (response as any).body || response;
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.response?.statusCode;
+      if (statusCode === 404) {
+        return null;
+      }
+      throw error;
     }
   }
 
