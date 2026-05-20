@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,8 +53,14 @@ func MigrateLegacyProviderConfigs(ctx context.Context, c client.Client) error {
 	})
 
 	if err := c.List(ctx, list); err != nil {
-		// If the CRD doesn't exist yet, nothing to migrate.
-		return nil
+		// CRD not installed yet — nothing to migrate. Any other error
+		// (RBAC forbidden, transient API errors, etc.) must propagate so
+		// startup fails loudly rather than silently skipping the migration.
+		if meta.IsNoMatchError(err) || apierrors.IsNotFound(err) {
+			logger.Info("InferenceProviderConfig CRD not present; skipping migration")
+			return nil
+		}
+		return fmt.Errorf("failed to list InferenceProviderConfig for migration: %w", err)
 	}
 
 	for _, item := range list.Items {
