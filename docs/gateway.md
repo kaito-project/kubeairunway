@@ -263,10 +263,13 @@ metadata:
   name: dynamo
 spec:
   capabilities:
-    engines: [vllm, sglang, trtllm]
-    gateway:
-      inferencePoolNamePattern: "{namespace}-{name}-pool"  # Pattern for the pool name
-      inferencePoolNamespace: "dynamo-system"        # Namespace where the pool is created
+    engines:
+      - name: vllm
+        gateway:
+          inferencePoolNamePattern: "{namespace}-{name}-pool"  # Pattern for the pool name
+          inferencePoolNamespace: "dynamo-system"              # Namespace where the pool is created
+      - name: sglang
+      - name: trtllm
 ```
 
 The controller adapts its reconciliation based on these flags:
