@@ -54,7 +54,20 @@ var modeldeploymentlog = logf.Log.WithName("modeldeployment-resource")
 // SetupModelDeploymentWebhookWithManager registers the webhook for ModelDeployment in the manager.
 func SetupModelDeploymentWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr, &airunwayv1alpha1.ModelDeployment{}).
-		WithValidator(&ModelDeploymentCustomValidator{Reader: mgr.GetAPIReader()}).
+		WithValidator(&ModelDeploymentCustomValidator{
+			// Reader is the cached client — every admission request used to
+			// hit the API server via mgr.GetAPIReader(), which on a busy
+			// cluster turns admission into a synchronous round-trip and a
+			// load multiplier on apiserver. The reconciler already watches
+			// InferenceProviderConfig, so the cache is warm by the time
+			// admission starts serving traffic.
+			Reader: mgr.GetClient(),
+			// APIReader is a non-cached fallback used only when the cached
+			// Reader returns NotFound, to disambiguate "truly absent" from
+			// "informer hasn't yet observed a freshly-created provider".
+			// In steady state it is never called.
+			APIReader: mgr.GetAPIReader(),
+		}).
 		WithDefaulter(&ModelDeploymentCustomDefaulter{}).
 		Complete()
 }
@@ -168,8 +181,16 @@ func (d *ModelDeploymentCustomDefaulter) Default(_ context.Context, obj *airunwa
 // when it is created, updated, or deleted.
 type ModelDeploymentCustomValidator struct {
 	// Reader is used to look up InferenceProviderConfig resources for
-	// provider compatibility validation at admission time.
+	// provider compatibility validation at admission time. In production
+	// this is the manager's cached client so admission does not synchronously
+	// hit the API server on every request.
 	Reader client.Reader
+
+	// APIReader is an optional uncached fallback consulted only when Reader
+	// returns NotFound, so we can distinguish a missing provider from an
+	// informer cache that has not yet observed a freshly-created one. May be
+	// nil in tests; in that case a Reader NotFound is treated as authoritative.
+	APIReader client.Reader
 }
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type ModelDeployment.
@@ -266,10 +287,21 @@ func (v *ModelDeploymentCustomValidator) validateSpec(ctx context.Context, obj *
 	}
 
 	// Validate provider compatibility when both provider and engine are specified.
-	// Uses the Reader to look up InferenceProviderConfig for the named provider.
+	// Uses the cached Reader to avoid a synchronous apiserver round-trip per
+	// admission; falls back to the uncached APIReader only when the cache
+	// reports NotFound, to absorb the race where a brand-new
+	// InferenceProviderConfig hasn't yet propagated to informers.
 	if spec.Provider != nil && spec.Provider.Name != "" && spec.Engine.Type != "" && v.Reader != nil {
 		var providerConfig airunwayv1alpha1.InferenceProviderConfig
 		err := v.Reader.Get(ctx, client.ObjectKey{Name: spec.Provider.Name}, &providerConfig)
+		if apierrors.IsNotFound(err) && v.APIReader != nil {
+			// Cache may be stale for a just-created provider; confirm against
+			// the API server before we tell the user the provider doesn't
+			// exist. Any error from the fallback is preserved verbatim so
+			// the existing switch below classifies it the same way it would
+			// have under the old all-APIReader path.
+			err = v.APIReader.Get(ctx, client.ObjectKey{Name: spec.Provider.Name}, &providerConfig)
+		}
 		switch {
 		case apierrors.IsNotFound(err):
 			// Reject obviously-bogus provider names at admission time so the
