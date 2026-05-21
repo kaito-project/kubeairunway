@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
+	"github.com/kaito-project/airunway/controller/internal/validation"
 )
 
 const (
@@ -287,39 +288,23 @@ func (v *ModelDeploymentCustomValidator) validateSpec(ctx context.Context, obj *
 				"error", err.Error(),
 			)
 		case providerConfig.Spec.Capabilities != nil:
-			caps := providerConfig.Spec.Capabilities
-			engineType := spec.Engine.Type
-
-			// Check engine support
-			engineCap := caps.GetEngineCapability(engineType)
-			if engineCap == nil {
-				allErrs = append(allErrs, field.Invalid(
-					specPath.Child("engine", "type"),
-					string(engineType),
-					fmt.Sprintf("provider %s does not support engine %s", spec.Provider.Name, engineType),
-				))
-			} else {
-				// Check serving mode support
-				if !engineCap.SupportsServingMode(servingMode) {
-					allErrs = append(allErrs, field.Invalid(
-						specPath.Child("serving", "mode"),
-						string(servingMode),
-						fmt.Sprintf("provider %s does not support %s mode for engine %s", spec.Provider.Name, servingMode, engineType),
-					))
+			gpuCount := int32(0)
+			if spec.Resources != nil && spec.Resources.GPU != nil {
+				gpuCount = spec.Resources.GPU.Count
+			}
+			for _, ce := range validation.CheckProviderCompatibility(
+				spec.Provider.Name,
+				&providerConfig,
+				nil,
+				spec.Engine.Type,
+				servingMode,
+				gpuCount,
+			) {
+				fp := specPath
+				for _, seg := range ce.FieldPath {
+					fp = fp.Child(seg)
 				}
-
-				// Check GPU requirement: in aggregated mode with no GPU, the engine must support CPU
-				gpuCount := int32(0)
-				if spec.Resources != nil && spec.Resources.GPU != nil {
-					gpuCount = spec.Resources.GPU.Count
-				}
-				if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 && !engineCap.CPUSupport {
-					allErrs = append(allErrs, field.Invalid(
-						specPath.Child("resources", "gpu", "count"),
-						gpuCount,
-						fmt.Sprintf("%s engine on provider %s requires GPU (set resources.gpu.count > 0)", engineType, spec.Provider.Name),
-					))
-				}
+				allErrs = append(allErrs, field.Invalid(fp, ce.BadValue, ce.Message))
 			}
 		}
 	}

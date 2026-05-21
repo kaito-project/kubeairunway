@@ -337,7 +337,7 @@ func TestValidateSpec(t *testing.T) {
 					Status: airunwayv1alpha1.InferenceProviderConfigStatus{Ready: true},
 				},
 			},
-			wantErr: "vllm engine requires GPU",
+			wantErr: "vllm engine on provider dynamo requires GPU",
 		},
 		{
 			name: "valid: vllm without GPU and empty provider configs — skips GPU check",

@@ -44,6 +44,7 @@ import (
 
 	airunwayv1alpha1 "github.com/kaito-project/airunway/controller/api/v1alpha1"
 	"github.com/kaito-project/airunway/controller/internal/gateway"
+	"github.com/kaito-project/airunway/controller/internal/validation"
 )
 
 // ModelDeploymentReconciler reconciles a ModelDeployment object
@@ -294,52 +295,34 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 		return fmt.Errorf("engine.type must be specified or auto-selected from provider capabilities")
 	}
 
-	// Validate GPU requirements based on provider capabilities
+	// Validate provider/engine/serving-mode/GPU-CPU compatibility via the
+	// shared helper so the webhook and reconciler cannot drift.
 	gpuCount := int32(0)
 	if spec.Resources != nil && spec.Resources.GPU != nil {
 		gpuCount = spec.Resources.GPU.Count
 	}
-
-	if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
-		// Only enforce GPU requirement when we have provider capability data
-		// to consult. With no InferenceProviderConfigs registered we cannot
-		// tell whether the engine supports CPU, and rejecting here would
-		// wrongly reject CPU-capable engines like llamacpp.
-		//
-		// When spec.provider.name is set, scope the CPU check to that
-		// provider — a different provider advertising CPU support does not
-		// help if the pinned provider cannot serve CPU for this engine.
-		providerName := ""
-		if spec.Provider != nil {
-			providerName = spec.Provider.Name
-		}
-		if len(providerConfigs) > 0 && !engineSupportsCPU(providerConfigs, engineType, providerName) {
-			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", engineType)
-		}
-	}
-
-	// When provider is explicitly specified, validate that it supports the
-	// requested engine + serving mode combination. This catches incompatible
-	// configurations at reconcile time instead of letting them proceed to
-	// the provider controller unvalidated.
-	if spec.Provider != nil && spec.Provider.Name != "" {
-		for _, pc := range providerConfigs {
-			if pc.Name != spec.Provider.Name {
-				continue
-			}
-			caps := pc.Spec.Capabilities
-			if caps == nil {
+	providerName := ""
+	var namedConfig *airunwayv1alpha1.InferenceProviderConfig
+	if spec.Provider != nil {
+		providerName = spec.Provider.Name
+		for i := range providerConfigs {
+			if providerConfigs[i].Name == providerName {
+				namedConfig = &providerConfigs[i]
 				break
 			}
-			engineCap := caps.GetEngineCapability(engineType)
-			if engineCap == nil {
-				return fmt.Errorf("provider %s does not support engine %s", spec.Provider.Name, engineType)
-			}
-			if !engineCap.SupportsServingMode(servingMode) {
-				return fmt.Errorf("provider %s does not support %s mode for engine %s", spec.Provider.Name, servingMode, engineType)
-			}
-			break
 		}
+	}
+	if ces := validation.CheckProviderCompatibility(
+		providerName,
+		namedConfig,
+		providerConfigs,
+		engineType,
+		servingMode,
+		gpuCount,
+	); len(ces) > 0 {
+		// Return the first error to preserve the reconciler's existing
+		// single-error contract.
+		return fmt.Errorf("%s", ces[0].Message)
 	}
 
 	// Validate disaggregated mode configuration
@@ -368,26 +351,7 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 	return nil
 }
 
-// engineSupportsCPU checks if a provider in the given list declares CPU support for the engine type.
-// When providerName is non-empty, only the config with that name is consulted; this avoids passing
-// validation when spec.provider.name pins a provider that does not advertise CPU support, even if
-// some other registered provider does. When providerName is empty, any provider may satisfy the check.
-// This uses declared capabilities regardless of provider readiness, because validation determines
-// whether a spec is intrinsically valid — not whether a provider is currently available to serve it.
-func engineSupportsCPU(providerConfigs []airunwayv1alpha1.InferenceProviderConfig, engineType airunwayv1alpha1.EngineType, providerName string) bool {
-	for _, pc := range providerConfigs {
-		if providerName != "" && pc.Name != providerName {
-			continue
-		}
-		if pc.Spec.Capabilities == nil {
-			continue
-		}
-		if pc.Spec.Capabilities.SupportsCPU(engineType) {
-			return true
-		}
-	}
-	return false
-}
+// engineSupportsCPU was inlined into validation.CheckProviderCompatibility.
 
 // selectEngine auto-selects the engine type from provider capabilities if not specified
 func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, providerConfigs []airunwayv1alpha1.InferenceProviderConfig, servingMode airunwayv1alpha1.ServingMode) error {
