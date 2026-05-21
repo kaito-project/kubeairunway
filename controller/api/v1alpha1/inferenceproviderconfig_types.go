@@ -87,6 +87,14 @@ type GatewayCapabilities struct {
 	// controller creates a ReferenceGrant for cross-namespace HTTPRoute routing.
 	// +optional
 	InferencePoolNamespace string `json:"inferencePoolNamespace,omitempty"`
+
+	// ignoresServedName indicates that gateway routing for this provider+engine
+	// pair does not honor spec.model.servedName, so the controller should fall
+	// back to auto-discovery / spec.model.id when computing the route model
+	// name. Set this when the provider's serving mode for this engine does not
+	// expose the OpenAI-style served name (e.g. KAITO's llama.cpp deployment).
+	// +optional
+	IgnoresServedName bool `json:"ignoresServedName,omitempty"`
 }
 
 // HasEngine returns true if the provider supports the given engine type

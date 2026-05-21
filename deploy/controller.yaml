@@ -80,6 +80,14 @@ spec:
                           description: gateway defines this engine's gateway-related
                             capabilities.
                           properties:
+                            ignoresServedName:
+                              description: |-
+                                ignoresServedName indicates that gateway routing for this provider+engine
+                                pair does not honor spec.model.servedName, so the controller should fall
+                                back to auto-discovery / spec.model.id when computing the route model
+                                name. Set this when the provider's serving mode for this engine does not
+                                expose the OpenAI-style served name (e.g. KAITO's llama.cpp deployment).
+                              type: boolean
                             inferencePoolNamePattern:
                               description: |-
                                 inferencePoolNamePattern is the naming pattern for provider-created pools.

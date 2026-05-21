@@ -57,10 +57,12 @@ func newTestReconciler(scheme *runtime.Scheme, detector *gateway.Detector, objs 
 	if len(objs) > 0 {
 		cb = cb.WithObjects(objs...)
 	}
+	c := cb.Build()
 	return &ModelDeploymentReconciler{
-		Client:          cb.Build(),
-		Scheme:          scheme,
-		GatewayDetector: detector,
+		Client:           c,
+		Scheme:           scheme,
+		GatewayDetector:  detector,
+		ProviderResolver: gateway.NewInferenceProviderConfigResolver(c),
 	}
 }
 
@@ -637,8 +639,25 @@ func TestGateway_KaitoLlamaCppServedNameFallsBackToModelID(t *testing.T) {
 	md.Spec.Provider = &airunwayv1alpha1.ProviderSpec{Name: "kaito"}
 	md.Spec.Engine.Type = airunwayv1alpha1.EngineTypeLlamaCpp
 	md.Spec.Model.ServedName = "explicit-served"
+	// Provider declares ignoresServedName=true for its llamacpp engine, so
+	// gateway routing should fall back to spec.model.id.
+	ipc := &airunwayv1alpha1.InferenceProviderConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "kaito"},
+		Spec: airunwayv1alpha1.InferenceProviderConfigSpec{
+			Capabilities: &airunwayv1alpha1.ProviderCapabilities{
+				Engines: []airunwayv1alpha1.EngineCapability{
+					{
+						Name: airunwayv1alpha1.EngineTypeLlamaCpp,
+						Gateway: &airunwayv1alpha1.GatewayCapabilities{
+							IgnoresServedName: true,
+						},
+					},
+				},
+			},
+		},
+	}
 	detector := fakeDetector(true, "my-gateway", "gateway-ns")
-	r := newTestReconciler(scheme, detector, md)
+	r := newTestReconciler(scheme, detector, md, ipc)
 	ctx := context.Background()
 
 	name := r.resolveModelName(ctx, md)

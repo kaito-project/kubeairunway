@@ -76,6 +76,13 @@ func GetProviderConfigSpec() airunwayv1alpha1.InferenceProviderConfigSpec {
 					},
 					GPUSupport: true,
 					CPUSupport: true,
+					// KAITO's llama.cpp deployment does not expose an
+					// OpenAI-style served-name endpoint, so gateway routing
+					// must fall back to spec.model.id rather than honoring
+					// spec.model.servedName.
+					Gateway: &airunwayv1alpha1.GatewayCapabilities{
+						IgnoresServedName: true,
+					},
 				},
 			},
 		},

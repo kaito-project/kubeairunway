@@ -797,7 +797,7 @@ func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *ai
 	if md.Spec.Gateway != nil && md.Spec.Gateway.ModelName != "" {
 		return md.Spec.Gateway.ModelName
 	}
-	if shouldUseServedNameForGateway(md) {
+	if r.shouldUseServedNameForGateway(ctx, md) {
 		return md.Spec.Model.ServedName
 	}
 
@@ -820,13 +820,21 @@ func (r *ModelDeploymentReconciler) resolveModelName(ctx context.Context, md *ai
 	return md.Spec.Model.ID
 }
 
-func shouldUseServedNameForGateway(md *airunwayv1alpha1.ModelDeployment) bool {
+func (r *ModelDeploymentReconciler) shouldUseServedNameForGateway(ctx context.Context, md *airunwayv1alpha1.ModelDeployment) bool {
 	if md.Spec.Model.ServedName == "" {
 		return false
 	}
 
-	if md.ResolvedEngineType() == airunwayv1alpha1.EngineTypeLlamaCpp && resolvedProviderName(md) == "kaito" {
-		return false
+	// Consult the provider's per-engine gateway capabilities to honor an
+	// explicit opt-out. This replaces the previous hardcoded llamacpp+kaito
+	// carve-out: providers now declare ignoresServedName themselves.
+	if r.ProviderResolver != nil {
+		providerName := resolvedProviderName(md)
+		if providerName != "" {
+			if caps := r.ProviderResolver.GetGatewayCapabilities(ctx, providerName, md.ResolvedEngineType()); caps != nil && caps.IgnoresServedName {
+				return false
+			}
+		}
 	}
 
 	return true
