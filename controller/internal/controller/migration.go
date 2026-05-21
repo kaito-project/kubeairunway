@@ -27,6 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -162,7 +164,7 @@ func MigrateLegacyProviderConfigs(ctx context.Context, c client.Client) error {
 			if err := unstructured.SetNestedField(item.Object, capabilities, "spec", "capabilities"); err != nil {
 				return fmt.Errorf("failed to set cleaned capabilities on %s: %w", name, err)
 			}
-			if err := c.Update(ctx, &item); err != nil {
+			if err := updateMigratedConfig(ctx, c, &item, "cleaned"); err != nil {
 				return fmt.Errorf("failed to update cleaned InferenceProviderConfig %s: %w", name, err)
 			}
 			continue
@@ -220,7 +222,7 @@ func MigrateLegacyProviderConfigs(ctx context.Context, c client.Client) error {
 			if err := unstructured.SetNestedField(item.Object, capabilities, "spec", "capabilities"); err != nil {
 				return fmt.Errorf("failed to set hoisted capabilities on %s: %w", name, err)
 			}
-			if err := c.Update(ctx, &item); err != nil {
+			if err := updateMigratedConfig(ctx, c, &item, "hoisted"); err != nil {
 				return fmt.Errorf("failed to update hoisted InferenceProviderConfig %s: %w", name, err)
 			}
 			continue
@@ -277,7 +279,7 @@ func MigrateLegacyProviderConfigs(ctx context.Context, c client.Client) error {
 		}
 
 		// Write back
-		if err := c.Update(ctx, &item); err != nil {
+		if err := updateMigratedConfig(ctx, c, &item, "migrated"); err != nil {
 			return fmt.Errorf("failed to update migrated InferenceProviderConfig %s: %w", name, err)
 		}
 
@@ -285,4 +287,55 @@ func MigrateLegacyProviderConfigs(ctx context.Context, c client.Client) error {
 	}
 
 	return nil
+}
+
+// updateMigratedConfig writes a migrated InferenceProviderConfig back to the
+// API server, retrying on conflict. The migration is idempotent, so if a
+// concurrent writer (e.g. another replica that lost leader election, or a
+// human operator) wins the race, we treat the resulting 409 Conflict as a
+// soft success: the other writer's update necessarily produced the desired
+// state (string-form engines collapsed to objects, stale flat keys stripped),
+// and re-reading would just confirm the object is already migrated.
+//
+// kind is a short label for log messages ("migrated", "hoisted", "cleaned").
+func updateMigratedConfig(ctx context.Context, c client.Client, item *unstructured.Unstructured, kind string) error {
+	logger := log.FromContext(ctx).WithName("migration")
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		return c.Update(ctx, item)
+	})
+	if apierrors.IsConflict(err) {
+		logger.Info("InferenceProviderConfig was updated concurrently; assuming migration completed by another writer",
+			"name", item.GetName(), "kind", kind)
+		return nil
+	}
+	return err
+}
+
+// LegacyProviderConfigMigrator runs MigrateLegacyProviderConfigs as a
+// leader-elected manager.Runnable. With --leader-elect enabled and multiple
+// replicas, only the leader performs the rewrites — followers would otherwise
+// race the leader's Update and crashloop on 409 Conflict.
+//
+// The Runnable uses a direct (non-cached) client because the manager's
+// informer cache is not yet started for leader-elected runnables when Start
+// is invoked, and the migration must use unstructured reads to avoid
+// deserialization failures on legacy schema objects.
+type LegacyProviderConfigMigrator struct {
+	Config *rest.Config
+	Scheme *runtime.Scheme
+}
+
+// NeedLeaderElection marks the migrator as leader-elected so controller-runtime
+// only invokes Start on the elected leader.
+func (m *LegacyProviderConfigMigrator) NeedLeaderElection() bool { return true }
+
+// Start performs the migration and returns. Returning nil from a Runnable is
+// fine: the manager simply considers this runnable finished and continues
+// running the others (the reconciler, the webhook server, etc.).
+func (m *LegacyProviderConfigMigrator) Start(ctx context.Context) error {
+	c, err := client.New(m.Config, client.Options{Scheme: m.Scheme})
+	if err != nil {
+		return fmt.Errorf("migration: build direct client: %w", err)
+	}
+	return MigrateLegacyProviderConfigs(ctx, c)
 }

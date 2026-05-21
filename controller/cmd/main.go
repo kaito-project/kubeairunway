@@ -43,7 +43,6 @@ import (
 	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -355,19 +354,21 @@ func main() {
 	}
 
 	// Migrate legacy InferenceProviderConfig objects from the flat capabilities
-	// schema to the per-engine EngineCapability format. This must run before
-	// any typed reads to avoid deserialization failures during upgrades.
-	// Uses a direct API client since the manager's informer cache isn't started yet.
-	{
-		directClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: scheme})
-		if err != nil {
-			setupLog.Error(err, "unable to create direct client for migration")
-			os.Exit(1)
-		}
-		if err := controller.MigrateLegacyProviderConfigs(context.Background(), directClient); err != nil {
-			setupLog.Error(err, "failed to migrate legacy InferenceProviderConfig objects; controller will retry on pod restart")
-			os.Exit(1)
-		}
+	// schema to the per-engine EngineCapability format. Registered as a
+	// leader-elected manager.Runnable so that with --leader-elect and multiple
+	// replicas only the leader performs the rewrites (followers would otherwise
+	// race the leader's Update and crashloop on 409 Conflict).
+	//
+	// Registered before the reconciler so it is first in the manager's
+	// runnable order — controller-runtime starts leader-elected runnables in
+	// registration order, so the reconciler will not start reading typed
+	// InferenceProviderConfig objects until the migration has had a turn.
+	if err := mgr.Add(&controller.LegacyProviderConfigMigrator{
+		Config: mgr.GetConfig(),
+		Scheme: scheme,
+	}); err != nil {
+		setupLog.Error(err, "unable to register legacy provider config migration")
+		os.Exit(1)
 	}
 
 	// Create gateway detector

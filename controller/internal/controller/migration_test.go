@@ -610,8 +610,9 @@ func TestMigrateLegacyProviderConfigs_PropagatesListErrors(t *testing.T) {
 	}
 }
 
-// TestMigrateLegacyProviderConfigs_UpdateErrorPropagates ensures Update failures
-// during migration are also surfaced rather than swallowed.
+// TestMigrateLegacyProviderConfigs_UpdateErrorPropagates ensures non-conflict
+// Update failures during migration are surfaced rather than swallowed. (Conflict
+// errors are handled separately — see TestMigrateLegacyProviderConfigs_UpdateConflictTreatedAsSuccess.)
 func TestMigrateLegacyProviderConfigs_UpdateErrorPropagates(t *testing.T) {
 	legacy := &unstructured.Unstructured{}
 	legacy.SetGroupVersionKind(schema.GroupVersionKind{
@@ -640,16 +641,62 @@ func TestMigrateLegacyProviderConfigs_UpdateErrorPropagates(t *testing.T) {
 			return nil
 		},
 		Update: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.UpdateOption) error {
-			return apierrors.NewConflict(schema.GroupResource{Group: "airunway.ai", Resource: "inferenceproviderconfigs"}, "kaito", errors.New("conflict"))
+			return apierrors.NewInternalError(errors.New("boom"))
 		},
 	})
 
 	err := MigrateLegacyProviderConfigs(context.Background(), c)
 	if err == nil {
-		t.Fatalf("expected update conflict to propagate, got nil")
+		t.Fatalf("expected update error to propagate, got nil")
 	}
 	if !containsString(err.Error(), "failed to update migrated InferenceProviderConfig kaito") {
 		t.Errorf("expected wrapped update error, got %q", err.Error())
+	}
+}
+
+// TestMigrateLegacyProviderConfigs_UpdateConflictTreatedAsSuccess ensures
+// a persistent 409 Conflict on Update does not fail the migration. With
+// --leader-elect + multiple replicas (or a human editor racing), a follower
+// or third party may write the same object first; since the migration is
+// idempotent and the conflicting writer must have produced the same desired
+// state, returning an error here would crashloop the controller for no benefit.
+func TestMigrateLegacyProviderConfigs_UpdateConflictTreatedAsSuccess(t *testing.T) {
+	legacy := &unstructured.Unstructured{}
+	legacy.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "airunway.ai",
+		Version: "v1alpha1",
+		Kind:    "InferenceProviderConfig",
+	})
+	legacy.SetName("kaito")
+	legacy.SetResourceVersion("1")
+	if err := unstructured.SetNestedField(legacy.Object, map[string]interface{}{
+		"engines": []interface{}{"vllm"},
+	}, "spec", "capabilities"); err != nil {
+		t.Fatalf("failed to set capabilities: %v", err)
+	}
+
+	base := fake.NewClientBuilder().WithScheme(newUnstructuredScheme()).Build()
+	updateCalls := 0
+	c := interceptor.NewClient(base, interceptor.Funcs{
+		List: func(_ context.Context, _ client.WithWatch, list client.ObjectList, _ ...client.ListOption) error {
+			ul, ok := list.(*unstructured.UnstructuredList)
+			if !ok {
+				return fmt.Errorf("unexpected list type %T", list)
+			}
+			ul.Items = []unstructured.Unstructured{*legacy}
+			return nil
+		},
+		Update: func(_ context.Context, _ client.WithWatch, _ client.Object, _ ...client.UpdateOption) error {
+			updateCalls++
+			return apierrors.NewConflict(schema.GroupResource{Group: "airunway.ai", Resource: "inferenceproviderconfigs"}, "kaito", errors.New("conflict"))
+		},
+	})
+
+	if err := MigrateLegacyProviderConfigs(context.Background(), c); err != nil {
+		t.Fatalf("expected conflict to be treated as soft success, got error: %v", err)
+	}
+	if updateCalls == 0 {
+		t.Errorf("expected at least one Update attempt, got 0")
 	}
 }
 
