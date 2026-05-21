@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -155,7 +156,7 @@ func migrateAndUpdate(ctx context.Context, c client.Client, key client.ObjectKey
 			return err
 		}
 
-		changed, kind, err := applyMigration(fresh)
+		changed, kind, err := applyMigration(fresh, logger)
 		if err != nil {
 			return err
 		}
@@ -185,14 +186,21 @@ func migrateAndUpdate(ctx context.Context, c client.Client, key client.ObjectKey
 // applyMigration is intentionally pure (no closures over outer state) so the
 // RetryOnConflict closure can call it again against a re-Get'd object after a
 // conflict and produce the same result.
-func applyMigration(obj *unstructured.Unstructured) (bool, string, error) {
+func applyMigration(obj *unstructured.Unstructured, logger logr.Logger) (bool, string, error) {
 	capabilities, found, err := unstructured.NestedMap(obj.Object, "spec", "capabilities")
-	if err != nil || !found || capabilities == nil {
+	if err != nil {
+		logger.Info("skipping InferenceProviderConfig with malformed spec.capabilities",
+			"name", obj.GetName(), "error", err.Error())
+		return false, "", nil
+	}
+	if !found || capabilities == nil {
 		return false, "", nil
 	}
 
 	engines, _, err := unstructured.NestedSlice(capabilities, "engines")
 	if err != nil {
+		logger.Info("skipping InferenceProviderConfig with malformed spec.capabilities.engines",
+			"name", obj.GetName(), "error", err.Error())
 		return false, "", nil
 	}
 
