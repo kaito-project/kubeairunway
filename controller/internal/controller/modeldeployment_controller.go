@@ -200,6 +200,16 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	r.setCondition(&md, airunwayv1alpha1.ConditionTypeValidated, metav1.ConditionTrue, "ValidationPassed", "Schema validation passed")
 
+	// Validation passed, so the engine recorded in status is provider-compatible.
+	// Flip EngineSelected=True now (selectEngine deliberately defers this).
+	if md.Status.Engine != nil && md.Status.Engine.Type != "" {
+		if md.Spec.Engine.Type != "" {
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "ExplicitSelection", "Engine explicitly specified in spec")
+		} else {
+			r.setCondition(&md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider capabilities", md.Status.Engine.Type))
+		}
+	}
+
 	// Step 6: Run provider selection if needed
 	if r.EnableProviderSelector {
 		if err := r.selectProvider(ctx, &md, providerConfigs, resolvedEngineType, resolvedServingMode); err != nil {
@@ -357,13 +367,16 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunwayv1alpha1.ModelDeployment, providerConfigs []airunwayv1alpha1.InferenceProviderConfig, servingMode airunwayv1alpha1.ServingMode) error {
 	logger := log.FromContext(ctx)
 
-	// If engine type is explicitly specified, just record it in status
+	// If engine type is explicitly specified, just record it in status.
+	// The EngineSelected=True condition is intentionally NOT set here — it is
+	// only flipped True after downstream provider-compatibility validation
+	// passes (see Reconcile), so the condition reflects "selected AND usable"
+	// rather than "selected but possibly incompatible".
 	if md.Spec.Engine.Type != "" {
 		md.Status.Engine = &airunwayv1alpha1.EngineStatus{
 			Type:           md.Spec.Engine.Type,
 			SelectedReason: "explicit engine selection",
 		}
-		r.setCondition(md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "ExplicitSelection", "Engine explicitly specified in spec")
 		return nil
 	}
 
@@ -439,7 +452,8 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 				Type:           engine,
 				SelectedReason: fmt.Sprintf("auto-selected from provider %s capabilities", providerName),
 			}
-			r.setCondition(md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
+			// EngineSelected=True is set in Reconcile after provider-compatibility
+			// validation passes; see comment on the explicit-selection branch above.
 			return nil
 		}
 	}
@@ -456,7 +470,8 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 			Type:           engine,
 			SelectedReason: fmt.Sprintf("auto-selected from provider %s capabilities", providerName),
 		}
-		r.setCondition(md, airunwayv1alpha1.ConditionTypeEngineSelected, metav1.ConditionTrue, "AutoSelected", fmt.Sprintf("Engine %s auto-selected from provider %s", engine, providerName))
+		// EngineSelected=True is set in Reconcile after provider-compatibility
+		// validation passes; see comment on the explicit-selection branch above.
 		return nil
 	}
 
