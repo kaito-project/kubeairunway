@@ -210,7 +210,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	// Step 6: Update status
+	// Step 7: Update status
 	// If no provider is selected yet, stay in Pending
 	if md.Status.Provider == nil || md.Status.Provider.Name == "" {
 		if md.Spec.Provider != nil && md.Spec.Provider.Name != "" {
@@ -240,7 +240,7 @@ func (r *ModelDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// - status.endpoint
 	// - ProviderCompatible, ResourceCreated, Ready conditions
 
-	// Step 7: Reconcile gateway resources (InferencePool + HTTPRoute) when deployment is running
+	// Step 8: Reconcile gateway resources (InferencePool + HTTPRoute) when deployment is running
 	if md.Status.Phase == airunwayv1alpha1.DeploymentPhaseRunning {
 		if md.Spec.Gateway != nil && md.Spec.Gateway.Enabled != nil && !*md.Spec.Gateway.Enabled {
 			// Gateway explicitly disabled — clean up any existing resources
