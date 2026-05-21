@@ -41,15 +41,21 @@ spec:
       - name: vllm
         servingModes: [aggregated, disaggregated]
         gpuSupport: true
+        gateway:
+          inferencePoolNamePattern: "{name}-pool"
+          inferencePoolNamespace: "{namespace}"
       - name: sglang
         servingModes: [aggregated, disaggregated]
         gpuSupport: true
+        gateway:
+          inferencePoolNamePattern: "{name}-pool"
+          inferencePoolNamespace: "{namespace}"
       - name: trtllm
         servingModes: [aggregated]
         gpuSupport: true
-    gateway:
-      inferencePoolNamePattern: "{name}-pool"
-      inferencePoolNamespace: "{namespace}"
+        gateway:
+          inferencePoolNamePattern: "{name}-pool"
+          inferencePoolNamespace: "{namespace}"
   selectionRules:
     - condition: "spec.engine.type == 'trtllm'"
       priority: 100
@@ -96,5 +102,5 @@ spec:
       - name: vllm
         servingModes: [aggregated, disaggregated]
         gpuSupport: true
-    requiresCRD: false
+        requiresCRD: false
   selectionRules: []
