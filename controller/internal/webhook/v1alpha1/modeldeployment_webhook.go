@@ -974,13 +974,23 @@ func checkSizingOverrideKeys(m map[string]interface{}, fldPath *field.Path) fiel
 func checkForbiddenOverrideKeys(m map[string]interface{}, fldPath *field.Path, forbiddenKeys []string, detailFor func(string) string) field.ErrorList {
 	var allErrs field.ErrorList
 	for key, val := range m {
+		matched := false
 		for _, forbidden := range forbiddenKeys {
 			if key == forbidden {
 				allErrs = append(allErrs, field.Forbidden(
 					fldPath.Child(key),
 					detailFor(key),
 				))
+				matched = true
+				break
 			}
+		}
+		// If this key is itself forbidden, the entire subtree is rejected.
+		// Skip descending into it — otherwise a forbidden key whose value
+		// contains another forbidden key (or the same key nested deeper)
+		// produces redundant sibling errors for an already-rejected path.
+		if matched {
+			continue
 		}
 		allErrs = append(allErrs, checkForbiddenOverrideKeysInValue(val, fldPath.Child(key), forbiddenKeys, detailFor)...)
 	}
