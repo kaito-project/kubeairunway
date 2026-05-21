@@ -298,6 +298,29 @@ func TestValidateSpec(t *testing.T) {
 			},
 			providerConfigs: nil,
 		},
+		{
+			name: "valid: llamacpp without GPU and empty provider configs — skips GPU check",
+			md: airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model:  airunwayv1alpha1.ModelSpec{ID: "Qwen/Qwen3-0.6B", Source: airunwayv1alpha1.ModelSourceHuggingFace},
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeLlamaCpp},
+				},
+			},
+			providerConfigs: nil,
+		},
+		{
+			name: "valid: vllm without GPU and empty provider configs — skips GPU check",
+			md: airunwayv1alpha1.ModelDeployment{
+				Spec: airunwayv1alpha1.ModelDeploymentSpec{
+					Model:  airunwayv1alpha1.ModelSpec{ID: "Qwen/Qwen3-0.6B", Source: airunwayv1alpha1.ModelSourceHuggingFace},
+					Engine: airunwayv1alpha1.EngineSpec{Type: airunwayv1alpha1.EngineTypeVLLM},
+				},
+			},
+			providerConfigs: nil,
+			// No error: with no provider capability data we cannot determine
+			// hardware requirements; downstream reconciliation surfaces the
+			// missing-provider condition with a clearer message.
+		},
 	}
 
 	for _, tt := range tests {

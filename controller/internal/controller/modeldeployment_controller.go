@@ -301,9 +301,11 @@ func (r *ModelDeploymentReconciler) validateSpec(ctx context.Context, md *airunw
 	}
 
 	if servingMode == airunwayv1alpha1.ServingModeAggregated && gpuCount == 0 {
-		// Check if any registered provider offers CPU support for this engine
-		engineHasCPUSupport := engineSupportsCPU(providerConfigs, engineType)
-		if !engineHasCPUSupport {
+		// Only enforce GPU requirement when we have provider capability data
+		// to consult. With no InferenceProviderConfigs registered we cannot
+		// tell whether the engine supports CPU, and rejecting here would
+		// wrongly reject CPU-capable engines like llamacpp.
+		if len(providerConfigs) > 0 && !engineSupportsCPU(providerConfigs, engineType) {
 			return fmt.Errorf("%s engine requires GPU (set resources.gpu.count > 0)", engineType)
 		}
 	}
