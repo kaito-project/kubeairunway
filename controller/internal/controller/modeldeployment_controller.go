@@ -413,7 +413,8 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 		servingMode = md.Spec.Serving.Mode
 	}
 
-	availableEngines := make(map[airunwayv1alpha1.EngineType]string) // engine -> provider name
+	availableEngines := make(map[airunwayv1alpha1.EngineType]string)    // engine -> provider name
+	advertisedEngines := make(map[string][]airunwayv1alpha1.EngineType) // provider name -> engines advertised
 
 	for _, pc := range providerConfigs {
 		if !pc.Status.Ready || pc.Spec.Capabilities == nil {
@@ -421,6 +422,7 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 		}
 
 		caps := pc.Spec.Capabilities
+		advertisedEngines[pc.Name] = caps.EngineNames()
 
 		for _, engineCap := range caps.Engines {
 			// Filter by GPU/CPU compatibility at the engine level
@@ -443,7 +445,11 @@ func (r *ModelDeploymentReconciler) selectEngine(ctx context.Context, md *airunw
 	}
 
 	if len(availableEngines) == 0 {
-		return fmt.Errorf("no engines available from registered providers")
+		logger.Info("No engines available after filtering",
+			"hasGPU", hasGPU,
+			"servingMode", servingMode,
+			"advertisedByProvider", advertisedEngines)
+		return fmt.Errorf("no engines available from registered providers (hasGPU=%v, servingMode=%s, advertised=%v)", hasGPU, servingMode, advertisedEngines)
 	}
 
 	// Select the highest-preference engine that is available
